@@ -1,4 +1,4 @@
-// content.js - Ack-based icon state, modern UI & encoding fixes
+// content.js - Ack-based icon state, modern UI & encoding fixes + debug logging
 
 if (window.self !== window.top) {
     throw new Error("Whisper: Skipping iframe execution.");
@@ -10,12 +10,17 @@ let captureActive = false;
 let currentSessionId = 0;
 let activeSessionId = 0;
 let recordingStartTime = 0;
+let processingSessionId = null; // track the session sent for processing
 
 let globalStream = null;
 let globalContext = null;
 let globalRecorder = null;
 let globalChunks = [];
 let skipTranscribe = false; // honor cancel/abort
+
+function dbg(...args) {
+    if (shouldShowNotifications) console.log('[Whisper DEBUG]', ...args);
+}
 
 async function resolveEffectiveSettings() {
     try {
@@ -26,6 +31,7 @@ async function resolveEffectiveSettings() {
         const overrides = settings?.overrides || {};
         const site = overrides[hostname] || {};
         silenceTimeoutMs = site.silenceTimeoutMs ?? defaults.silenceTimeoutMs ?? 1000;
+        dbg('Settings resolved', { hostname, silenceTimeoutMs, debug: shouldShowNotifications });
     } catch (_) {
         silenceTimeoutMs = 1000;
         shouldShowNotifications = false;
@@ -36,7 +42,7 @@ browser.runtime.onMessage.addListener((message) => {
     if (message?.type === 'CONFIG_CHANGED') resolveEffectiveSettings();
 });
 
-// Inline polyfill with page-handled ack
+// Inline polyfill with page-handled ack (stop/abort always send)
 const INLINE_CODE = `
 (function() {
   if (window.webkitSpeechRecognition) return;
@@ -73,13 +79,11 @@ const INLINE_CODE = `
       window.postMessage({ type: 'WHISPER_START_RECORDING', language: reqLang }, "*");
     }
     stop() {
-      if (!this.isRecording) return;
       this.isRecording = false;
       window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
       this.onend?.();
     }
     abort() {
-      if (!this.isRecording) return;
       this.isRecording = false;
       window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
       this.onend?.();
@@ -113,6 +117,7 @@ function fixEncoding(text) {
 }
 
 function showNotification(message, type = "info") {
+    dbg('Notification', { type, message });
     if (!shouldShowNotifications) return;
     const existing = document.getElementById("whisper-pill");
     if (existing) existing.remove();
@@ -138,21 +143,49 @@ function showNotification(message, type = "info") {
     setTimeout(() => { if (div) { div.style.opacity = "0"; div.style.transform = "translateX(-50%) translateY(10px)"; setTimeout(() => div.remove(), 300); } }, duration);
 }
 
-// Bridge messages with ack
+// Bridge messages with ack + explicit cancel during processing (only on abort)
 window.addEventListener("message", async (event) => {
   if (!event.data) return;
   if (event.data.type === 'WHISPER_START_RECORDING') {
+      dbg('Start recording (page msg)', { language: event.data.language, processingSessionId });
+      if (processingSessionId !== null) {
+          browser.runtime.sendMessage({
+              type: 'CANCEL_SESSION',
+              sessionId: processingSessionId,
+              hostname: location.hostname
+          });
+          processingSessionId = null;
+      }
       if (captureActive) return;
       captureActive = true;
       currentSessionId += 1;
       activeSessionId = currentSessionId;
       startRecording(event.data.language, activeSessionId);
   } else if (event.data.type === 'WHISPER_STOP_RECORDING') {
-      stopRecording(false);
+      dbg('Stop recording (page msg)');
+      if (captureActive) {
+          stopRecording(false);
+      }
+      // no cancel here
   } else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
-      stopRecording(true); // cancel: no transcription
+      dbg('Abort recording (page msg)', { captureActive, processingSessionId });
+      if (captureActive) {
+          stopRecording(true);
+          browser.runtime.sendMessage({
+              type: 'CANCEL_SESSION',
+              sessionId: activeSessionId,
+              hostname: location.hostname
+          });
+      } else if (processingSessionId !== null) {
+          browser.runtime.sendMessage({
+              type: 'CANCEL_SESSION',
+              sessionId: processingSessionId,
+              hostname: location.hostname
+          });
+          processingSessionId = null;
+      }
   } else if (event.data.type === 'WHISPER_PAGE_HANDLED') {
-      // Page handled the result; inform background to return to idle
+      dbg('Page handled result (page msg)');
       browser.runtime.sendMessage({ type: 'PROCESSING_DONE' });
   }
 });
@@ -161,6 +194,7 @@ async function startRecording(pageLanguage, sessionId) {
     try {
         const langDisplay = pageLanguage ? pageLanguage.toUpperCase() : "AUTO";
         showNotification(`Listening (${langDisplay})...`, "recording");
+        dbg('Recording started', { sessionId, pageLanguage });
         browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'recording' });
 
         recordingStartTime = Date.now();
@@ -195,13 +229,14 @@ async function startRecording(pageLanguage, sessionId) {
         globalRecorder.onstop = async () => {
             try {
                 const duration = Date.now() - recordingStartTime;
+                dbg('Recorder stop', { duration, skipTranscribe, sessionId });
                 if (skipTranscribe) {
                     captureActive = false;
                     browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'idle' });
                     return;
                 }
                 if (duration < 300) {
-                    console.log("Whisper: Input aborted (too short).");
+                    dbg('Too short, drop', { duration });
                     captureActive = false;
                     browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'idle' });
                     return; 
@@ -210,6 +245,8 @@ async function startRecording(pageLanguage, sessionId) {
                 if (sessionId !== activeSessionId) { captureActive = false; return; }
                 const audioBlob = new Blob(globalChunks, { type: 'audio/wav' });
                 const arrayBuffer = await audioBlob.arrayBuffer();
+                processingSessionId = sessionId; // mark in-flight processing
+                dbg('Send TRANSCRIBE_AUDIO', { sessionId, bytes: arrayBuffer.byteLength, pageLanguage });
                 browser.runtime.sendMessage({
                     type: 'TRANSCRIBE_AUDIO',
                     sessionId,
@@ -242,7 +279,9 @@ let lastText = "";
 
 browser.runtime.onMessage.addListener((message) => {
     if (message.type === 'WHISPER_RESULT_TO_PAGE_BRIDGE') {
+        processingSessionId = null;
         let text = fixEncoding(message.text);
+        dbg('Result to page', { text });
         const now = Date.now();
         if (text === lastText && (now - lastTextTime < 2000)) {
             console.warn("Whisper: Dropped duplicate text:", text);
@@ -253,16 +292,27 @@ browser.runtime.onMessage.addListener((message) => {
         window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text }, "*");
     }
     else if (message.type === 'WHISPER_NO_AUDIO') {
+        processingSessionId = null;
+        dbg('No audio', message);
         if (message.reason !== 'silence') { showNotification("No speech detected", "info"); }
         else { const n = document.getElementById("whisper-pill"); if (n) n.style.opacity = "0"; }
-        browser.runtime.sendMessage({ type: 'PROCESSING_DONE' });
+        browser.runtime.sendMessage({ type: 'PROCESSING_DONE', status: 'noaudio' });
     }
     else if (message.type === 'WHISPER_UNINTELLIGIBLE') {
-        // Signal background to show red mic icon (unintelligible after processing)
+        processingSessionId = null;
+        dbg('Unintelligible');
+        showNotification("Didn't catch that", "error");
+        // Actively cancel/stop anything still in-flight
+        browser.runtime.sendMessage({ type: 'CANCEL_SESSION', sessionId: activeSessionId || processingSessionId || 0, hostname: location.hostname });
         browser.runtime.sendMessage({ type: 'UNINTELLIGIBLE_SPEECH' });
+        browser.runtime.sendMessage({ type: 'PROCESSING_DONE', status: 'noaudio' });
+        browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'idle' });
+        stopRecording(true);
     }
     else if (message.type === 'WHISPER_ERROR') {
+        processingSessionId = null;
+        dbg('Error', message);
         showNotification(message.error, "error");
-        browser.runtime.sendMessage({ type: 'PROCESSING_DONE' });
+        browser.runtime.sendMessage({ type: 'PROCESSING_DONE', status: 'error' });
     }
 });

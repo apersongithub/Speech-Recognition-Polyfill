@@ -18,6 +18,8 @@ document.getElementById('add-override').addEventListener('click', addOrUpdateOve
 document.getElementById('remove-override').addEventListener('click', removeOverride);
 document.getElementById('model-select').addEventListener('change', checkModelSize);
 document.getElementById('debug-mode').addEventListener('change', saveDebugMode); // Auto-save checkbox
+document.getElementById('grace-enabled').addEventListener('change', saveGraceSetting); // Auto-save
+document.getElementById('grace-ms').addEventListener('change', saveGraceSetting); // Auto-save value
 
 function t(key, fallback = '') {
     return browser.i18n?.getMessage(key) || fallback;
@@ -51,6 +53,12 @@ function clampTimeout(val) {
     return Math.max(500, Math.min(5000, n));
 }
 
+function clampGrace(val) {
+    const n = parseInt(val, 10);
+    if (Number.isNaN(n)) return 450;
+    return Math.max(0, Math.min(2000, n));
+}
+
 function checkModelSize() {
     const model = document.getElementById('model-select').value;
     const warningBox = document.getElementById('size-warning');
@@ -73,6 +81,10 @@ async function saveDefaults() {
     const settings = stored.settings || {};
     settings.defaults = { model, language, silenceTimeoutMs: silenceTimeout };
     
+    // keep existing grace settings (global)
+    if (typeof settings.graceEnabled === 'undefined') settings.graceEnabled = true;
+    if (typeof settings.graceMs === 'undefined') settings.graceMs = 450;
+
     await browser.storage.local.set({ settings });
     showSaved();
     browser.runtime.sendMessage({ type: 'CONFIG_CHANGED' });
@@ -87,6 +99,22 @@ async function saveDebugMode() {
     
     await browser.storage.local.set({ settings });
     browser.runtime.sendMessage({ type: 'CONFIG_CHANGED' });
+}
+
+// Auto-save grace toggle/value
+async function saveGraceSetting() {
+    const graceEnabled = document.getElementById('grace-enabled').checked;
+    const graceMs = clampGrace(document.getElementById('grace-ms').value);
+    const stored = await browser.storage.local.get('settings');
+    const settings = stored.settings || {};
+    settings.graceEnabled = graceEnabled;
+    settings.graceMs = graceMs;
+    await browser.storage.local.set({ settings });
+    browser.runtime.sendMessage({ type: 'CONFIG_CHANGED' });
+
+    const graceInput = document.getElementById('grace-ms');
+    graceInput.disabled = !graceEnabled;
+    graceInput.style.opacity = graceEnabled ? '1' : '0.6';
 }
 
 async function addOrUpdateOverride() {
@@ -153,6 +181,13 @@ async function restoreOptions() {
     document.getElementById('silence-timeout').value = d.silenceTimeoutMs || 1500;
     
     document.getElementById('debug-mode').checked = settings.debugMode || false;
+
+    const graceEnabled = settings.graceEnabled !== false; // default true
+    const graceMs = typeof settings.graceMs === 'number' ? settings.graceMs : 450;
+    document.getElementById('grace-enabled').checked = graceEnabled;
+    document.getElementById('grace-ms').value = graceMs;
+    document.getElementById('grace-ms').disabled = !graceEnabled;
+    document.getElementById('grace-ms').style.opacity = graceEnabled ? '1' : '0.6';
 
     checkModelSize();
     renderOverrides(settings.overrides || {});

@@ -140,22 +140,34 @@
         </select>
         <div id="size-warning" class="warning"></div>
 
-        <label data-i18n="language_label">Language</label>
-        <select id="language-select">
-            <option value="auto" data-i18n="lang_auto">Auto-Detect</option>
-            <option value="en" data-i18n="lang_en">English</option>
-            <option value="es" data-i18n="lang_es">Spanish</option>
-            <option value="fr" data-i18n="lang_fr">French</option>
-            <option value="de" data-i18n="lang_de">German</option>
-            <option value="it" data-i18n="lang_it">Italian</option>
-            <option value="pt" data-i18n="lang_pt">Portuguese</option>
-            <option value="ja" data-i18n="lang_ja">Japanese</option>
-            <option value="zh" data-i18n="lang_zh">Chinese</option>
-        </select>
+<!-- Only the language select section shown -->
+<label data-i18n="language_label">Language</label>
+<select id="language-select">
+    <option value="auto" data-i18n="lang_auto">Auto-Detect</option>
+    <option value="en" data-i18n="lang_en">English</option>
+    <option value="es" data-i18n="lang_es">Spanish</option>
+    <option value="fr" data-i18n="lang_fr">French</option>
+    <option value="de" data-i18n="lang_de">German</option>
+    <option value="it" data-i18n="lang_it">Italian</option>
+    <option value="pt" data-i18n="lang_pt">Portuguese</option>
+    <option value="ja" data-i18n="lang_ja">Japanese</option>
+    <option value="zh" data-i18n="lang_zh">Chinese</option>
+    <option value="ru" data-i18n="lang_ru">Russian</option>
+</select>
 
         <label data-i18n="silence_timeout">Silence Timeout (ms)</label>
         <input id="silence-timeout" type="number" min="500" max="5000" step="100" value="1000" />
         <div class="note" data-i18n="silence_note">Time to wait after you stop speaking before sending.</div>
+
+        <div class="checkbox-wrapper" style="margin-top:12px;">
+            <input type="checkbox" id="grace-enabled" />
+            <label for="grace-enabled" class="checkbox-label">Enable cancel grace window</label>
+        </div>
+        <label style="margin-top:10px;">Grace window (ms)</label>
+        <input id="grace-ms" type="number" min="0" max="2000" step="50" value="450" />
+        <div class="note">
+            Prevents late results after you hit cancel/stop (default: on, 450ms). Turn off or set to 0 if you want results sent immediately after processing.
+        </div>
 
         <button id="save-btn" data-i18n="save_defaults">Save Defaults</button>
         <div id="status" data-i18n="settings_saved">Settings Saved</div>
@@ -165,11 +177,10 @@
         <h4 data-i18n="developer_settings">Developer Settings</h4>
         <div class="checkbox-wrapper">
             <input type="checkbox" id="debug-mode" />
-            <label for="debug-mode" class="checkbox-label" data-i18n="debug_banners">Show Notification Banners</label>
+            <label for="debug-mode" class="checkbox-label" data-i18n="debug_banners">Show Notification Banners & Debug Logs</label>
         </div>
-        <div class="note" data-i18n="debug_note">
-            Enable to see "Listening...", "Processing", and Error banners. <br>
-            <strong>Default: Off (Silent Mode)</strong>
+        <div class="note">
+            Enables toast banners and console debug logs (start/stop/abort, session IDs, bytes, and recognized text). Default: Off (Silent Mode).
         </div>
     </div>
 

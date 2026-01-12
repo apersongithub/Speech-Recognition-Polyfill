@@ -76,7 +76,7 @@
     }
     
     abort() {
-      if (!this.isRecording) return;
+      // Always signal cancel, even if isRecording is already false (late aborts from page)
       this.isRecording = false;
       window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
       this.dispatchEvent(new Event('audioend'));

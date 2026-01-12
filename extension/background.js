@@ -1,4 +1,5 @@
-// background.js (MV2) - VAD, dynamic icon colors, dark-mode awareness, ack-based icon state, i18n titles
+// background.js (MV2) - VAD, dynamic icon colors, dark-mode awareness, ack-based icon state,
+// i18n titles + corner badges for download/cache/done/cancel + cancel-safe sessions with grace window (toggleable)
 
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1';
 
@@ -19,21 +20,33 @@ let transcriber = null;
 let currentModel = 'Xenova/whisper-tiny';
 let currentBackend = 'wasm';
 const inflightByTab = new Map();
-const lastSessionByTab = new Map();
+const lastSessionByTab = new Map(); // tabId -> { sessionId, hostname }
+const canceledSessionsByTab = new Map(); // tabId -> Set(sessionId)
 let modelLoadPromise = null;
 
+const RESULT_GRACE_MS_DEFAULT = 450; // default grace window
+const CANCEL_BADGE_MS = 1200;        // cancel badge display
+const PROCESSING_TIMEOUT_MS = 12000; // tighter timeout to avoid long hangs
+
 const isDarkMode = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => setActionState(currentState));
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => setActionState(currentState, currentBadge));
 
 const ICON_COLORS = () => ({
     idle: isDarkMode() ? '#e5e7eb' : '#374151',
     recording: '#2563eb',
     processing: '#f59e0b',
-    error: '#dc2626'
+    error: '#dc2626',
+    downloading: '#3b82f6',
+    downloaded: '#16a34a',
+    download_error: '#dc2626',
+    cached: '#0ea5e9',
+    done: '#16a34a',
+    cancel: '#ef4444'
 });
 
 let currentState = 'idle';
-const iconCache = new Map(); // color -> {16,19,32,38: ImageData}
+let currentBadge = null; // { type: 'download' | 'cached' | 'done' | 'cancel', color }
+const iconCache = new Map(); // key -> {16,19,32,38}
 const processingFallback = { timer: null, tabId: null };
 let errorResetTimer = null;
 
@@ -43,29 +56,64 @@ function t(key, fallback) {
 
 function colorizeSvg(svgText, color) {
     let s = svgText
-        .replace(/fill="context-fill"/g, `fill="${color}"`)
-        .replace(/fill='context-fill'/g, `fill="${color}"`)
-        .replace(/fill-opacity="context-fill-opacity"/g, `fill-opacity="1"`)
-        .replace(/fill-opacity='context-fill-opacity'/g, `fill-opacity="1"`);
+        .replace(/fill="context-fill"/gi, `fill="${color}"`)
+        .replace(/fill='context-fill'/gi, `fill="${color}"`)
+        .replace(/fill="currentColor"/gi, `fill="${color}"`)
+        .replace(/fill='currentColor'/gi, `fill="${color}"`)
+        .replace(/fill-opacity="context-fill-opacity"/gi, `fill-opacity="1"`)
+        .replace(/fill-opacity='context-fill-opacity'/gi, `fill-opacity="1"`);
     if (!/\<svg[^>]*\sfill=/.test(s)) {
         s = s.replace('<svg', `<svg fill="${color}"`);
     }
     return s;
 }
 
-async function getIconImageData(color) {
-    const key = String(color);
-    if (iconCache.has(key)) return iconCache.get(key);
-    const svgURL = browser.runtime.getURL('images/microphone.svg');
-    const rawSvg = await (await fetch(svgURL)).text();
-    const coloredSvg = colorizeSvg(rawSvg, color);
-    const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(coloredSvg);
-    const img = await new Promise((resolve, reject) => {
+async function fetchSvg(path, color) {
+    const raw = await (await fetch(browser.runtime.getURL(path))).text();
+    return colorizeSvg(raw, color);
+}
+
+function drawSquircle(ctx, x, y, w, h) {
+    const k = 0.45;
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.5, y);
+    ctx.bezierCurveTo(x + w * (0.5 + k), y, x + w, y + h * (0.5 - k), x + w, y + h * 0.5);
+    ctx.bezierCurveTo(x + w, y + h * (0.5 + k), x + w * (0.5 + k), y + h, x + w * 0.5, y + h);
+    ctx.bezierCurveTo(x + w * (0.5 - k), y + h, x, y + h * (0.5 + k), x, y + h * 0.5);
+    ctx.bezierCurveTo(x, y + h * (0.5 - k), x + w * (0.5 - k), y, x + w * 0.5, y);
+    ctx.closePath();
+}
+
+async function getIconImageData(baseColor, badge) {
+    const badgeKey = badge ? `${badge.type}:${badge.color}` : 'none';
+    const cacheKey = `mic:${baseColor}:badge:${badgeKey}`;
+    if (iconCache.has(cacheKey)) return iconCache.get(cacheKey);
+
+    const micSvg = await fetchSvg('images/microphone.svg', baseColor);
+    const micUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(micSvg);
+    const micImg = await new Promise((resolve, reject) => {
         const i = new Image();
         i.onload = () => resolve(i);
         i.onerror = reject;
-        i.src = dataUrl;
+        i.src = micUrl;
     });
+
+    let badgeImg = null;
+    if (badge) {
+        let badgePath = 'images/downmodel.svg';
+        if (badge.type === 'cached') badgePath = 'images/cached.svg';
+        else if (badge.type === 'done') badgePath = 'images/check.svg';
+        else if (badge.type === 'cancel') badgePath = 'images/cancel.svg';
+        const badgeSvg = await fetchSvg(badgePath, badge.color);
+        const badgeUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(badgeSvg);
+        badgeImg = await new Promise((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = badgeUrl;
+        });
+    }
+
     const sizes = [16, 19, 32, 38];
     const out = {};
     for (const size of sizes) {
@@ -73,15 +121,37 @@ async function getIconImageData(color) {
         canvas.width = size; canvas.height = size;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, size, size);
-        ctx.drawImage(img, 0, 0, size, size);
+        ctx.drawImage(micImg, 0, 0, size, size);
+
+        if (badgeImg) {
+            const badgeSize = Math.round(size * 0.5);
+            const padding = Math.round(size * 0.08);
+            const x = size - badgeSize - padding;
+            const y = size - badgeSize - padding; // bottom-right
+
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.25)';
+            ctx.shadowBlur = Math.max(1, Math.round(size * 0.08));
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            drawSquircle(ctx, x, y, badgeSize, badgeSize);
+            ctx.fillStyle = '#0f172a';
+            ctx.globalAlpha = 0.82;
+            ctx.fill();
+            ctx.restore();
+
+            ctx.drawImage(badgeImg, x, y, badgeSize, badgeSize);
+        }
         out[size] = ctx.getImageData(0, 0, size, size);
     }
-    iconCache.set(key, out);
+    iconCache.set(cacheKey, out);
     return out;
 }
 
-async function setActionState(state) {
+async function setActionState(state, badge = null) {
     currentState = state;
+    currentBadge = badge;
     const colors = ICON_COLORS();
     let color = colors.idle;
     let title = t('title_idle', 'Whisper: Idle');
@@ -90,44 +160,135 @@ async function setActionState(state) {
     else if (state === 'error') { color = colors.error; title = t('title_error', 'Whisper: Error'); }
 
     try {
-        const images = await getIconImageData(color);
+        const images = await getIconImageData(color, badge);
         await browser.browserAction.setIcon({ imageData: images });
     } catch (e) { console.warn('Failed to set icon', e); }
-    try { await browser.browserAction.setTitle({ title }); } catch (e) {}
+    try { await browser.browserAction.setTitle({ title }); } catch (e) { }
 }
 
 function setErrorBriefly(ms = 3000) {
     if (errorResetTimer) clearTimeout(errorResetTimer);
-    setActionState('error');
+    setActionState('error', null);
     errorResetTimer = setTimeout(() => {
         errorResetTimer = null;
-        setActionState('idle');
+        setActionState('idle', null);
     }, ms);
+}
+
+// cancel tracking
+function markCanceled(tabId, sessionId) {
+    if (!tabId || !sessionId) return;
+    let set = canceledSessionsByTab.get(tabId);
+    if (!set) { set = new Set(); canceledSessionsByTab.set(tabId, set); }
+    set.add(sessionId);
+}
+function isCanceled(tabId, sessionId) {
+    const set = canceledSessionsByTab.get(tabId);
+    return !!(set && set.has(sessionId));
+}
+
+// Collapse pathological repeats (e.g., "clase de la clase..." loops)
+// replace collapseRepeats with a stronger version
+function collapseRepeats(text) {
+    // normalize whitespace
+    const words = text.trim().split(/\s+/);
+    const out = [];
+    let last = null, run = 0;
+
+    for (const w of words) {
+        if (w === last) {
+            run += 1;
+            if (run <= 3) out.push(w); // cap consecutive duplicates to 3
+        } else {
+            last = w; run = 1;
+            out.push(w);
+        }
+    }
+    let collapsed = out.join(' ');
+
+    // Collapse short-token loops (1–8 chars, incl. digits) repeated 5+ times
+    collapsed = collapsed.replace(/(\b[\w\.\-]{1,8}\b)(\s+\1){4,}/gi, '$1 $1 $1');
+
+    // Trim extreme length to avoid UI stalls
+    const MAX_LEN = 400;
+    if (collapsed.length > MAX_LEN) collapsed = collapsed.slice(0, MAX_LEN) + '…';
+
+    return collapsed.trim();
+}
+
+// add a guard to treat pathological outputs as unintelligible
+function isPathological(text) {
+    if (!text) return true;
+    const tokens = text.split(/\s+/);
+    const unique = new Set(tokens);
+    return (text.length > 80 && unique.size <= 3) || tokens.length === 0;
+}
+
+// grace sender with toggle
+function sendResultWithGrace(tabId, sessionId, text, options, graceEnabled, graceMs) {
+    const send = () => {
+        if (isCanceled(tabId, sessionId)) return;
+        browser.tabs.sendMessage(tabId, { type: 'WHISPER_RESULT_TO_PAGE_BRIDGE', text }, options);
+    };
+    if (!graceEnabled) {
+        send();
+        return;
+    }
+    setTimeout(send, graceMs);
 }
 
 browser.runtime.onInstalled.addListener(async (details) => {
     if (details?.reason === 'install') {
         try { await browser.runtime.openOptionsPage(); }
-        catch { try { await browser.tabs.create({ url: browser.runtime.getURL('options.html') }); } catch (_) {} }
+        catch { try { await browser.tabs.create({ url: browser.runtime.getURL('options.html') }); } catch (_) { } }
     }
-    setActionState('idle');
+    setActionState('idle', null);
 });
-browser.runtime.onStartup?.addListener(() => setActionState('idle'));
+browser.runtime.onStartup?.addListener(() => setActionState('idle', null));
 
 browser.runtime.onMessage.addListener((message, sender) => {
-    // Normal "done" ack
-    if (message?.type === 'PROCESSING_DONE') {
+    if (message?.type === 'CANCEL_SESSION') {
+        const tabId = sender?.tab?.id;
+        markCanceled(tabId, message.sessionId);
+        inflightByTab.delete(tabId);
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
         processingFallback.tabId = null;
-        setActionState('idle');
+        setActionState('idle', { type: 'cancel', color: ICON_COLORS().cancel });
+        setTimeout(() => {
+            if (currentState === 'idle' && currentBadge?.type === 'cancel') {
+                setActionState('idle', null);
+            }
+        }, CANCEL_BADGE_MS);
         return;
     }
 
-    // NEW: unintelligible / no-meaningful-speech after processing
+    if (message?.type === 'PROCESSING_DONE') {
+        if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
+        processingFallback.tabId = null;
+
+        if (message.status === 'noaudio') {
+            setActionState('error', null);
+            setTimeout(() => {
+                if (currentState === 'error') setActionState('idle', null);
+            }, 800);
+            return;
+        }
+        if (message.status === 'error') {
+            setActionState('error', null);
+            return;
+        }
+
+        setActionState('idle', { type: 'done', color: ICON_COLORS().done });
+        setTimeout(() => {
+            if (currentState === 'idle' && currentBadge?.type === 'done') {
+                setActionState('idle', null);
+            }
+        }, 600);
+        return;
+    }
     if (message?.type === 'UNINTELLIGIBLE_SPEECH') {
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
         processingFallback.tabId = null;
-        // show red mic briefly
         setErrorBriefly(3500);
         return;
     }
@@ -146,13 +307,17 @@ function trimSilence(audioData, sampleRate = 16000) {
 async function getEffectiveSettings(hostname) {
     const { settings } = await browser.storage.local.get('settings');
     const defaults = settings?.defaults || { model: 'Xenova/whisper-tiny', language: 'auto', silenceTimeoutMs: 1500 };
-    if (!hostname) return defaults;
+    const graceEnabled = settings?.graceEnabled !== false; // default true
+    const graceMs = typeof settings?.graceMs === 'number' ? settings.graceMs : RESULT_GRACE_MS_DEFAULT;
+    if (!hostname) return { model: defaults.model, language: defaults.language, silenceTimeoutMs: defaults.silenceTimeoutMs, graceEnabled, graceMs };
     const overrides = settings?.overrides || {};
     const site = overrides[hostname] || {};
     return {
         model: (site.model && ALLOWED_MODELS.has(site.model)) ? site.model : (ALLOWED_MODELS.has(defaults.model) ? defaults.model : 'Xenova/whisper-tiny'),
         language: site.language ?? defaults.language ?? 'auto',
-        silenceTimeoutMs: site.silenceTimeoutMs ?? defaults.silenceTimeoutMs ?? 1500
+        silenceTimeoutMs: site.silenceTimeoutMs ?? defaults.silenceTimeoutMs ?? 1500,
+        graceEnabled,
+        graceMs
     };
 }
 
@@ -161,21 +326,65 @@ async function loadModel(modelID) {
     transcriber = await pipeline('automatic-speech-recognition', modelID, { device: currentBackend });
     currentModel = modelID;
 }
+
+async function showCachedBadge(prevState) {
+    setActionState(prevState, { type: 'cached', color: ICON_COLORS().cached });
+    setTimeout(() => {
+        if (currentState === prevState && currentBadge?.type === 'cached') {
+            setActionState(prevState, null);
+        }
+    }, 1000);
+}
+
 async function ensureModel(modelID) {
     const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-tiny';
-    if (transcriber && currentModel === safeModel) return;
+    const prevState = currentState;
+
+    if (transcriber && currentModel === safeModel) {
+        await showCachedBadge(prevState);
+        return;
+    }
+
     if (modelLoadPromise) {
         await modelLoadPromise;
-        if (transcriber && currentModel === safeModel) return;
+        if (transcriber && currentModel === safeModel) {
+            await showCachedBadge(prevState);
+            return;
+        }
     }
+
     modelLoadPromise = (async () => {
-        try { await loadModel(safeModel); }
-        catch (err) {
+        try {
+            setActionState(prevState, { type: 'download', color: ICON_COLORS().downloading });
+            await loadModel(safeModel);
+            setActionState(prevState, { type: 'download', color: ICON_COLORS().downloaded });
+        } catch (err) {
             console.error("Model load failed:", err);
-            if (safeModel !== 'Xenova/whisper-tiny') await loadModel('Xenova/whisper-tiny');
-            else throw err;
-        } finally { modelLoadPromise = null; }
+            setActionState(prevState, { type: 'download', color: ICON_COLORS().download_error });
+            if (safeModel !== 'Xenova/whisper-tiny') {
+                try {
+                    setActionState(prevState, { type: 'download', color: ICON_COLORS().downloading });
+                    await loadModel('Xenova/whisper-tiny');
+                    setActionState(prevState, { type: 'download', color: ICON_COLORS().downloaded });
+                } catch (e2) {
+                    setActionState(prevState, { type: 'download', color: ICON_COLORS().download_error });
+                    throw e2;
+                }
+            } else {
+                throw err;
+            }
+        } finally {
+            if (prevState !== 'processing') {
+                setTimeout(() => {
+                    if (currentState === prevState && currentBadge?.type === 'download') {
+                        setActionState(prevState, null);
+                    }
+                }, 1000);
+            }
+            modelLoadPromise = null;
+        }
     })();
+
     await modelLoadPromise;
 }
 
@@ -184,10 +393,9 @@ async function readAudio(blob) {
     const audioContext = new AudioContext({ sampleRate: 16000 });
     try {
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        // Copy channel data so it’s not tied to the AudioContext
         return new Float32Array(audioBuffer.getChannelData(0));
     } finally {
-        try { await audioContext.close(); } catch (_) {}
+        try { await audioContext.close(); } catch (_) { }
     }
 }
 
@@ -195,7 +403,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     if (message.type === 'CONFIG_CHANGED') return;
 
     if (message.type === 'RECORDING_STATE') {
-        setActionState(message.state === 'recording' ? 'recording' : 'idle');
+        setActionState(message.state === 'recording' ? 'recording' : 'idle', null);
         return;
     }
 
@@ -204,20 +412,31 @@ browser.runtime.onMessage.addListener((message, sender) => {
         const frameId = sender?.frameId;
         if (tabId == null) return;
 
-        setActionState('processing');
+        const hostname = message.hostname || '';
+        const sessionId = message.sessionId || 0;
+
+        setActionState('processing', null);
 
         if (processingFallback.timer) clearTimeout(processingFallback.timer);
         processingFallback.tabId = tabId;
         processingFallback.timer = setTimeout(() => {
             processingFallback.timer = null;
             processingFallback.tabId = null;
-            setActionState('idle');
-        }, 20000);
+            setActionState('idle', null);
+        }, PROCESSING_TIMEOUT_MS);
 
-        const sessionId = message.sessionId || 0;
-        const last = lastSessionByTab.get(tabId) || 0;
-        if (sessionId <= last) return;
-        lastSessionByTab.set(tabId, sessionId);
+        const lastEntry = lastSessionByTab.get(tabId);
+        const lastSessionForHost = (lastEntry && lastEntry.hostname === hostname) ? lastEntry.sessionId : 0;
+        if (lastEntry && lastEntry.hostname !== hostname) {
+            lastSessionByTab.set(tabId, { sessionId: 0, hostname });
+        }
+        if (sessionId <= lastSessionForHost) {
+            if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
+            processingFallback.tabId = null;
+            setActionState('idle', null);
+            return;
+        }
+        lastSessionByTab.set(tabId, { sessionId, hostname });
 
         if (inflightByTab.get(tabId)) return;
         inflightByTab.set(tabId, true);
@@ -225,8 +444,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
         (async () => {
             const options = { frameId: frameId };
             try {
-                const hostname = message.hostname || '';
-                const { model, language } = await getEffectiveSettings(hostname);
+                const { model, language, graceEnabled, graceMs } = await getEffectiveSettings(hostname);
 
                 await ensureModel(model);
                 if (!transcriber) throw new Error("Model not loaded");
@@ -241,6 +459,13 @@ browser.runtime.onMessage.addListener((message, sender) => {
                     return;
                 }
 
+                if (isCanceled(tabId, sessionId)) {
+                    inflightByTab.delete(tabId);
+                    if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
+                    setActionState('idle', null);
+                    return;
+                }
+
                 const isEnglishModel = currentModel.endsWith(".en");
                 let langToUse = isEnglishModel ? 'en' : (language !== 'auto' ? language : null);
 
@@ -252,9 +477,22 @@ browser.runtime.onMessage.addListener((message, sender) => {
                     temperature: 0
                 });
 
-                const text = (output.text || '').trim();
+                let text = (output.text || '').trim();
+                text = collapseRepeats(text);
 
-                // Treat “empty-ish” output as unintelligible
+                // if still pathological, treat as unintelligible
+                if (isPathological(text)) {
+                    browser.tabs.sendMessage(tabId, { type: 'WHISPER_NO_AUDIO' }, options);
+                    browser.tabs.sendMessage(tabId, { type: 'WHISPER_UNINTELLIGIBLE' }, options);
+                    return;
+                }
+
+                if (isCanceled(tabId, sessionId)) {
+                    if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
+                    setActionState('idle', null);
+                    return;
+                }
+
                 const unintelligible =
                     !text ||
                     text === "" ||
@@ -264,15 +502,14 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
                 if (unintelligible) {
                     browser.tabs.sendMessage(tabId, { type: 'WHISPER_NO_AUDIO' }, options);
-                    // content.js will also send PROCESSING_DONE, but we want a red mic signal
                     browser.tabs.sendMessage(tabId, { type: 'WHISPER_UNINTELLIGIBLE' }, options);
                 } else {
-                    browser.tabs.sendMessage(tabId, { type: 'WHISPER_RESULT_TO_PAGE_BRIDGE', text }, options);
+                    sendResultWithGrace(tabId, sessionId, text, options, graceEnabled, graceMs);
                 }
             } catch (err) {
                 console.error(err);
                 browser.tabs.sendMessage(tabId, { type: 'WHISPER_ERROR', error: err.message }, options);
-                setActionState('error');
+                setActionState('error', null);
             } finally {
                 inflightByTab.delete(tabId);
             }

@@ -1,35 +1,14 @@
 {
-  "ext_name": { "message": "Speech Recognition Polyfill" },
-  "ext_desc": { "message": "Allows speech recognition in websites such as Google Translate, Duolingo, etc. using OpenAI's Whisper API locally." },
-  "browser_action_title": { "message": "Speech Recognition Polyfill" },
+  "ext_name": { "message": "Whisper Speech Polyfill" },
+  "ext_desc": { "message": "Polyfills web speech recognition using Whisper in the browser." },
+
+  "browser_action_title": { "message": "Whisper Speech" },
 
   "options_heading": { "message": "Whisper Settings" },
   "banner_text": { "message": "⚠️ Experimental: This is not a bandaid fix to the webspeech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar)." },
+
   "defaults_title": { "message": "Defaults" },
   "ai_model": { "message": "AI Model" },
-  "language_label": { "message": "Language" },
-  "silence_timeout": { "message": "Silence Timeout (ms)" },
-  "silence_note": { "message": "Time to wait after you stop speaking before sending." },
-  "save_defaults": { "message": "Save Defaults" },
-  "settings_saved": { "message": "Settings Saved" },
-  "developer_settings": { "message": "Developer Settings" },
-  "debug_banners": { "message": "Show Notification Banners" },
-  "debug_note": { "message": "Enable to see \"Listening...\", \"Processing\", and Error banners. Default: Off (Silent Mode)" },
-  "site_overrides": { "message": "Site Overrides" },
-  "site_note": { "message": "Customize settings for specific websites (e.g., google.com)." },
-  "hostname": { "message": "Hostname" },
-  "hostname_placeholder": { "message": "example.com" },
-  "model_label": { "message": "Model" },
-  "timeout_label": { "message": "Timeout" },
-  "override_default_option": { "message": "(Default)" },
-  "override_timeout_placeholder": { "message": "(Default)" },
-  "add_rule": { "message": "Add Rule" },
-  "remove_rule": { "message": "Remove Rule" },
-  "table_host": { "message": "Host" },
-  "table_model": { "message": "Model" },
-  "table_lang": { "message": "Lang" },
-  "table_timeout": { "message": "Timeout" },
-
   "group_en_fast": { "message": "English Only (Fast)" },
   "group_multi": { "message": "Multilingual (General Purpose)" },
   "group_experimental": { "message": "Experimental" },
@@ -41,6 +20,7 @@
   "model_small_multi": { "message": "Small Multilingual (~1GB)" },
   "model_distil_en": { "message": "Distil-Medium English (~600MB)" },
 
+  "language_label": { "message": "Language" },
   "lang_auto": { "message": "Auto-Detect" },
   "lang_en": { "message": "English" },
   "lang_es": { "message": "Spanish" },
@@ -50,13 +30,43 @@
   "lang_pt": { "message": "Portuguese" },
   "lang_ja": { "message": "Japanese" },
   "lang_zh": { "message": "Chinese" },
+  "lang_ru": { "message": "Russian" },
+
+  "silence_timeout": { "message": "Silence Timeout (ms)" },
+  "silence_note": { "message": "Time to wait after you stop speaking before sending." },
 
   "size_warning": { "message": "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny." },
 
+  "save_defaults": { "message": "Save Defaults" },
+  "settings_saved": { "message": "Settings Saved" },
+
+  "developer_settings": { "message": "Developer Settings" },
+  "debug_banners": { "message": "Show Notification Banners & Debug Logs" },
+  "debug_note": { "message": "Enables toast banners and console debug logs (start/stop/abort, session IDs, bytes, recognized text). Default: Off (Silent Mode)." },
+
+  "site_overrides": { "message": "Site Overrides" },
+  "hostname": { "message": "Hostname" },
+  "hostname_placeholder": { "message": "example.com" },
+  "model_label": { "message": "Model" },
+  "language_label_short": { "message": "Lang" },
+  "timeout_label": { "message": "Timeout" },
+  "override_default_option": { "message": "(Default)" },
+  "add_rule": { "message": "Add Rule" },
+  "remove_rule": { "message": "Remove Rule" },
+  "table_host": { "message": "Host" },
+  "table_model": { "message": "Model" },
+  "table_lang": { "message": "Lang" },
+  "table_timeout": { "message": "Timeout" },
+  "override_timeout_placeholder": { "message": "(Default)" },
+
+  "defaults_title_grace_toggle": { "message": "Enable cancel grace window" },
+  "grace_window_label": { "message": "Grace window (ms)" },
+  "grace_window_note": { "message": "Prevents late results after you hit cancel/stop. Default: on, 450ms. Set to 0 or disable to send immediately after processing." },
+
+  "options_heading_popup": { "message": "Site" },
   "popup_site_label": { "message": "Site: (loading…)" },
   "popup_site_prefix": { "message": "Site" },
   "popup_site_unknown": { "message": "Site: (unknown)" },
-  "override_use_default": { "message": "Use default" },
   "popup_timeout_label": { "message": "Silence timeout (ms)" },
   "popup_timeout_placeholder": { "message": "Use default" },
   "popup_save": { "message": "Save for this site" },
@@ -64,10 +74,18 @@
   "popup_open_options": { "message": "Open full options" },
   "popup_status_saved": { "message": "Saved" },
   "popup_removed": { "message": "Removed" },
+  "override_use_default": { "message": "Use default" },
   "model_not_allowed": { "message": "Model not allowed." },
 
   "title_idle": { "message": "Whisper: Idle" },
   "title_recording": { "message": "Whisper: Listening" },
   "title_processing": { "message": "Whisper: Processing" },
-  "title_error": { "message": "Whisper: Error" }
+  "title_error": { "message": "Whisper: Error (Likely Speak up/Louder)" },
+
+  "notif_listening": { "message": "Listening" },
+  "notif_processing": { "message": "Processing..." },
+  "notif_no_audio": { "message": "No speech detected" },
+  "notif_error": { "message": "Error (Likely Speak up/Louder)" },
+  "notif_unintelligible": { "message": "Didn't catch that" },
+  "notif_success_prefix": { "message": "" }
 }
