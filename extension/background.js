@@ -28,6 +28,9 @@ const RESULT_GRACE_MS_DEFAULT = 450; // default grace window
 const CANCEL_BADGE_MS = 1200;        // cancel badge display
 const PROCESSING_TIMEOUT_MS = 12000; // tighter timeout to avoid long hangs
 
+const MODEL_IDLE_UNLOAD_MS = 15_000; // unload model after 15s idle
+let modelGcTimer = null;
+
 const isDarkMode = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => setActionState(currentState, currentBadge));
 
@@ -187,10 +190,8 @@ function isCanceled(tabId, sessionId) {
     return !!(set && set.has(sessionId));
 }
 
-// Collapse pathological repeats (e.g., "clase de la clase..." loops)
-// replace collapseRepeats with a stronger version
+// Collapse pathological repeats
 function collapseRepeats(text) {
-    // normalize whitespace
     const words = text.trim().split(/\s+/);
     const out = [];
     let last = null, run = 0;
@@ -198,25 +199,19 @@ function collapseRepeats(text) {
     for (const w of words) {
         if (w === last) {
             run += 1;
-            if (run <= 3) out.push(w); // cap consecutive duplicates to 3
+            if (run <= 3) out.push(w);
         } else {
             last = w; run = 1;
             out.push(w);
         }
     }
     let collapsed = out.join(' ');
-
-    // Collapse short-token loops (1–8 chars, incl. digits) repeated 5+ times
     collapsed = collapsed.replace(/(\b[\w\.\-]{1,8}\b)(\s+\1){4,}/gi, '$1 $1 $1');
-
-    // Trim extreme length to avoid UI stalls
     const MAX_LEN = 400;
     if (collapsed.length > MAX_LEN) collapsed = collapsed.slice(0, MAX_LEN) + '…';
-
     return collapsed.trim();
 }
 
-// add a guard to treat pathological outputs as unintelligible
 function isPathological(text) {
     if (!text) return true;
     const tokens = text.split(/\s+/);
@@ -235,6 +230,53 @@ function sendResultWithGrace(tabId, sessionId, text, options, graceEnabled, grac
         return;
     }
     setTimeout(send, graceMs);
+}
+
+// Model disposal helpers
+async function disposeCurrentModel() {
+    if (transcriber?.dispose) {
+        try { await transcriber.dispose(); } catch (e) { console.warn('dispose failed', e); }
+    }
+    transcriber = null;
+}
+
+async function hasUsableTabs() {
+    try {
+        const tabs = await browser.tabs.query({});
+        return tabs.some(t => {
+            const u = t.url || '';
+            // Filter out internal pages; count only real web pages
+            return u && !u.startsWith('about:') && !u.startsWith('chrome:') && !u.startsWith('moz-extension:') && !u.startsWith('view-source:');
+        });
+    } catch (_) {
+        // If query fails, assume there might be tabs to avoid over-aggressive dispose
+        return true;
+    }
+}
+
+// If force=true, dispose immediately; otherwise after idle timeout
+function scheduleModelGc(force = false) {
+    if (modelGcTimer) clearTimeout(modelGcTimer);
+    const delay = force ? 0 : MODEL_IDLE_UNLOAD_MS;
+    modelGcTimer = setTimeout(async () => {
+        const hasInflight = inflightByTab.size > 0;
+        const processing = processingFallback.timer !== null;
+        const busy = hasInflight || processing || currentState === 'recording' || currentState === 'processing';
+        const tabsExist = await hasUsableTabs();
+        if (force) {
+            if (!tabsExist || !busy) {
+                if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
+                processingFallback.tabId = null;
+                await disposeCurrentModel();
+                setActionState('idle', null);
+            }
+            return;
+        }
+        if (!busy && !tabsExist) {
+            await disposeCurrentModel();
+            setActionState('idle', null);
+        }
+    }, delay);
 }
 
 browser.runtime.onInstalled.addListener(async (details) => {
@@ -259,6 +301,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
                 setActionState('idle', null);
             }
         }, CANCEL_BADGE_MS);
+        scheduleModelGc(true); // aggressive check after cancel
         return;
     }
 
@@ -271,10 +314,12 @@ browser.runtime.onMessage.addListener((message, sender) => {
             setTimeout(() => {
                 if (currentState === 'error') setActionState('idle', null);
             }, 800);
+            scheduleModelGc();
             return;
         }
         if (message.status === 'error') {
             setActionState('error', null);
+            scheduleModelGc();
             return;
         }
 
@@ -283,6 +328,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
             if (currentState === 'idle' && currentBadge?.type === 'done') {
                 setActionState('idle', null);
             }
+            scheduleModelGc();
         }, 600);
         return;
     }
@@ -290,6 +336,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
         processingFallback.tabId = null;
         setErrorBriefly(3500);
+        scheduleModelGc();
         return;
     }
 });
@@ -345,6 +392,10 @@ async function ensureModel(modelID) {
         return;
     }
 
+    if (transcriber && currentModel !== safeModel) {
+        await disposeCurrentModel();
+    }
+
     if (modelLoadPromise) {
         await modelLoadPromise;
         if (transcriber && currentModel === safeModel) {
@@ -361,6 +412,7 @@ async function ensureModel(modelID) {
         } catch (err) {
             console.error("Model load failed:", err);
             setActionState(prevState, { type: 'download', color: ICON_COLORS().download_error });
+            await disposeCurrentModel();
             if (safeModel !== 'Xenova/whisper-tiny') {
                 try {
                     setActionState(prevState, { type: 'download', color: ICON_COLORS().downloading });
@@ -368,6 +420,7 @@ async function ensureModel(modelID) {
                     setActionState(prevState, { type: 'download', color: ICON_COLORS().downloaded });
                 } catch (e2) {
                     setActionState(prevState, { type: 'download', color: ICON_COLORS().download_error });
+                    await disposeCurrentModel();
                     throw e2;
                 }
             } else {
@@ -423,6 +476,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
             processingFallback.timer = null;
             processingFallback.tabId = null;
             setActionState('idle', null);
+            scheduleModelGc();
         }, PROCESSING_TIMEOUT_MS);
 
         const lastEntry = lastSessionByTab.get(tabId);
@@ -434,6 +488,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
             if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
             processingFallback.tabId = null;
             setActionState('idle', null);
+            scheduleModelGc();
             return;
         }
         lastSessionByTab.set(tabId, { sessionId, hostname });
@@ -463,6 +518,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
                     inflightByTab.delete(tabId);
                     if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
                     setActionState('idle', null);
+                    scheduleModelGc();
                     return;
                 }
 
@@ -490,6 +546,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
                 if (isCanceled(tabId, sessionId)) {
                     if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
                     setActionState('idle', null);
+                    scheduleModelGc();
                     return;
                 }
 
@@ -514,5 +571,27 @@ browser.runtime.onMessage.addListener((message, sender) => {
                 inflightByTab.delete(tabId);
             }
         })();
+    }
+});
+
+// When tabs close, clear tracking and, if no usable tabs remain, unload immediately
+// In tabs.onRemoved listener, after disposeCurrentModel and setActionState:
+browser.tabs.onRemoved.addListener(async (tabId) => {
+    inflightByTab.delete(tabId);
+    lastSessionByTab.delete(tabId);
+    canceledSessionsByTab.delete(tabId);
+    if (processingFallback.tabId === tabId && processingFallback.timer) {
+        clearTimeout(processingFallback.timer);
+        processingFallback.timer = null;
+        processingFallback.tabId = null;
+    }
+    const tabsExist = await hasUsableTabs();
+    if (!tabsExist) {
+        await disposeCurrentModel();
+        setActionState('idle', null);
+        // Force full unload to return WASM/JS code memory to the OS
+        browser.runtime.reload();
+    } else {
+        scheduleModelGc(true);
     }
 });
