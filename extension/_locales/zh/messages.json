@@ -1,0 +1,10 @@
+{
+  "ext_name": { "message": "语音识别 Polyfill" },
+  "ext_desc": { "message": "在本地使用 Whisper，让 Google 翻译、Duolingo 等网站支持语音识别。" },
+  "browser_action_title": { "message": "语音识别 Polyfill" },
+
+  "title_idle": { "message": "Whisper：空闲" },
+  "title_recording": { "message": "Whisper：聆听中" },
+  "title_processing": { "message": "Whisper：处理中" },
+  "title_error": { "message": "Whisper：错误" }
+}

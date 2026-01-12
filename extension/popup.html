@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --muted: #6b7280;
+      --radius: 12px;
+      --shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      margin: 0; padding: 14px;
+      min-width: 300px;
+      background: var(--bg);
+      color: #0f172a;
+    }
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      border: 1px solid rgba(0,0,0,0.03);
+      animation: fadeIn 200ms ease;
+    }
+    .host { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    label { font-weight: 600; display: block; margin-top: 10px; font-size: 13px; }
+    select, input, button {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 6px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      font-size: 14px;
+      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    }
+    button {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(37, 99, 235, 0.28); }
+    button:active { transform: translateY(0); }
+    .actions { display: flex; gap: 8px; margin-top: 12px; }
+    .actions button { flex: 1; }
+    .danger { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 8px 18px rgba(239, 68, 68, 0.2); }
+    #open-options { margin-top: 10px; background: #f1f5f9; color: #0f172a; border: 1px solid #e2e8f0; box-shadow: none; }
+    #open-options:hover { transform: translateY(-1px); }
+    #status {
+      font-size: 12px; color: #16a34a; margin-top: 8px; text-align: center;
+      opacity: 0; transform: translateY(6px);
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+    #status.show { opacity: 1; transform: translateY(0); }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="host" id="host-label" data-i18n="popup_site_label">Site: (loading…)</div>
+
+    <label data-i18n="model_label">Model</label>
+    <select id="model">
+      <option value="" data-i18n="override_use_default">Use default</option>
+      <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)</option>
+      <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)</option>
+      <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)</option>
+      <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)</option>
+      <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)</option>
+      <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)</option>
+      <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium English (~600MB)</option>
+    </select>
+
+    <label data-i18n="language_label">Language</label>
+    <select id="language">
+      <option value="" data-i18n="override_use_default">Use default</option>
+      <option value="auto" data-i18n="lang_auto">Auto-Detect</option>
+      <option value="en" data-i18n="lang_en">English</option>
+      <option value="es" data-i18n="lang_es">Spanish</option>
+      <option value="fr" data-i18n="lang_fr">French</option>
+      <option value="de" data-i18n="lang_de">German</option>
+      <option value="it" data-i18n="lang_it">Italian</option>
+      <option value="pt" data-i18n="lang_pt">Portuguese</option>
+      <option value="ja" data-i18n="lang_ja">Japanese</option>
+      <option value="zh" data-i18n="lang_zh">Chinese</option>
+    </select>
+
+    <label data-i18n="popup_timeout_label">Silence timeout (ms)</label>
+    <input id="timeout" type="number" min="500" max="5000" step="100" placeholder="Use default">
+
+    <div class="actions">
+      <button id="save" data-i18n="popup_save">Save for this site</button>
+      <button id="remove" class="danger" data-i18n="popup_remove">Remove override</button>
+    </div>
+
+    <button id="open-options" data-i18n="popup_open_options">Open full options</button>
+
+    <div id="status" data-i18n="popup_status_saved">Saved</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

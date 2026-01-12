@@ -1,0 +1,49 @@
+{
+  "manifest_version": 2,
+  "default_locale": "en",
+  "name": "__MSG_ext_name__",
+  "version": "0.1.2",
+  "description": "__MSG_ext_desc__",
+  "permissions": [
+    "<all_urls>",
+    "storage",
+    "tabs"
+  ],
+    "browser_specific_settings": {
+    "gecko": {
+      "id": "@firefox-speech-polyfill",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
+  "content_security_policy": "script-src 'unsafe-eval' 'self' https://cdn.jsdelivr.net; object-src 'self'",
+  "icons": {
+    "16": "images/microphone.svg",
+    "32": "images/microphone.svg",
+    "48": "images/microphone.svg",
+    "128": "images/microphone.svg"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "background": {
+    "page": "background.html"
+  },
+  "browser_action": {
+    "default_icon": "images/microphone.svg",
+    "default_popup": "popup.html",
+    "default_title": "__MSG_browser_action_title__"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    "polyfill.js"
+  ]
+}

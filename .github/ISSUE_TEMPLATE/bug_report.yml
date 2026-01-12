@@ -1,0 +1,100 @@
+name: 🧩 Bug report
+description: Help me improve the extension!
+labels: ["bug"]
+assignees:
+  - apersongithub
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! This project is experimental, so rough edges are expected.
+        Please share what you can — brevity is fine.
+
+  - type: checkboxes
+    id: basics
+    attributes:
+      label: Quick checks
+      description: A few things to rule out common issues.
+      options:
+        - label: "Tried in a Private/Incognito window"
+        - label: "Verified I'm on the latest version"
+        - label: "Issue still happens with other speech/voice extensions disabled"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Briefly describe the bug or unexpected behavior.
+      placeholder: "e.g., Icon stuck on processing; transcription never returns"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce (as best you can)
+      description: Rough steps help us reproduce.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. Speak ...
+        4. See ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Tell us what you thought should happen.
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: Browser & OS
+      placeholder: "e.g., Firefox 121 on macOS 14"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      placeholder: "e.g., v0.1.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: other_extensions
+    attributes:
+      label: Other voice/speech extensions?
+      description: List any that might interfere. "None" is fine.
+      placeholder: "None"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console/log snippets (optional)
+      description: Paste any errors you saw in the browser console.
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots (optional)
+      description: Add screenshots or screen recordings if helpful.
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: Extra context, frequency, workarounds, etc.
+    validations:
+      required: false
