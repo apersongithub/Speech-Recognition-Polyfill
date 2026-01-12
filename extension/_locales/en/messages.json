@@ -1,6 +1,6 @@
 {
-  "ext_name": { "message": "Whisper Speech Polyfill" },
-  "ext_desc": { "message": "Polyfills web speech recognition using Whisper in the browser." },
+  "ext_name": { "message": "Speech Recognition Polyfill" },
+  "ext_desc": { "message": "Allows speech recognition in websites such as Google Translate, Duolingo, etc. using OpenAI's Whisper API locally." },
 
   "browser_action_title": { "message": "Whisper Speech" },
 
