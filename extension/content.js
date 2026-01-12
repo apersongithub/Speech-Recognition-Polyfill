@@ -15,6 +15,7 @@ let globalStream = null;
 let globalContext = null;
 let globalRecorder = null;
 let globalChunks = [];
+let skipTranscribe = false; // honor cancel/abort
 
 async function resolveEffectiveSettings() {
     try {
@@ -58,25 +59,31 @@ const INLINE_CODE = `
                 resultIndex: 0
              });
              evt.results[0].isFinal = true;
-             this.onresult(evt);
-             if (this.onend) this.onend();
+             this.onresult?.(evt);
+             this.onend?.();
              this.isRecording = false;
-             // Ack to content script after page handlers ran
              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
         }
       });
     }
     start() {
       if (this.isRecording) return;
-      this.isRecording = true; if (this.onstart) this.onstart();
+      this.isRecording = true; this.onstart?.();
       let reqLang = (this.lang || 'en').split('-')[0];
       window.postMessage({ type: 'WHISPER_START_RECORDING', language: reqLang }, "*");
     }
     stop() {
-      this.isRecording = false; window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
-      if (this.onend) this.onend();
+      if (!this.isRecording) return;
+      this.isRecording = false;
+      window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
+      this.onend?.();
     }
-    abort() { this.stop(); }
+    abort() {
+      if (!this.isRecording) return;
+      this.isRecording = false;
+      window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
+      this.onend?.();
+    }
   };
 })();
 `;
@@ -141,7 +148,9 @@ window.addEventListener("message", async (event) => {
       activeSessionId = currentSessionId;
       startRecording(event.data.language, activeSessionId);
   } else if (event.data.type === 'WHISPER_STOP_RECORDING') {
-      stopRecording();
+      stopRecording(false);
+  } else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
+      stopRecording(true); // cancel: no transcription
   } else if (event.data.type === 'WHISPER_PAGE_HANDLED') {
       // Page handled the result; inform background to return to idle
       browser.runtime.sendMessage({ type: 'PROCESSING_DONE' });
@@ -158,6 +167,7 @@ async function startRecording(pageLanguage, sessionId) {
         globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         globalRecorder = new MediaRecorder(globalStream);
         globalChunks = [];
+        skipTranscribe = false;
 
         globalContext = new AudioContext();
         const source = globalContext.createMediaStreamSource(globalStream);
@@ -175,7 +185,7 @@ async function startRecording(pageLanguage, sessionId) {
             let sum = 0; for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
             const avg = sum / dataArray.length;
             if (avg > 10) { silenceStart = Date.now(); isSpeaking = true; }
-            else if (isSpeaking && (Date.now() - silenceStart > silenceTimeoutMs)) { stopRecording(); return; }
+            else if (isSpeaking && (Date.now() - silenceStart > silenceTimeoutMs)) { stopRecording(false); return; }
             requestAnimationFrame(checkSilence);
         };
         checkSilence();
@@ -185,6 +195,11 @@ async function startRecording(pageLanguage, sessionId) {
         globalRecorder.onstop = async () => {
             try {
                 const duration = Date.now() - recordingStartTime;
+                if (skipTranscribe) {
+                    captureActive = false;
+                    browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'idle' });
+                    return;
+                }
                 if (duration < 300) {
                     console.log("Whisper: Input aborted (too short).");
                     captureActive = false;
@@ -206,7 +221,7 @@ async function startRecording(pageLanguage, sessionId) {
         };
 
         globalRecorder.start();
-        setTimeout(() => { if (captureActive && sessionId === activeSessionId) stopRecording(); }, 5000); 
+        setTimeout(() => { if (captureActive && sessionId === activeSessionId) stopRecording(false); }, 5000); 
     } catch (err) {
         captureActive = false;
         showNotification("Error: " + err.message, "error");
@@ -214,7 +229,8 @@ async function startRecording(pageLanguage, sessionId) {
     }
 }
 
-function stopRecording() {
+function stopRecording(cancel = false) {
+    skipTranscribe = cancel;
     if (globalStream) { globalStream.getTracks().forEach(track => track.stop()); globalStream = null; }
     if (globalContext && globalContext.state !== 'closed') { globalContext.close(); globalContext = null; }
     if (globalRecorder && globalRecorder.state !== 'inactive') { globalRecorder.stop(); }

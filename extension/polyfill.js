@@ -29,6 +29,7 @@
       this.lang = 'en-US';
       this.onresult = null;
       this.onend = null;
+      this.onstart = null;
       this.isRecording = false;
       
       window.addEventListener("message", (e) => {
@@ -40,8 +41,8 @@
              });
              resultEvent.results[0].isFinal = true;
 
-             if (this.onresult) this.onresult(resultEvent);
-             if (this.onend) this.onend();
+             this.onresult?.(resultEvent);
+             this.onend?.();
              this.isRecording = false;
 
              // Ack to content script to mark processing done
@@ -53,7 +54,7 @@
     start() {
       if (this.isRecording) return;
       this.isRecording = true;
-      if (this.onstart) this.onstart();
+      this.onstart?.();
       
       this.dispatchEvent(new Event('audiostart'));
 
@@ -67,13 +68,21 @@
     }
 
     stop() {
+      if (!this.isRecording) return;
       this.isRecording = false;
       window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
       this.dispatchEvent(new Event('audioend'));
-      if (this.onend) this.onend();
+      this.onend?.();
     }
     
-    abort() { this.stop(); }
+    abort() {
+      if (!this.isRecording) return;
+      this.isRecording = false;
+      window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
+      this.dispatchEvent(new Event('audioend'));
+      this.onend?.();
+    }
+
     dispatchEvent(event) { if (this["on" + event.type]) this["on" + event.type](event); }
     addEventListener(type, callback) { this["on" + type] = callback; }
   };

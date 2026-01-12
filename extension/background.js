@@ -182,8 +182,13 @@ async function ensureModel(modelID) {
 async function readAudio(blob) {
     const arrayBuffer = await blob.arrayBuffer();
     const audioContext = new AudioContext({ sampleRate: 16000 });
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    return audioBuffer.getChannelData(0);
+    try {
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        // Copy channel data so it’s not tied to the AudioContext
+        return new Float32Array(audioBuffer.getChannelData(0));
+    } finally {
+        try { await audioContext.close(); } catch (_) {}
+    }
 }
 
 browser.runtime.onMessage.addListener((message, sender) => {
