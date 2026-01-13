@@ -22,14 +22,16 @@ let currentBackend = 'wasm';
 const inflightByTab = new Map();
 const lastSessionByTab = new Map(); // tabId -> { sessionId, hostname }
 const canceledSessionsByTab = new Map(); // tabId -> Set(sessionId)
+const activeRecognitionTabs = new Set(); // tabs that have fired recording/transcribe
 let modelLoadPromise = null;
 
 const RESULT_GRACE_MS_DEFAULT = 450; // default grace window
 const CANCEL_BADGE_MS = 1200;        // cancel badge display
 const PROCESSING_TIMEOUT_MS = 12000; // tighter timeout to avoid long hangs
 
-const MODEL_IDLE_UNLOAD_MS = 15_000; // unload model after 15s idle
+const MODEL_IDLE_UNLOAD_MS = 30_000; // unload model after 30s of idle
 let modelGcTimer = null;
+let errorHoldUntil = 0;
 
 const isDarkMode = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => setActionState(currentState, currentBadge));
@@ -152,7 +154,13 @@ async function getIconImageData(baseColor, badge) {
     return out;
 }
 
+// setActionState honors error hold so error stays visible
 async function setActionState(state, badge = null) {
+    const now = Date.now();
+    if (errorHoldUntil > now && state !== 'error') {
+        return;
+    }
+
     currentState = state;
     currentBadge = badge;
     const colors = ICON_COLORS();
@@ -169,11 +177,14 @@ async function setActionState(state, badge = null) {
     try { await browser.browserAction.setTitle({ title }); } catch (e) { }
 }
 
+// Make error stick briefly
 function setErrorBriefly(ms = 3000) {
+    errorHoldUntil = Date.now() + ms;
     if (errorResetTimer) clearTimeout(errorResetTimer);
     setActionState('error', null);
     errorResetTimer = setTimeout(() => {
         errorResetTimer = null;
+        errorHoldUntil = 0;
         setActionState('idle', null);
     }, ms);
 }
@@ -240,43 +251,23 @@ async function disposeCurrentModel() {
     transcriber = null;
 }
 
-async function hasUsableTabs() {
-    try {
-        const tabs = await browser.tabs.query({});
-        return tabs.some(t => {
-            const u = t.url || '';
-            // Filter out internal pages; count only real web pages
-            return u && !u.startsWith('about:') && !u.startsWith('chrome:') && !u.startsWith('moz-extension:') && !u.startsWith('view-source:');
-        });
-    } catch (_) {
-        // If query fails, assume there might be tabs to avoid over-aggressive dispose
-        return true;
-    }
+// Busy guard
+function isBusy() {
+    const hasInflight = inflightByTab.size > 0;
+    const processing = processingFallback.timer !== null;
+    return hasInflight || processing || currentState === 'recording' || currentState === 'processing';
 }
 
-// If force=true, dispose immediately; otherwise after idle timeout
-function scheduleModelGc(force = false) {
+// Schedule GC: only when idle AND no tabs that used recognition remain
+function scheduleModelGc() {
     if (modelGcTimer) clearTimeout(modelGcTimer);
-    const delay = force ? 0 : MODEL_IDLE_UNLOAD_MS;
     modelGcTimer = setTimeout(async () => {
-        const hasInflight = inflightByTab.size > 0;
-        const processing = processingFallback.timer !== null;
-        const busy = hasInflight || processing || currentState === 'recording' || currentState === 'processing';
-        const tabsExist = await hasUsableTabs();
-        if (force) {
-            if (!tabsExist || !busy) {
-                if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
-                processingFallback.tabId = null;
-                await disposeCurrentModel();
-                setActionState('idle', null);
-            }
-            return;
-        }
-        if (!busy && !tabsExist) {
-            await disposeCurrentModel();
-            setActionState('idle', null);
-        }
-    }, delay);
+        if (isBusy()) return;
+        if (activeRecognitionTabs.size > 0) return;
+        await disposeCurrentModel();
+        setActionState('idle', null);
+        browser.runtime.reload(); // reclaim WASM/JS runtime memory
+    }, MODEL_IDLE_UNLOAD_MS);
 }
 
 browser.runtime.onInstalled.addListener(async (details) => {
@@ -288,9 +279,17 @@ browser.runtime.onInstalled.addListener(async (details) => {
 });
 browser.runtime.onStartup?.addListener(() => setActionState('idle', null));
 
+function clearTabTracking(tabId) {
+    inflightByTab.delete(tabId);
+    lastSessionByTab.delete(tabId);
+    canceledSessionsByTab.delete(tabId);
+    activeRecognitionTabs.delete(tabId);
+}
+
 browser.runtime.onMessage.addListener((message, sender) => {
+    const tabId = sender?.tab?.id;
+
     if (message?.type === 'CANCEL_SESSION') {
-        const tabId = sender?.tab?.id;
         markCanceled(tabId, message.sessionId);
         inflightByTab.delete(tabId);
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
@@ -301,13 +300,14 @@ browser.runtime.onMessage.addListener((message, sender) => {
                 setActionState('idle', null);
             }
         }, CANCEL_BADGE_MS);
-        scheduleModelGc(true); // aggressive check after cancel
+        scheduleModelGc();
         return;
     }
 
     if (message?.type === 'PROCESSING_DONE') {
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
         processingFallback.tabId = null;
+        if (tabId != null) activeRecognitionTabs.delete(tabId);
 
         if (message.status === 'noaudio') {
             setActionState('error', null);
@@ -332,11 +332,22 @@ browser.runtime.onMessage.addListener((message, sender) => {
         }, 600);
         return;
     }
+
     if (message?.type === 'UNINTELLIGIBLE_SPEECH') {
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
         processingFallback.tabId = null;
-        setErrorBriefly(3500);
+        if (tabId != null) activeRecognitionTabs.delete(tabId);
+        setErrorBriefly(3500); // show error and hold it
         scheduleModelGc();
+        return;
+    }
+
+    if (message?.type === 'RECORDING_STATE') {
+        if (tabId != null) {
+            if (message.state === 'recording') activeRecognitionTabs.add(tabId);
+            else activeRecognitionTabs.delete(tabId);
+        }
+        setActionState(message.state === 'recording' ? 'recording' : 'idle', null);
         return;
     }
 });
@@ -452,18 +463,16 @@ async function readAudio(blob) {
     }
 }
 
+// TRANSCRIBE handling (tracks recognition tabs)
 browser.runtime.onMessage.addListener((message, sender) => {
     if (message.type === 'CONFIG_CHANGED') return;
-
-    if (message.type === 'RECORDING_STATE') {
-        setActionState(message.state === 'recording' ? 'recording' : 'idle', null);
-        return;
-    }
 
     if (message.type === 'TRANSCRIBE_AUDIO') {
         const tabId = sender?.tab?.id;
         const frameId = sender?.frameId;
         if (tabId == null) return;
+
+        activeRecognitionTabs.add(tabId);
 
         const hostname = message.hostname || '';
         const sessionId = message.sessionId || 0;
@@ -574,24 +583,20 @@ browser.runtime.onMessage.addListener((message, sender) => {
     }
 });
 
-// When tabs close, clear tracking and, if no usable tabs remain, unload immediately
-// In tabs.onRemoved listener, after disposeCurrentModel and setActionState:
+// When tabs close, clear tracking and unload only if idle and no recognition tabs remain
 browser.tabs.onRemoved.addListener(async (tabId) => {
-    inflightByTab.delete(tabId);
-    lastSessionByTab.delete(tabId);
-    canceledSessionsByTab.delete(tabId);
+    clearTabTracking(tabId);
     if (processingFallback.tabId === tabId && processingFallback.timer) {
         clearTimeout(processingFallback.timer);
         processingFallback.timer = null;
         processingFallback.tabId = null;
     }
-    const tabsExist = await hasUsableTabs();
-    if (!tabsExist) {
+    if (isBusy()) return;
+    if (activeRecognitionTabs.size === 0) {
         await disposeCurrentModel();
         setActionState('idle', null);
-        // Force full unload to return WASM/JS code memory to the OS
         browser.runtime.reload();
     } else {
-        scheduleModelGc(true);
+        scheduleModelGc();
     }
 });
