@@ -16,6 +16,11 @@ const ALLOWED_MODELS = new Set([
     'Xenova/distil-whisper-medium.en'
 ]);
 
+const PROVIDERS = {
+    LOCAL: 'local-whisper',
+    ASSEMBLY: 'assemblyai'
+};
+
 let transcriber = null;
 let currentModel = 'Xenova/whisper-tiny';
 let currentBackend = 'wasm';
@@ -29,9 +34,13 @@ const RESULT_GRACE_MS_DEFAULT = 450; // default grace window
 const CANCEL_BADGE_MS = 1200;        // cancel badge display
 const PROCESSING_TIMEOUT_MS = 12000; // tighter timeout to avoid long hangs
 
-const MODEL_IDLE_UNLOAD_MS = 30_000; // unload model after 30s of idle
+const MODEL_IDLE_UNLOAD_MS = 15_000; // unload model after 15s of idle
 let modelGcTimer = null;
 let errorHoldUntil = 0;
+
+// Track extension pages so we don't self-reload while they're open
+const extensionTabIds = new Set();
+let reloadPending = false;
 
 const isDarkMode = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => setActionState(currentState, currentBadge));
@@ -54,6 +63,135 @@ let currentBadge = null; // { type: 'download' | 'cached' | 'done' | 'cancel', c
 const iconCache = new Map(); // key -> {16,19,32,38}
 const processingFallback = { timer: null, tabId: null };
 let errorResetTimer = null;
+
+// Debug logging (enabled when settings.debugMode === true)
+let debugMode = false;
+const DEBUG_BUFFER_LIMIT = 400;
+const debugBuffer = [];
+function dbg(tag, data = {}) {
+    if (!debugMode) return;
+    const entry = { ts: new Date().toISOString(), tag, ...data };
+    debugBuffer.push(entry);
+    if (debugBuffer.length > DEBUG_BUFFER_LIMIT) debugBuffer.shift();
+    try { console.debug('[Whisper DEBUG]', tag, data); } catch (_) { /* swallow */ }
+}
+async function refreshDebugModeFromStorage() {
+    try {
+        const { settings } = await browser.storage.local.get('settings');
+        const next = settings?.debugMode === true;
+        if (next !== debugMode) dbg('debug_mode_toggle', { from: debugMode, to: next });
+        debugMode = next;
+    } catch (_) { /* swallow */ }
+}
+refreshDebugModeFromStorage();
+
+// -------- Options tab auto-unload (discard/close after inactivity) --------
+const OPTIONS_UNLOAD_MS = 10_000; // 10s before unloading inactive options tab
+const optionsUnloadTimers = new Map();
+
+const isOptionsUrl = (url) => {
+    if (!url) return false;
+    const base = browser.runtime.getURL('options.html');
+    return url === base || url.startsWith(base + '#') || url.startsWith(base + '?');
+};
+
+function clearOptionsUnloadTimer(tabId) {
+    const t = optionsUnloadTimers.get(tabId);
+    if (t) {
+        clearTimeout(t);
+        optionsUnloadTimers.delete(tabId);
+    }
+}
+
+function scheduleOptionsUnload(tabId) {
+    clearOptionsUnloadTimer(tabId);
+    const timer = setTimeout(async () => {
+        optionsUnloadTimers.delete(tabId);
+        try {
+            if (browser.tabs.discard) {
+                await browser.tabs.discard(tabId); // unload but keep tab open
+            } else {
+                await browser.tabs.remove(tabId);   // fallback: close tab
+            }
+            extensionTabIds.delete(tabId);
+        } catch (_) {
+            /* swallow */
+        }
+    }, OPTIONS_UNLOAD_MS);
+    optionsUnloadTimers.set(tabId, timer);
+}
+
+async function refreshOptionsUnloadTimers() {
+    try {
+        const optionsTabs = await browser.tabs.query({ url: browser.runtime.getURL('options.html') });
+        for (const tab of optionsTabs) {
+            if (tab.active) {
+                clearOptionsUnloadTimer(tab.id);
+            } else {
+                scheduleOptionsUnload(tab.id);
+            }
+        }
+    } catch (_) {
+        /* swallow */
+    }
+}
+// ------------------------------------------------------------------------
+
+function isExtensionUrl(url) {
+    if (!url) return false;
+    const base = browser.runtime.getURL('');
+    return url.startsWith(base);
+}
+
+// Populate extensionTabIds on startup (best-effort)
+browser.tabs.query({}).then(tabs => {
+    tabs.forEach(t => { if (isExtensionUrl(t.url)) extensionTabIds.add(t.id); });
+}).catch(() => {});
+
+// Track extension tabs and handle unload/discard
+browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.url && isExtensionUrl(changeInfo.url)) {
+        extensionTabIds.add(tabId);
+    } else if (changeInfo.url && !isExtensionUrl(changeInfo.url)) {
+        extensionTabIds.delete(tabId);
+    }
+
+    // Options tab unload logic
+    if (changeInfo.url) {
+        if (!isOptionsUrl(changeInfo.url)) {
+            clearOptionsUnloadTimer(tabId);
+            extensionTabIds.delete(tabId);
+        }
+    }
+    if (isOptionsUrl(tab?.url)) {
+        refreshOptionsUnloadTimers();
+    }
+
+    if (changeInfo.discarded === true || changeInfo.status === 'unloaded') {
+        clearTabTracking(tabId);
+        extensionTabIds.delete(tabId);
+        clearOptionsUnloadTimer(tabId);
+        if (!isBusy() && activeRecognitionTabs.size === 0) {
+            scheduleModelGc();
+        }
+    }
+
+    // If no extension tabs remain and a reload was pending, trigger it when idle
+    if (extensionTabIds.size === 0 && reloadPending && !isBusy() && activeRecognitionTabs.size === 0) {
+        reloadPending = false;
+        browser.runtime.reload();
+    }
+});
+
+// New: options tab tracking on create/activate
+browser.tabs.onCreated.addListener((tab) => {
+    if (isOptionsUrl(tab.url) && !tab.active) {
+        scheduleOptionsUnload(tab.id);
+    }
+});
+browser.tabs.onActivated.addListener(() => {
+    refreshOptionsUnloadTimers();
+});
 
 function t(key, fallback) {
     return (browser.i18n && browser.i18n.getMessage(key)) || fallback;
@@ -161,6 +299,7 @@ async function setActionState(state, badge = null) {
         return;
     }
 
+    const prev = currentState;
     currentState = state;
     currentBadge = badge;
     const colors = ICON_COLORS();
@@ -169,6 +308,8 @@ async function setActionState(state, badge = null) {
     if (state === 'recording') { color = colors.recording; title = t('title_recording', 'Whisper: Listening'); }
     else if (state === 'processing') { color = colors.processing; title = t('title_processing', 'Whisper: Processing'); }
     else if (state === 'error') { color = colors.error; title = t('title_error', 'Whisper: Error'); }
+
+    dbg('action_state', { from: prev, to: state, badge, errorHoldUntil });
 
     try {
         const images = await getIconImageData(color, badge);
@@ -195,6 +336,7 @@ function markCanceled(tabId, sessionId) {
     let set = canceledSessionsByTab.get(tabId);
     if (!set) { set = new Set(); canceledSessionsByTab.set(tabId, set); }
     set.add(sessionId);
+    dbg('session_canceled', { tabId, sessionId, canceledForTab: set.size });
 }
 function isCanceled(tabId, sessionId) {
     const set = canceledSessionsByTab.get(tabId);
@@ -249,6 +391,7 @@ async function disposeCurrentModel() {
         try { await transcriber.dispose(); } catch (e) { console.warn('dispose failed', e); }
     }
     transcriber = null;
+    dbg('model_disposed', { model: currentModel });
 }
 
 // Busy guard
@@ -262,22 +405,63 @@ function isBusy() {
 function scheduleModelGc() {
     if (modelGcTimer) clearTimeout(modelGcTimer);
     modelGcTimer = setTimeout(async () => {
-        if (isBusy()) return;
-        if (activeRecognitionTabs.size > 0) return;
+        const busy = isBusy();
+        if (busy) { dbg('gc_skip_busy'); return; }
+        if (activeRecognitionTabs.size > 0) { dbg('gc_skip_active_tabs', { count: activeRecognitionTabs.size }); return; }
+        dbg('gc_run', { model: currentModel, extensionTabs: extensionTabIds.size });
         await disposeCurrentModel();
         setActionState('idle', null);
-        browser.runtime.reload(); // reclaim WASM/JS runtime memory
+        if (extensionTabIds.size === 0) {
+            reloadPending = false;
+            browser.runtime.reload();
+        } else {
+            reloadPending = true;
+        }
     }, MODEL_IDLE_UNLOAD_MS);
 }
 
+// Prefetch default model when enabled and provider is local
+async function prefetchDefaultModelIfEnabled() {
+    try {
+        const { settings } = await browser.storage.local.get('settings');
+        const defaults = settings?.defaults || {};
+        const cacheDefaultModel = settings?.cacheDefaultModel === true;
+        const provider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
+        const model = defaults.model || 'Xenova/whisper-tiny';
+        if (!cacheDefaultModel) return;
+        if (provider !== PROVIDERS.LOCAL) return;
+        if (!ALLOWED_MODELS.has(model)) return;
+        dbg('prefetch_start', { model });
+        await ensureModel(model);
+        dbg('prefetch_done', { model });
+    } catch (e) {
+        console.warn('Prefetch default model failed', e);
+        dbg('prefetch_error', { error: String(e) });
+    }
+}
+
+// Immediately set icon state on background load to avoid black icon after self-reload
+setActionState('idle', null);
+// Kick off options tab unload tracking on startup
+refreshOptionsUnloadTimers();
+// Prefetch on startup if enabled
+prefetchDefaultModelIfEnabled();
+
 browser.runtime.onInstalled.addListener(async (details) => {
     if (details?.reason === 'install') {
-        try { await browser.runtime.openOptionsPage(); }
-        catch { try { await browser.tabs.create({ url: browser.runtime.getURL('options.html') }); } catch (_) { } }
+        // Always open options in a new tab for first-time users
+        try {
+            await browser.tabs.create({ url: browser.runtime.getURL('options.html'), active: true });
+        } catch {
+            try { await browser.runtime.openOptionsPage(); } catch (_) { }
+        }
     }
     setActionState('idle', null);
 });
-browser.runtime.onStartup?.addListener(() => setActionState('idle', null));
+browser.runtime.onStartup?.addListener(() => {
+    setActionState('idle', null);
+    prefetchDefaultModelIfEnabled();
+});
 
 function clearTabTracking(tabId) {
     inflightByTab.delete(tabId);
@@ -288,6 +472,16 @@ function clearTabTracking(tabId) {
 
 browser.runtime.onMessage.addListener((message, sender) => {
     const tabId = sender?.tab?.id;
+
+    if (message?.type === 'CONFIG_CHANGED') {
+        refreshDebugModeFromStorage();
+        prefetchDefaultModelIfEnabled();
+        return;
+    }
+
+    if (message?.type === 'GET_DEBUG_BUFFER') {
+        return Promise.resolve(debugBuffer.slice(-DEBUG_BUFFER_LIMIT));
+    }
 
     if (message?.type === 'CANCEL_SESSION') {
         markCanceled(tabId, message.sessionId);
@@ -308,6 +502,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
         processingFallback.tabId = null;
         if (tabId != null) activeRecognitionTabs.delete(tabId);
+
+        dbg('processing_done', { status: message.status, tabId });
 
         if (message.status === 'noaudio') {
             setActionState('error', null);
@@ -337,6 +533,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
         if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
         processingFallback.tabId = null;
         if (tabId != null) activeRecognitionTabs.delete(tabId);
+        dbg('unintelligible_speech', { tabId });
         setErrorBriefly(3500); // show error and hold it
         scheduleModelGc();
         return;
@@ -347,13 +544,14 @@ browser.runtime.onMessage.addListener((message, sender) => {
             if (message.state === 'recording') activeRecognitionTabs.add(tabId);
             else activeRecognitionTabs.delete(tabId);
         }
+        dbg('recording_state', { tabId, state: message.state, activeRecognitionTabs: activeRecognitionTabs.size });
         setActionState(message.state === 'recording' ? 'recording' : 'idle', null);
         return;
     }
 });
 
 function trimSilence(audioData, sampleRate = 16000) {
-    const threshold = 0.02;
+    const threshold = 0.01; // a bit more tolerant to low-level noise
     let start = 0, end = audioData.length;
     for (let i = 0; i < audioData.length; i++) { if (Math.abs(audioData[i]) > threshold) { start = i; break; } }
     for (let i = audioData.length - 1; i >= start; i--) { if (Math.abs(audioData[i]) > threshold) { end = i + 1; break; } }
@@ -362,27 +560,40 @@ function trimSilence(audioData, sampleRate = 16000) {
     return trimmed;
 }
 
+function normalizeProvider(p) {
+    return (p === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
+}
+
 async function getEffectiveSettings(hostname) {
     const { settings } = await browser.storage.local.get('settings');
-    const defaults = settings?.defaults || { model: 'Xenova/whisper-tiny', language: 'auto', silenceTimeoutMs: 1500 };
+    const defaults = settings?.defaults || { model: 'Xenova/whisper-tiny', language: 'auto', silenceTimeoutMs: 1500, provider: PROVIDERS.LOCAL };
     const graceEnabled = settings?.graceEnabled !== false; // default true
     const graceMs = typeof settings?.graceMs === 'number' ? settings.graceMs : RESULT_GRACE_MS_DEFAULT;
-    if (!hostname) return { model: defaults.model, language: defaults.language, silenceTimeoutMs: defaults.silenceTimeoutMs, graceEnabled, graceMs };
+    const assemblyaiApiKey = settings?.assemblyaiApiKey || null;
+
+    const baseProvider = normalizeProvider(defaults.provider);
+    if (!hostname) return { model: defaults.model, language: defaults.language, silenceTimeoutMs: defaults.silenceTimeoutMs, graceEnabled, graceMs, provider: baseProvider, assemblyaiApiKey };
+
     const overrides = settings?.overrides || {};
     const site = overrides[hostname] || {};
-    return {
+    const result = {
         model: (site.model && ALLOWED_MODELS.has(site.model)) ? site.model : (ALLOWED_MODELS.has(defaults.model) ? defaults.model : 'Xenova/whisper-tiny'),
         language: site.language ?? defaults.language ?? 'auto',
         silenceTimeoutMs: site.silenceTimeoutMs ?? defaults.silenceTimeoutMs ?? 1500,
         graceEnabled,
-        graceMs
+        graceMs,
+        provider: normalizeProvider(site.provider ?? baseProvider),
+        assemblyaiApiKey
     };
+    dbg('effective_settings', { hostname, ...result });
+    return result;
 }
 
 async function loadModel(modelID) {
-    console.log(`Loading Model: ${modelID}`);
+    dbg('model_load_start', { modelID });
     transcriber = await pipeline('automatic-speech-recognition', modelID, { device: currentBackend });
     currentModel = modelID;
+    dbg('model_load_success', { modelID });
 }
 
 async function showCachedBadge(prevState) {
@@ -400,14 +611,17 @@ async function ensureModel(modelID) {
 
     if (transcriber && currentModel === safeModel) {
         await showCachedBadge(prevState);
+        dbg('model_reuse', { model: safeModel });
         return;
     }
 
     if (transcriber && currentModel !== safeModel) {
+        dbg('model_dispose_switch', { from: currentModel, to: safeModel });
         await disposeCurrentModel();
     }
 
     if (modelLoadPromise) {
+        dbg('model_wait_existing_promise', { target: safeModel });
         await modelLoadPromise;
         if (transcriber && currentModel === safeModel) {
             await showCachedBadge(prevState);
@@ -422,6 +636,7 @@ async function ensureModel(modelID) {
             setActionState(prevState, { type: 'download', color: ICON_COLORS().downloaded });
         } catch (err) {
             console.error("Model load failed:", err);
+            dbg('model_load_error', { model: safeModel, error: String(err) });
             setActionState(prevState, { type: 'download', color: ICON_COLORS().download_error });
             await disposeCurrentModel();
             if (safeModel !== 'Xenova/whisper-tiny') {
@@ -463,6 +678,66 @@ async function readAudio(blob) {
     }
 }
 
+async function transcribeWithAssemblyAI(audioBlob, language, apiKey) {
+    const headers = { Authorization: apiKey };
+    const controller = new AbortController();
+
+    const uploadResp = await fetch('https://api.assemblyai.com/v2/upload', {
+        method: 'POST',
+        headers,
+        body: audioBlob,
+        signal: controller.signal
+    });
+    if (!uploadResp.ok) {
+        const txt = await uploadResp.text().catch(() => '');
+        throw new Error(`AssemblyAI upload failed (${uploadResp.status}): ${txt.slice(0, 200)}`);
+    }
+    const uploadJson = await uploadResp.json();
+    const uploadUrl = uploadJson.upload_url;
+    if (!uploadUrl) throw new Error('AssemblyAI upload URL missing');
+
+    const transcriptResp = await fetch('https://api.assemblyai.com/v2/transcript', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            audio_url: uploadUrl,
+            language_code: language || undefined,
+            punctuate: true,
+            format_text: true,
+            auto_highlights: false
+        }),
+        signal: controller.signal
+    });
+    if (!transcriptResp.ok) {
+        const txt = await transcriptResp.text().catch(() => '');
+        throw new Error(`AssemblyAI request failed (${transcriptResp.status}): ${txt.slice(0, 200)}`);
+    }
+    const transcriptJson = await transcriptResp.json();
+    const transcriptId = transcriptJson.id;
+    if (!transcriptId) throw new Error('AssemblyAI transcript id missing');
+
+    const start = Date.now();
+    while (true) {
+        if (Date.now() - start > PROCESSING_TIMEOUT_MS) {
+            controller.abort();
+            throw new Error('AssemblyAI timed out');
+        }
+        await new Promise(r => setTimeout(r, 1000));
+        const pollResp = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, { headers, signal: controller.signal });
+        if (!pollResp.ok) {
+            const txt = await pollResp.text().catch(() => '');
+            throw new Error(`AssemblyAI poll failed (${pollResp.status}): ${txt.slice(0, 200)}`);
+        }
+        const pollJson = await pollResp.json();
+        if (pollJson.status === 'completed') {
+            return (pollJson.text || '').trim();
+        }
+        if (pollJson.status === 'error') {
+            throw new Error(pollJson.error || 'AssemblyAI transcription error');
+        }
+    }
+}
+
 // TRANSCRIBE handling (tracks recognition tabs)
 browser.runtime.onMessage.addListener((message, sender) => {
     if (message.type === 'CONFIG_CHANGED') return;
@@ -486,6 +761,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
             processingFallback.tabId = null;
             setActionState('idle', null);
             scheduleModelGc();
+            dbg('processing_timeout', { tabId, sessionId });
         }, PROCESSING_TIMEOUT_MS);
 
         const lastEntry = lastSessionByTab.get(tabId);
@@ -494,6 +770,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
             lastSessionByTab.set(tabId, { sessionId: 0, hostname });
         }
         if (sessionId <= lastSessionForHost) {
+            dbg('session_ignored_stale', { tabId, sessionId, lastSessionForHost, hostname });
             if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
             processingFallback.tabId = null;
             setActionState('idle', null);
@@ -507,23 +784,31 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
         (async () => {
             const options = { frameId: frameId };
+            const t0 = performance.now();
             try {
-                const { model, language, graceEnabled, graceMs } = await getEffectiveSettings(hostname);
+                const settings = await getEffectiveSettings(hostname);
+                const { model, language, graceEnabled, graceMs, provider, assemblyaiApiKey } = settings;
 
-                await ensureModel(model);
-                if (!transcriber) throw new Error("Model not loaded");
+                dbg('transcribe_start', { tabId, sessionId, hostname, provider, model, language, graceEnabled, graceMs });
 
                 const audioBlob = new Blob([new Uint8Array(message.audioData)], { type: 'audio/wav' });
                 const rawInput = await readAudio(audioBlob);
 
+                const tRead = performance.now();
+
                 const input = trimSilence(rawInput);
                 if (!input) {
-                    console.log("Audio contained only silence/noise. Dropping.");
+                    dbg('audio_drop_silence', { tabId, sessionId, rawLen: rawInput?.length || 0 });
                     browser.tabs.sendMessage(tabId, { type: 'WHISPER_NO_AUDIO', reason: 'silence' }, options);
                     return;
                 }
 
+                const trimmedLen = input.length;
+                dbg('audio_trimmed', { tabId, sessionId, rawLen: rawInput.length, trimmedLen });
+
+                // Cancelled before we start heavy work
                 if (isCanceled(tabId, sessionId)) {
+                    dbg('transcribe_abort_prework', { tabId, sessionId });
                     inflightByTab.delete(tabId);
                     if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
                     setActionState('idle', null);
@@ -531,28 +816,64 @@ browser.runtime.onMessage.addListener((message, sender) => {
                     return;
                 }
 
-                const isEnglishModel = currentModel.endsWith(".en");
-                let langToUse = isEnglishModel ? 'en' : (language !== 'auto' ? language : null);
+                let text = '';
 
-                const output = await transcriber(input, {
-                    chunk_length_s: 30,
-                    stride_length_s: 5,
-                    language: langToUse,
-                    task: 'transcribe',
-                    temperature: 0
-                });
+                if (provider === PROVIDERS.ASSEMBLY) {
+                    if (!assemblyaiApiKey) {
+                        throw new Error('AssemblyAI API key missing. Set it in the options page.');
+                    }
+                    const langToUse = (language && language !== 'auto') ? language : null;
+                    const tAsmStart = performance.now();
+                    text = await transcribeWithAssemblyAI(audioBlob, langToUse, assemblyaiApiKey);
+                    dbg('asm_timing', { tabId, sessionId, ms: Math.round(performance.now() - tAsmStart) });
+                } else {
+                    await ensureModel(model);
+                    if (!transcriber) throw new Error("Model not loaded");
 
-                let text = (output.text || '').trim();
+                    const isEnglishModel = currentModel.endsWith(".en");
+                    let langToUse = isEnglishModel ? 'en' : (language !== 'auto' ? language : null);
+
+                    const tInferStart = performance.now();
+                    const output = await transcriber(input, {
+                        chunk_length_s: 30,
+                        stride_length_s: 5,
+                        language: langToUse,
+                        task: 'transcribe',
+                        temperature: 0
+                    });
+                    text = (output.text || '').trim();
+                    dbg('local_infer_timing', { tabId, sessionId, ms: Math.round(performance.now() - tInferStart), langToUse, model: currentModel });
+                }
+
                 text = collapseRepeats(text);
+
+                // Guard: ultra-short/low-content -> treat as unintelligible and clear timers
+                {
+                    const trimmed = text.trim();
+                    const words = trimmed.split(/\s+/).filter(Boolean);
+                    if (trimmed.length < 6 || words.length <= 1) {
+                        dbg('text_too_short', { tabId, sessionId, text });
+                        if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
+                        processingFallback.tabId = null;
+                        browser.tabs.sendMessage(tabId, { type: 'WHISPER_NO_AUDIO' }, options);
+                        browser.tabs.sendMessage(tabId, { type: 'WHISPER_UNINTELLIGIBLE' }, options);
+                        browser.runtime.sendMessage({ type: 'PROCESSING_DONE', status: 'noaudio' });
+                        setActionState('idle', null);
+                        scheduleModelGc();
+                        return;
+                    }
+                }
 
                 // if still pathological, treat as unintelligible
                 if (isPathological(text)) {
+                    dbg('text_pathological', { tabId, sessionId, text });
                     browser.tabs.sendMessage(tabId, { type: 'WHISPER_NO_AUDIO' }, options);
                     browser.tabs.sendMessage(tabId, { type: 'WHISPER_UNINTELLIGIBLE' }, options);
                     return;
                 }
 
                 if (isCanceled(tabId, sessionId)) {
+                    dbg('transcribe_abort_post', { tabId, sessionId });
                     if (processingFallback.timer) { clearTimeout(processingFallback.timer); processingFallback.timer = null; }
                     setActionState('idle', null);
                     scheduleModelGc();
@@ -567,13 +888,22 @@ browser.runtime.onMessage.addListener((message, sender) => {
                     text.includes("[INAUDIBLE]");
 
                 if (unintelligible) {
+                    dbg('text_unintelligible', { tabId, sessionId, text });
                     browser.tabs.sendMessage(tabId, { type: 'WHISPER_NO_AUDIO' }, options);
                     browser.tabs.sendMessage(tabId, { type: 'WHISPER_UNINTELLIGIBLE' }, options);
                 } else {
+                    dbg('transcribe_success', {
+                        tabId,
+                        sessionId,
+                        msTotal: Math.round(performance.now() - t0),
+                        msRead: Math.round(tRead - t0),
+                        lenChars: text.length
+                    });
                     sendResultWithGrace(tabId, sessionId, text, options, graceEnabled, graceMs);
                 }
             } catch (err) {
                 console.error(err);
+                dbg('transcribe_error', { tabId, sessionId, error: String(err) });
                 browser.tabs.sendMessage(tabId, { type: 'WHISPER_ERROR', error: err.message }, options);
                 setActionState('error', null);
             } finally {
@@ -585,7 +915,9 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
 // When tabs close, clear tracking and unload only if idle and no recognition tabs remain
 browser.tabs.onRemoved.addListener(async (tabId) => {
+    clearOptionsUnloadTimer(tabId);
     clearTabTracking(tabId);
+    extensionTabIds.delete(tabId);
     if (processingFallback.tabId === tabId && processingFallback.timer) {
         clearTimeout(processingFallback.timer);
         processingFallback.timer = null;
@@ -595,7 +927,12 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
     if (activeRecognitionTabs.size === 0) {
         await disposeCurrentModel();
         setActionState('idle', null);
-        browser.runtime.reload();
+        if (extensionTabIds.size === 0) {
+            reloadPending = false;
+            browser.runtime.reload();
+        } else {
+            reloadPending = true;
+        }
     } else {
         scheduleModelGc();
     }

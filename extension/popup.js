@@ -7,6 +7,7 @@ const ALLOWED_MODELS = new Set([
   'Xenova/whisper-small',
   'Xenova/distil-whisper-medium.en'
 ]);
+const ALLOWED_PROVIDERS = new Set(['local-whisper', 'assemblyai']);
 
 function t(key, fallback = '') { return browser.i18n?.getMessage(key) || fallback; }
 
@@ -26,50 +27,99 @@ function clampTimeout(val) {
   return Math.max(500, Math.min(5000, n));
 }
 
-async function getActiveHostname() {
+function normalizeProvider(p) {
+  return ALLOWED_PROVIDERS.has(p) ? p : '';
+}
+
+async function getActiveTab() {
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-  const url = tabs[0]?.url || '';
-  try { return new URL(url).hostname; } catch { return ''; }
+  return tabs[0] || null;
+}
+
+function applyPopupVisibility(provider, hideToggle) {
+  const modelSection = document.getElementById('model-section');
+  const modelHeader = document.getElementById('model-section-header');
+  if (!modelSection || !modelHeader) return;
+  if (!hideToggle) {
+    modelSection.style.display = '';
+    modelHeader.style.display = '';
+    return;
+  }
+  if (provider === 'assemblyai') {
+    modelSection.style.display = 'none';
+    modelHeader.style.display = 'none';
+  } else {
+    modelSection.style.display = '';
+    modelHeader.style.display = '';
+  }
 }
 
 async function loadState() {
-  const host = await getActiveHostname();
-  document.getElementById('host-label').textContent = host ? `${t('popup_site_prefix', 'Site')}: ${host}` : t('popup_site_unknown', 'Site: (unknown)');
+  const tab = await getActiveTab();
+  const url = tab?.url || '';
+  let host = '';
+  try { host = new URL(url).hostname; } catch { host = ''; }
+  const hostLabel = document.getElementById('host-label');
+  hostLabel.textContent = host ? `${t('popup_site_prefix', 'Site')}: ${host}` : t('popup_site_unknown', 'Site: (unknown)');
+
+  const iconEl = document.getElementById('host-favicon');
+  const fav = tab?.favIconUrl;
+  if (fav) {
+    iconEl.style.display = 'inline-block';
+    iconEl.onerror = () => { iconEl.style.display = 'none'; };
+    iconEl.src = fav;
+  } else {
+    iconEl.style.display = 'none';
+  }
+
   const { settings } = await browser.storage.local.get('settings');
   const overrides = settings?.overrides || {};
   const o = overrides[host] || {};
+  const provider = o.provider || '';
   document.getElementById('model').value = o.model || '';
   document.getElementById('language').value = o.language || '';
   document.getElementById('timeout').value = o.silenceTimeoutMs ?? '';
+  document.getElementById('provider').value = provider;
+  const hideToggle = settings?.hideModelSections !== false; // shared single toggle from options
+  applyPopupVisibility(provider, hideToggle);
 }
 
-async function saveOverride() {
-  const host = await getActiveHostname();
+async function saveOverride(autoText) {
+  const tab = await getActiveTab();
+  let host = '';
+  try { host = new URL(tab?.url || '').hostname; } catch { host = ''; }
   if (!host) return;
   const model = document.getElementById('model').value;
   const language = document.getElementById('language').value;
   const timeout = clampTimeout(document.getElementById('timeout').value);
+  const provider = normalizeProvider(document.getElementById('provider').value);
+
   if (model && !ALLOWED_MODELS.has(model)) {
     alert(t('model_not_allowed', 'Model not allowed.'));
     return;
   }
   const { settings } = await browser.storage.local.get('settings');
   const next = settings || {};
-  // only the defaults fallback needs to change inside saveOverride()
-  next.defaults = next.defaults || { model: 'Xenova/whisper-tiny', language: 'auto', silenceTimeoutMs: 1500 };
+  next.defaults = next.defaults || { model: 'Xenova/whisper-tiny', language: 'auto', silenceTimeoutMs: 1500, provider: 'local-whisper' };
+  // respect the single toggle from options; do not change here
+  next.hideModelSections = settings?.hideModelSections !== false;
   next.overrides = next.overrides || {};
   const override = {};
   if (model) override.model = model;
   if (language) override.language = language;
   if (timeout) override.silenceTimeoutMs = timeout;
+  if (provider) override.provider = provider;
   next.overrides[host] = override;
   await browser.storage.local.set({ settings: next });
-  notifySaved();
+  notifySaved(autoText || t('popup_status_saved', 'Saved'));
   browser.runtime.sendMessage({ type: 'CONFIG_CHANGED' });
+  applyPopupVisibility(provider, next.hideModelSections !== false);
 }
 
 async function removeOverride() {
-  const host = await getActiveHostname();
+  const tab = await getActiveTab();
+  let host = '';
+  try { host = new URL(tab?.url || '').hostname; } catch { host = ''; }
   if (!host) return;
   const { settings } = await browser.storage.local.get('settings');
   const next = settings || {};
@@ -86,10 +136,24 @@ function notifySaved(text = t('popup_status_saved', 'Saved')) {
   const s = document.getElementById('status');
   s.textContent = text;
   s.classList.add('show');
-  setTimeout(() => s.classList.remove('show'), 1400);
+  setTimeout(() => s.classList.remove('show'), 1200);
 }
 
-document.getElementById('save').addEventListener('click', saveOverride);
+// Auto-save on change
+['model','language','timeout','provider'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const evt = (id === 'timeout') ? 'input' : 'change';
+  el.addEventListener(evt, () => {
+    if (id === 'provider') {
+      browser.storage.local.get('settings').then(({ settings }) => {
+        applyPopupVisibility(el.value, settings?.hideModelSections !== false);
+      });
+    }
+    saveOverride();
+  });
+});
+
 document.getElementById('remove').addEventListener('click', removeOverride);
 document.getElementById('open-options').addEventListener('click', () => browser.runtime.openOptionsPage());
 

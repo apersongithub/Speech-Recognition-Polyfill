@@ -11,12 +11,14 @@ let currentSessionId = 0;
 let activeSessionId = 0;
 let recordingStartTime = 0;
 let processingSessionId = null; // track the session sent for processing
+let disableHardCap = false;
 
 let globalStream = null;
 let globalContext = null;
 let globalRecorder = null;
 let globalChunks = [];
 let skipTranscribe = false; // honor cancel/abort
+let silenceCheckTimer = null;
 
 function dbg(...args) {
     if (shouldShowNotifications) console.log('[Whisper DEBUG]', ...args);
@@ -31,10 +33,12 @@ async function resolveEffectiveSettings() {
         const overrides = settings?.overrides || {};
         const site = overrides[hostname] || {};
         silenceTimeoutMs = site.silenceTimeoutMs ?? defaults.silenceTimeoutMs ?? 1000;
-        dbg('Settings resolved', { hostname, silenceTimeoutMs, debug: shouldShowNotifications });
+        disableHardCap = settings?.disableHardCap === true;
+        dbg('Settings resolved', { hostname, silenceTimeoutMs, disableHardCap, debug: shouldShowNotifications });
     } catch (_) {
         silenceTimeoutMs = 1000;
         shouldShowNotifications = false;
+        disableHardCap = false;
     }
 }
 resolveEffectiveSettings();
@@ -190,11 +194,18 @@ window.addEventListener("message", async (event) => {
   }
 });
 
+function clearSilenceTimer() {
+    if (silenceCheckTimer) {
+        clearTimeout(silenceCheckTimer);
+        silenceCheckTimer = null;
+    }
+}
+
 async function startRecording(pageLanguage, sessionId) {
     try {
         const langDisplay = pageLanguage ? pageLanguage.toUpperCase() : "AUTO";
         showNotification(`Listening (${langDisplay})...`, "recording");
-        dbg('Recording started', { sessionId, pageLanguage });
+        dbg('Recording started', { sessionId, pageLanguage, disableHardCap });
         browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'recording' });
 
         recordingStartTime = Date.now();
@@ -210,26 +221,66 @@ async function startRecording(pageLanguage, sessionId) {
         source.connect(analyser);
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        let silenceStart = Date.now();
-        let isSpeaking = false;
+        let noiseFloor = 8; // adaptive baseline
+        let lastHeard = Date.now();
+        let everHeard = false;
+        const startTime = Date.now();
+        const maxNoSpeechMs = Math.max(2500, silenceTimeoutMs * 2.5); // if never heard speech
+        const track = globalStream.getAudioTracks()[0];
+        if (track) {
+            track.onmute = () => { dbg('Track muted'); };
+        }
 
         const checkSilence = () => {
             if (!captureActive || globalRecorder.state === 'inactive') return;
+
             analyser.getByteFrequencyData(dataArray);
-            let sum = 0; for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
+            let sum = 0; for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
             const avg = sum / dataArray.length;
-            if (avg > 10) { silenceStart = Date.now(); isSpeaking = true; }
-            else if (isSpeaking && (Date.now() - silenceStart > silenceTimeoutMs)) { stopRecording(false); return; }
-            requestAnimationFrame(checkSilence);
+
+            // adapt noise floor slowly; cap it
+            noiseFloor = Math.min(35, noiseFloor * 0.97 + avg * 0.03);
+            const speechThreshold = noiseFloor + 12;
+            const silenceThreshold = noiseFloor + 4;
+
+            const now = Date.now();
+            if (avg > speechThreshold) {
+                lastHeard = now;
+                everHeard = true;
+            }
+
+            const sinceHeard = now - lastHeard;
+
+            if (shouldShowNotifications && (sinceHeard % 600 < 130)) {
+                dbg('SilenceCheck', { avg: avg.toFixed(1), noiseFloor: noiseFloor.toFixed(1), speechThreshold, silenceThreshold, sinceHeard, everHeard });
+            }
+
+            // If never heard speech at all, stop after maxNoSpeechMs
+            if (!everHeard && (now - startTime > maxNoSpeechMs)) {
+                dbg('No speech detected within window, stopping.', { sinceStart: now - startTime, maxNoSpeechMs });
+                stopRecording(false);
+                return;
+            }
+
+            // After speech, stop on extended silence
+            if (everHeard && avg < silenceThreshold && sinceHeard > silenceTimeoutMs) {
+                dbg('Silence timeout hit, stopping.', { sinceHeard, silenceTimeoutMs, avg, silenceThreshold });
+                stopRecording(false);
+                return;
+            }
+
+            silenceCheckTimer = setTimeout(checkSilence, 120);
         };
-        checkSilence();
+        silenceCheckTimer = setTimeout(checkSilence, 120);
 
         globalRecorder.ondataavailable = event => globalChunks.push(event.data);
 
         globalRecorder.onstop = async () => {
+            clearSilenceTimer();
             try {
                 const duration = Date.now() - recordingStartTime;
-                dbg('Recorder stop', { duration, skipTranscribe, sessionId });
+                const bytes = globalChunks.reduce((acc, b) => acc + (b?.size || 0), 0);
+                dbg('Recorder stop', { duration, skipTranscribe, sessionId, bytes });
                 if (skipTranscribe) {
                     captureActive = false;
                     browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'idle' });
@@ -258,8 +309,11 @@ async function startRecording(pageLanguage, sessionId) {
         };
 
         globalRecorder.start();
-        setTimeout(() => { if (captureActive && sessionId === activeSessionId) stopRecording(false); }, 5000); 
+        if (!disableHardCap) {
+            setTimeout(() => { if (captureActive && sessionId === activeSessionId) { dbg('Hard cap stop (5s)', { sessionId }); stopRecording(false); } }, 5000);
+        }
     } catch (err) {
+        clearSilenceTimer();
         captureActive = false;
         showNotification("Error: " + err.message, "error");
         browser.runtime.sendMessage({ type: 'RECORDING_STATE', state: 'idle' });
@@ -267,11 +321,13 @@ async function startRecording(pageLanguage, sessionId) {
 }
 
 function stopRecording(cancel = false) {
+    clearSilenceTimer();
     skipTranscribe = cancel;
     if (globalStream) { globalStream.getTracks().forEach(track => track.stop()); globalStream = null; }
     if (globalContext && globalContext.state !== 'closed') { globalContext.close(); globalContext = null; }
     if (globalRecorder && globalRecorder.state !== 'inactive') { globalRecorder.stop(); }
     captureActive = false;
+    dbg('stopRecording', { cancel, sessionId: activeSessionId });
 }
 
 let lastTextTime = 0;

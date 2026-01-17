@@ -1,13 +1,20 @@
 {
-  "ext_name": { "message": "Whisper Speech Polyfill" },
-  "ext_desc": { "message": "ブラウザで Whisper を使った音声認識のポリフィルです。" },
+  "ext_name": { "message": "音声認識ポリフィル" },
+  "ext_desc": { "message": "ローカル Whisper または AssemblyAI を利用する音声認識 API ポリフィル" },
+  "browser_action_title": { "message": "音声認識ポリフィル" },
 
-  "browser_action_title": { "message": "Whisper Speech" },
+  "title_idle": { "message": "音声認識: 待機中" },
+  "title_recording": { "message": "音声認識: 聴取中" },
+  "title_processing": { "message": "音声認識: 処��中" },
+  "title_error": { "message": "音声認識: エラー" },
 
-  "options_heading": { "message": "Whisper 設定" },
-  "banner_text": { "message": "⚠️ 実験的: Web Speech API の簡易修正ではありません。遅延や中断が起きる場合があります。拡張機能アイコンで状態を確認してください（ピン留め推奨）。" },
+  "options_heading": { "message": "音声認識の設定" },
+  "banner_text": { "message": "⚠️ 実験的機能です。WebSpeech API の簡易修正ではありません。遅延や中断が起こる場合があります。拡張機能アイコン（ピン留め推奨）で状態を確認できます。最高の性能が必要な場合はクラウドエンジンを使用してください。" },
 
-  "defaults_title": { "message": "デフォルト" },
+  "engine_label": { "message": "エンジン" },
+  "engine_local": { "message": "ローカル Whisper (OpenAI)" },
+  "engine_assemblyai": { "message": "クラウド (AssemblyAI)" },
+
   "ai_model": { "message": "AI モデル" },
   "group_en_fast": { "message": "英語のみ（高速）" },
   "group_multi": { "message": "多言語（汎用）" },
@@ -30,61 +37,41 @@
   "lang_pt": { "message": "ポルトガル語" },
   "lang_ja": { "message": "日本語" },
   "lang_zh": { "message": "中国語" },
+  "lang_ru": { "message": "ロシア語" },
 
   "silence_timeout": { "message": "無音タイムアウト (ms)" },
-  "silence_note": { "message": "話し終えてから送信するまでの待機時間。" },
+  "silence_note": { "message": "話し終えてから送信するまでの待機時間です。" },
+  "size_warning": { "message": "⚠️ 大きなモデルです。初回は遅くなります。問題がある場合は Base または Tiny を使用してください。" },
 
-  "size_warning": { "message": "⚠️ 大きなモデルです: 初回は遅い場合があります。失敗する場合は Base か Tiny を使用してください。" },
+  "assemblyai_key_label": { "message": "AssemblyAI API キー" },
+  "assemblyai_key_note": { "message": "ローカルに保存され、クラウドエンジン使用時のみ送信されます。音声は AssemblyAI に送られます。" },
 
-  "save_defaults": { "message": "デフォルトを保存" },
-  "settings_saved": { "message": "設定を保存しました" },
-
-  "developer_settings": { "message": "開発者設定" },
-  "debug_banners": { "message": "通知とデバッグログを表示" },
-  "debug_note": { "message": "トーストとログ（開始/停止/中断、セッションID、バイト数、認識テキスト）を有効にします。デフォルト: オフ（サイレント）。" },
-
-  "site_overrides": { "message": "サイト別設定" },
-  "hostname": { "message": "ホスト" },
   "hostname_placeholder": { "message": "example.com" },
+  "override_timeout_placeholder": { "message": "(デフォルト)" },
+
+  "hostname": { "message": "ホスト名" },
   "model_label": { "message": "モデル" },
-  "language_label_short": { "message": "言語" },
-  "timeout_label": { "message": "タイムアウト" },
   "override_default_option": { "message": "(デフォルト)" },
+  "timeout_label": { "message": "タイムアウト" },
   "add_rule": { "message": "ルールを追加" },
-  "remove_rule": { "message": "ルールを削除" },
+  "remove_rule": { "message": "すべてのルールを削除" },
   "table_host": { "message": "ホスト" },
   "table_model": { "message": "モデル" },
   "table_lang": { "message": "言語" },
   "table_timeout": { "message": "タイムアウト" },
-  "override_timeout_placeholder": { "message": "(デフォルト)" },
+  "table_engine": { "message": "エンジン" },
 
-  "defaults_title_grace_toggle": { "message": "キャンセル猶予ウィンドウを有効化" },
-  "grace_window_label": { "message": "猶予ウィンドウ (ms)" },
-  "grace_window_note": { "message": "キャンセル/停止後の遅延結果を防ぎます。デフォルト: 有効、450ms。0にするか無効で即時送信。" },
+  "debug_banners": { "message": "デバッグモードを有効化" },
 
-  "options_heading_popup": { "message": "サイト" },
   "popup_site_label": { "message": "サイト: (読み込み中…)" },
   "popup_site_prefix": { "message": "サイト" },
   "popup_site_unknown": { "message": "サイト: (不明)" },
+  "override_use_default": { "message": "デフォルトを使用" },
   "popup_timeout_label": { "message": "無音タイムアウト (ms)" },
   "popup_timeout_placeholder": { "message": "デフォルトを使用" },
-  "popup_save": { "message": "このサイトに保存" },
   "popup_remove": { "message": "オーバーライドを削除" },
-  "popup_open_options": { "message": "全オプションを開く" },
+  "popup_open_options": { "message": "詳細オプションを開く" },
   "popup_status_saved": { "message": "保存しました" },
   "popup_removed": { "message": "削除しました" },
-  "override_use_default": { "message": "デフォルトを使用" },
-  "model_not_allowed": { "message": "モデルは許可されていません。" },
-
-  "title_idle": { "message": "Whisper: 待機中" },
-  "title_recording": { "message": "Whisper: 聴取中" },
-  "title_processing": { "message": "Whisper: 処理中" },
-  "title_error": { "message": "Whisper: エラー（大きな声で？）" },
-
-  "notif_listening": { "message": "聴取中" },
-  "notif_processing": { "message": "処理中..." },
-  "notif_no_audio": { "message": "音声が検出されませんでした" },
-  "notif_error": { "message": "エラー（大きな声で？）" },
-  "notif_unintelligible": { "message": "聞き取れませんでした" },
-  "notif_success_prefix": { "message": "" }
+  "model_not_allowed": { "message": "モデルは許可されていません。" }
 }

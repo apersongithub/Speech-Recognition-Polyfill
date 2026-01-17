@@ -1,245 +1,606 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <meta charset="UTF-8" />
-    <style>
-        :root {
-            --bg: #f7f9fb;
-            --card: #ffffff;
-            --primary: #2563eb;
-            --primary-dark: #1d4ed8;
-            --danger: #d93025;
-            --text: #1f2933;
-            --muted: #6b7280;
-            --radius: 12px;
-            --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: radial-gradient(circle at 20% 20%, #eef2ff 0, transparent 25%),
-                        radial-gradient(circle at 80% 0%, #e0f2fe 0, transparent 22%),
-                        var(--bg);
-            padding: 24px;
-            color: var(--text);
-            min-width: 400px;
-        }
-        h3 { margin: 0 0 16px 0; font-weight: 700; letter-spacing: -0.01em; color: #0f172a; }
-        h4 { margin: 0 0 12px 0; font-weight: 600; font-size: 15px; color: #334155; }
-        .card {
-            background: var(--card);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255,255,255,0.7);
-            animation: fadeInUp 240ms ease;
-        }
-        label { font-weight: 500; display: block; margin-top: 14px; font-size: 13px; color: #475569; }
-        
-        select, input[type="text"], input[type="number"] {
-            width: 100%;
-            padding: 10px 12px;
-            margin-top: 6px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            background: #f8fafc;
-            transition: all 0.2s ease;
-            font-size: 14px;
-            color: #1e293b;
-        }
-        select:focus, input:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: #fff;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
+    <title>Speech Recognition Options</title>
+    <link rel="icon" type="image/png" href="images/microphone.png" id="favicon">
 
-        .checkbox-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 10px; cursor: pointer; }
-        input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
-        .checkbox-label { margin: 0; font-weight: 500; font-size: 14px; color: #334155; cursor: pointer; }
+    <head>
+        <meta charset="UTF-8" />
+        <style>
+            :root {
+                --bg: #f7f9fb;
+                --card: #ffffff;
+                --primary: #2563eb;
+                --primary-dark: #1d4ed8;
+                --danger: #ef4444;
+                --danger-dark: #dc2626;
+                --text: #1f2933;
+                --muted: #6b7280;
+                --radius: 12px;
+                --shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+                --border: rgba(226, 232, 240, 0.7);
+                --input-bg: #f8fafc;
+                --input-border: #e2e8f0;
+                --pill-bg: #e0f2fe;
+                --pill-border: #bae6fd;
+            }
 
-        button {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: #fff;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            padding: 10px 16px;
-            border-radius: 8px;
-            margin-top: 16px;
-            width: 100%;
-            transition: transform 0.1s, box-shadow 0.2s;
-        }
-        button:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(37, 99, 235, 0.2); }
-        button:active { transform: scale(0.98); }
-        .btn-danger {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-            margin-top: 0;
-            padding: 8px 12px;
-            font-size: 13px;
-        }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg: #0f172a;
+                    --card: #111827;
+                    --primary: #3b82f6;
+                    --primary-dark: #2563eb;
+                    --danger: #ef4444;
+                    --danger-dark: #dc2626;
+                    --text: #e5e7eb;
+                    --muted: #94a3b8;
+                    --shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+                    --border: rgba(255, 255, 255, 0.08);
+                    --input-bg: #111827;
+                    --input-border: #1f2937;
+                    --pill-bg: #0ea5e9;
+                    --pill-border: #0284c7;
+                }
+            }
 
-        .note { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
-        .warning {
-            color: #b91c1c; background: #fef2f2;
-            font-size: 12px; margin-top: 10px; display: none;
-            padding: 10px; border-radius: 8px; border: 1px solid #fecaca;
-        }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
-        th { text-align: left; font-size: 11px; text-transform: uppercase; color: #64748b; padding-bottom: 8px; border-bottom: 2px solid #f1f5f9; }
-        td { padding: 10px 4px; border-bottom: 1px solid #f1f5f9; color: #334155; }
-        
-        .actions { display: flex; gap: 8px; margin-top: 16px; align-items: flex-end; }
-        .actions > div { flex: 1; }
-        
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-        #status { text-align: center; font-size: 13px; color: #16a34a; margin-top: 12px; opacity: 0; transition: opacity 0.3s; }
+            * {
+                box-sizing: border-box;
+            }
 
-        .banner {
-            background: #fff7ed;
-            border: 1px solid #fed7aa;
-            color: #9a3412;
-            padding: 12px 14px;
-            border-radius: 10px;
-            margin-bottom: 16px;
-            box-shadow: var(--shadow);
-            font-size: 13px;
-            line-height: 1.5;
-        }
-    </style>
-</head>
+            body {
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                background: var(--bg);
+                padding: 12px;
+                color: var(--text);
+                display: flex;
+                justify-content: center;
+            }
+
+            .container {
+                width: 100%;
+                max-width: 620px;
+            }
+
+            h3 {
+                margin: 0 0 10px 0;
+                font-weight: 700;
+                letter-spacing: -0.01em;
+                color: var(--text);
+                text-align: center;
+            }
+
+            .card {
+                background: var(--card);
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+                padding: 14px;
+                margin-bottom: 12px;
+                border: 1px solid var(--border);
+                animation: fadeInUp 160ms ease;
+            }
+
+            label {
+                font-weight: 500;
+                display: block;
+                margin-top: 8px;
+                font-size: 13px;
+                color: var(--text);
+            }
+
+            select,
+            input[type="text"],
+            input[type="number"],
+            input[type="password"] {
+                width: 100%;
+                padding: 8px 10px;
+                margin-top: 4px;
+                border-radius: 8px;
+                border: 1px solid var(--input-border);
+                background: var(--card);
+                transition: all 0.2s ease;
+                font-size: 14px;
+                color: var(--text);
+            }
+
+            @media (prefers-color-scheme: dark) {
+
+                select,
+                input[type="text"],
+                input[type="number"],
+                input[type="password"] {
+                    color: var(--text);
+                }
+            }
+
+            select:focus,
+            input:focus {
+                outline: none;
+                border-color: var(--primary);
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+            }
+
+            @media (prefers-color-scheme: dark) {
+
+                select:focus,
+                input:focus {
+                    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+                }
+            }
+
+            .checkbox-wrapper {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 6px;
+                cursor: pointer;
+            }
+
+            input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
+                accent-color: var(--primary);
+            }
+
+            .checkbox-label {
+                margin: 0;
+                font-weight: 500;
+                font-size: 13px;
+                color: var(--text);
+                cursor: pointer;
+            }
+
+            button {
+                background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+                color: #fff;
+                border: none;
+                cursor: pointer;
+                font-weight: 600;
+                padding: 9px 14px;
+                border-radius: 8px;
+                margin-top: 8px;
+                width: 100%;
+                transition: transform 0.1s, box-shadow 0.2s;
+            }
+
+            button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
+            }
+
+            button:active {
+                transform: scale(0.99);
+            }
+
+            .btn-danger {
+                background: linear-gradient(135deg, var(--danger), var(--danger-dark));
+                box-shadow: 0 8px 16px rgba(239, 68, 68, 0.18);
+            }
+
+            .btn-secondary {
+                background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            }
+
+            .note {
+                font-size: 12px;
+                color: var(--muted);
+                margin-top: 4px;
+                line-height: 1.4;
+            }
+
+            .status {
+                text-align: left;
+                font-size: 12px;
+                color: #16a34a;
+                margin-top: 6px;
+                opacity: 0;
+                transition: opacity 0.25s;
+            }
+
+            .banner {
+                background: #fff7ed;
+                border: 1px solid #fed7aa;
+                color: #9a3412;
+                padding: 10px 12px;
+                border-radius: 10px;
+                margin-bottom: 10px;
+                box-shadow: var(--shadow);
+                font-size: 13px;
+                line-height: 1.4;
+            }
+
+            .section-header {
+                margin: 0 0 6px;
+                font-weight: 700;
+                font-size: 15px;
+                color: var(--text);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .pill {
+                display: inline-block;
+                padding: 3px 8px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #0f172a;
+                background: var(--pill-bg);
+                border: 1px solid var(--pill-border);
+                margin-left: 8px;
+            }
+
+            .icon {
+                width: 16px;
+                height: 16px;
+                display: inline-block;
+                background-color: currentColor;
+                mask-repeat: no-repeat;
+                mask-position: center;
+                mask-size: contain;
+                -webkit-mask-repeat: no-repeat;
+                -webkit-mask-position: center;
+                -webkit-mask-size: contain;
+            }
+
+            .icon-sliders {
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cline x1='4' y1='21' x2='4' y2='14'/%3E%3Cline x1='4' y1='10' x2='4' y2='3'/%3E%3Cline x1='12' y1='21' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12' y2='3'/%3E%3Cline x1='20' y1='21' x2='20' y2='16'/%3E%3Cline x1='20' y1='12' x2='20' y2='3'/%3E%3Cline x1='2' y1='14' x2='6' y2='14'/%3E%3Cline x1='10' y1='8' x2='14' y2='8'/%3E%3Cline x1='18' y1='16' x2='22' y2='16'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cline x1='4' y1='21' x2='4' y2='14'/%3E%3Cline x1='4' y1='10' x2='4' y2='3'/%3E%3Cline x1='12' y1='21' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12' y2='3'/%3E%3Cline x1='20' y1='21' x2='20' y2='16'/%3E%3Cline x1='20' y1='12' x2='20' y2='3'/%3E%3Cline x1='2' y1='14' x2='6' y2='14'/%3E%3Cline x1='10' y1='8' x2='14' y2='8'/%3E%3Cline x1='18' y1='16' x2='22' y2='16'/%3E%3C/svg%3E");
+            }
+
+            .icon-cpu {
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Crect x='9' y='9' width='6' height='6' rx='1'/%3E%3Cpath d='M9 1v3m6-3v3m0 16v3m-6-3v3M1 9h3m-3 6h3m16-6h3m-3 6h3'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Crect x='9' y='9' width='6' height='6' rx='1'/%3E%3Cpath d='M9 1v3m6-3v3m0 16v3m-6-3v3M1 9h3m-3 6h3m16-6h3m-3 6h3'/%3E%3C/svg%3E");
+            }
+
+            .icon-cloud {
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.5A4 4 0 0 0 6 19h11.5Z'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.5A4 4 0 0 0 6 19h11.5Z'/%3E%3C/svg%3E");
+            }
+
+            .icon-terminal {
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 8 11 12 7 16'/%3E%3Cline x1='13' y1='16' x2='17' y2='16'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 8 11 12 7 16'/%3E%3Cline x1='13' y1='16' x2='17' y2='16'/%3E%3C/svg%3E");
+            }
+
+            .icon-save {
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z'/%3E%3Cpath d='M17 21v-8H7v8'/%3E%3Cpath d='M7 3v5h8'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z'/%3E%3Cpath d='M17 21v-8H7v8'/%3E%3Cpath d='M7 3v5h8'/%3E%3C/svg%3E");
+            }
+
+            .icon-layers {
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 3 7 12 12 21 7 12 2'/%3E%3Cpolyline points='3 12 12 17 21 12'/%3E%3Cpolyline points='3 17 12 22 21 17'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 3 7 12 12 21 7 12 2'/%3E%3Cpolyline points='3 12 12 17 21 12'/%3E%3Cpolyline points='3 17 12 22 21 17'/%3E%3C/svg%3E");
+            }
+
+            .fav-icon {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                object-fit: contain;
+                border: 1px solid #d1d5db;
+                background: #f8fafc;
+                margin-right: 6px;
+                vertical-align: middle;
+            }
+
+            @media (prefers-color-scheme: dark) {
+                .fav-icon {
+                    background: #0b1220;
+                    border-color: #1f2937;
+                }
+            }
+
+            .host-cell {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .row-delete {
+                background: transparent;
+                border: none;
+                color: var(--danger);
+                cursor: pointer;
+                font-size: 14px;
+                padding: 4px 6px;
+            }
+
+            .row-delete:hover {
+                color: var(--danger-dark);
+            }
+
+            /* Site overrides layout + table styling */
+            .actions {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                align-items: flex-end;
+            }
+
+            .actions>div {
+                flex: 1;
+                min-width: 180px;
+            }
+
+            .overrides-actions {
+                margin-top: 12px;
+            }
+
+            .overrides-note {
+                margin-bottom: 10px;
+            }
+
+            #override-table {
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+            }
+
+            #override-table th,
+            #override-table td {
+                padding: 8px 10px;
+                font-size: 12.5px;
+                color: var(--text);
+                text-align: left;
+            }
+
+            #override-table thead th {
+                font-weight: 700;
+                border-bottom: 1px solid var(--border);
+            }
+
+            #override-table tbody tr:nth-child(even) {
+                background: rgba(15, 23, 42, 0.03);
+            }
+
+            @media (prefers-color-scheme: dark) {
+                #override-table tbody tr:nth-child(even) {
+                    background: rgba(255, 255, 255, 0.03);
+                }
+            }
+        </style>
+    </head>
+
 <body>
-    <h3 data-i18n="options_heading">Whisper Settings</h3>
-    <div class="banner" data-i18n="banner_text">
-        ⚠️ Experimental: This is not a bandaid fix to the webspeech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar).
-    </div>
-
-    <div class="card">
-        <h4 data-i18n="defaults_title">Defaults</h4>
-        
-        <label data-i18n="ai_model">AI Model</label>
-        <select id="model-select">
-            <optgroup label="English Only (Fast)" data-i18n="group_en_fast">
-                <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)</option>
-                <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)</option>
-                <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)</option>
-            </optgroup>
-            <optgroup label="Multilingual (General Purpose)" data-i18n="group_multi">
-                <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)</option>
-                <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)</option>
-                <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)</option>
-            </optgroup>
-            <optgroup label="Experimental" data-i18n="group_experimental">
-                <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium English (~600MB)</option>
-            </optgroup>
-        </select>
-        <div id="size-warning" class="warning"></div>
-
-<!-- Only the language select section shown -->
-<label data-i18n="language_label">Language</label>
-<select id="language-select">
-    <option value="auto" data-i18n="lang_auto">Auto-Detect</option>
-    <option value="en" data-i18n="lang_en">English</option>
-    <option value="es" data-i18n="lang_es">Spanish</option>
-    <option value="fr" data-i18n="lang_fr">French</option>
-    <option value="de" data-i18n="lang_de">German</option>
-    <option value="it" data-i18n="lang_it">Italian</option>
-    <option value="pt" data-i18n="lang_pt">Portuguese</option>
-    <option value="ja" data-i18n="lang_ja">Japanese</option>
-    <option value="zh" data-i18n="lang_zh">Chinese</option>
-    <option value="ru" data-i18n="lang_ru">Russian</option>
-</select>
-
-        <label data-i18n="silence_timeout">Silence Timeout (ms)</label>
-        <input id="silence-timeout" type="number" min="500" max="5000" step="100" value="1000" />
-        <div class="note" data-i18n="silence_note">Time to wait after you stop speaking before sending.</div>
-
-        <div class="checkbox-wrapper" style="margin-top:12px;">
-            <input type="checkbox" id="grace-enabled" />
-            <label for="grace-enabled" class="checkbox-label">Enable cancel grace window</label>
-        </div>
-        <label style="margin-top:10px;">Grace window (ms)</label>
-        <input id="grace-ms" type="number" min="0" max="2000" step="50" value="450" />
-        <div class="note">
-            Prevents late results after you hit cancel/stop (default: on, 450ms). Turn off or set to 0 if you want results sent immediately after processing.
+    <div class="container">
+        <h3 data-i18n="options_heading">Speech Recognition Settings</h3>
+        <div class="banner" data-i18n="banner_text">
+            ⚠️ Experimental: This is not a bandaid fix to the webspeech API. Expect occasional slowdowns or
+            interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If
+            you want the best performance, use the cloud based engine.
         </div>
 
-        <button id="save-btn" data-i18n="save_defaults">Save Defaults</button>
-        <div id="status" data-i18n="settings_saved">Settings Saved</div>
-    </div>
-
-    <div class="card">
-        <h4 data-i18n="developer_settings">Developer Settings</h4>
-        <div class="checkbox-wrapper">
-            <input type="checkbox" id="debug-mode" />
-            <label for="debug-mode" class="checkbox-label" data-i18n="debug_banners">Show Notification Banners & Debug Logs</label>
-        </div>
-        <div class="note">
-            Enables toast banners and console debug logs (start/stop/abort, session IDs, bytes, and recognized text). Default: Off (Silent Mode).
-        </div>
-    </div>
-
-    <div class="card">
-        <h4 data-i18n="site_overrides">Site Overrides</h4>
-        <div class="note">Customize settings for specific websites (e.g., <b>google.com</b>).</div>
-
-        <div class="actions">
-            <div>
-                <label style="margin-top:0" data-i18n="hostname">Hostname</label>
-                <input id="override-host" type="text" placeholder="example.com" />
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-sliders" aria-hidden="true"></span>
+                Engine
             </div>
-            <div>
-                <label style="margin-top:0" data-i18n="model_label">Model</label>
-                <select id="override-model">
-                    <option value="" data-i18n="override_default_option">(Default)</option>
-                    <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English</option>
-                    <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English</option>
-                    <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English</option>
-                    <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multi</option>
-                    <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multi</option>
-                </select>
+            <label data-i18n="engine_label">Engine</label>
+            <select id="provider-select">
+                <option value="local-whisper" data-i18n="engine_local">On-device Whisper (OpenAI)</option>
+                <option value="assemblyai" data-i18n="engine_assemblyai">Cloud (AssemblyAI)</option>
+            </select>
+            <div class="note">
+                Whisper runs locally; AssemblyAI sends audio to the cloud (requires API key).
             </div>
-        </div>
-        
-        <div class="actions" style="margin-top: 10px;">
-            <div style="flex:1">
-                 <label style="margin-top:0" data-i18n="language_label">Language</label>
-                 <select id="override-language">
-                    <option value="" data-i18n="override_default_option">(Default)</option>
-                    <option value="auto" data-i18n="lang_auto">Auto</option>
-                    <option value="en" data-i18n="lang_en">English</option>
-                    <option value="es" data-i18n="lang_es">Spanish</option>
-                 </select>
-            </div>
-            <div style="flex:1">
-                <label style="margin-top:0" data-i18n="timeout_label">Timeout</label>
-                <input id="override-timeout" type="number" placeholder="(Default)" />
-            </div>
+            <div class="status" id="status-engine">Saved</div>
         </div>
 
-        <div class="actions">
-            <button id="add-override" style="margin-top:0;" data-i18n="add_rule">Add Rule</button>
-            <button id="remove-override" class="btn-danger" style="margin-top:0;" data-i18n="remove_rule">Remove Rule</button>
+        <div class="card" id="card-local">
+            <div class="section-header">
+                <span class="icon icon-cpu" aria-hidden="true"></span>
+                On-device Whisper <span class="pill">Local</span>
+            </div>
+            <label data-i18n="ai_model">AI Model</label>
+            <select id="model-select">
+                <optgroup label="English Only (Fast)" data-i18n="group_en_fast">
+                    <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)</option>
+                    <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)</option>
+                    <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)</option>
+                </optgroup>
+                <optgroup label="Multilingual (General Purpose)" data-i18n="group_multi">
+                    <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)</option>
+                    <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)</option>
+                    <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)
+                    </option>
+                </optgroup>
+                <optgroup label="Experimental" data-i18n="group_experimental">
+                    <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium English
+                        (~600MB)</option>
+                </optgroup>
+            </select>
+            <div id="size-warning" class="warning"></div>
+
+            <label data-i18n="language_label">Language</label>
+            <select id="language-select">
+                <option value="auto" data-i18n="lang_auto">Auto-Detect</option>
+                <option value="en" data-i18n="lang_en">English</option>
+                <option value="es" data-i18n="lang_es">Spanish</option>
+                <option value="fr" data-i18n="lang_fr">French</option>
+                <option value="de" data-i18n="lang_de">German</option>
+                <option value="it" data-i18n="lang_it">Italian</option>
+                <option value="pt" data-i18n="lang_pt">Portuguese</option>
+                <option value="ja" data-i18n="lang_ja">Japanese</option>
+                <option value="zh" data-i18n="lang_zh">Chinese</option>
+                <option value="ru" data-i18n="lang_ru">Russian</option>
+            </select>
+
+            <label data-i18n="silence_timeout">Silence Timeout (ms)</label>
+            <input id="silence-timeout" type="number" min="500" max="5000" step="100" value="1000" />
+            <div class="note" data-i18n="silence_note">Time to wait after you stop speaking before sending.</div>
+
+            <label style="margin-top:6px;">Grace window (ms)</label>
+            <input id="grace-ms" type="number" min="0" max="2000" step="50" value="450" />
+            <div class="note">
+                Prevents late results after cancel/stop when grace is enabled (default on).
+            </div>
+            <div class="status" id="status-local">Saved</div>
         </div>
 
-        <table id="override-table">
-            <thead>
-                <tr>
-                    <th data-i18n="table_host">Host</th>
-                    <th data-i18n="table_model">Model</th>
-                    <th data-i18n="table_lang">Lang</th>
-                    <th data-i18n="table_timeout">Timeout</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+        <div class="card" id="card-cloud">
+            <div class="section-header">
+                <span class="icon icon-cloud" aria-hidden="true"></span>
+                Cloud (AssemblyAI) <span class="pill" style="background:#ecfeff;border-color:#a5f3fc;">Cloud</span>
+            </div>
+            <label data-i18n="assemblyai_key_label">AssemblyAI API Key</label>
+            <input id="assemblyai-key" type="password" placeholder="Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d" />
+            <div class="actions" style="margin-top:8px;">
+                <button id="open-assemblyai" class="btn-secondary" type="button">Get an AssemblyAI API Key</button>
+            </div>
+            <div class="note" data-i18n="assemblyai_key_note">
+                Stored locally; used only when the cloud engine is selected. It is free but requires an account since
+                speech data is sent to AssemblyAI for processing.
+            </div>
+            <div class="status" id="status-cloud">Saved</div>
+        </div>
+
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-layers" aria-hidden="true"></span>
+                Site Overrides
+            </div>
+            <div class="note overrides-note">Customize settings for specific websites (e.g., <b>google.com</b>).</div>
+
+            <div class="actions">
+                <div>
+                    <label style="margin-top:0" data-i18n="hostname">Hostname</label>
+                    <input id="override-host" type="text" placeholder="example.com" />
+                </div>
+                <div>
+                    <label style="margin-top:0" data-i18n="model_label">Model</label>
+                    <select id="override-model">
+                        <option value="" data-i18n="override_default_option">(Default)</option>
+                        <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)</option>
+                        <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)</option>
+                        <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)
+                        </option>
+                        <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)
+                        </option>
+                        <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)
+                        </option>
+                        <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)
+                        </option>
+                        <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium
+                            English (~600MB)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top: 8px;">
+                <div style="flex:1">
+                    <label style="margin-top:0" data-i18n="language_label">Language</label>
+                    <select id="override-language">
+                        <option value="" data-i18n="override_default_option">(Default)</option>
+                        <option value="auto" data-i18n="lang_auto">Auto</option>
+                        <option value="en" data-i18n="lang_en">English</option>
+                        <option value="es" data-i18n="lang_es">Spanish</option>
+                        <option value="fr" data-i18n="lang_fr">French</option>
+                        <option value="de" data-i18n="lang_de">German</option>
+                        <option value="it" data-i18n="lang_it">Italian</option>
+                        <option value="pt" data-i18n="lang_pt">Portuguese</option>
+                        <option value="ja" data-i18n="lang_ja">Japanese</option>
+                        <option value="zh" data-i18n="lang_zh">Chinese</option>
+                        <option value="ru" data-i18n="lang_ru">Russian</option>
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label style="margin-top:0" data-i18n="timeout_label">Timeout</label>
+                    <input id="override-timeout" type="number" placeholder="(Default)" />
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top: 8px;">
+                <div style="flex:1">
+                    <label style="margin-top:0" data-i18n="engine_label">Engine</label>
+                    <select id="override-provider">
+                        <option value="" data-i18n="override_default_option">(Default)</option>
+                        <option value="local-whisper" data-i18n="engine_local">On-device Whisper</option>
+                        <option value="assemblyai" data-i18n="engine_assemblyai">Cloud (AssemblyAI)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="actions overrides-actions">
+                <button id="add-override" style="margin-top:0;" data-i18n="add_rule">Add Rule</button>
+                <button id="remove-override" class="btn-danger" style="margin-top:0;" data-i18n="remove_rule">Remove All
+                    Rules</button>
+            </div>
+
+            <table id="override-table">
+                <thead>
+                    <tr>
+                        <th data-i18n="table_host">Host</th>
+                        <th data-i18n="table_model">Model</th>
+                        <th data-i18n="table_lang">Lang</th>
+                        <th data-i18n="table_timeout">Timeout</th>
+                        <th data-i18n="table_engine">Engine</th>
+                        <th aria-label="Remove"></th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div class="status" id="status-overrides">Saved</div>
+        </div>
+
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-terminal" aria-hidden="true"></span>
+                Developer Settings
+            </div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="debug-mode" />
+                <label for="debug-mode" class="checkbox-label" data-i18n="debug_banners">Enable Debug Mode</label>
+            </div>
+            <div class="note">
+                Enables toast banners and console debug logs. Default: Off.
+            </div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="disable-favicons" />
+                <label for="disable-favicons" class="checkbox-label">Disable favicons in overrides table</label>
+            </div>
+            <div class="note">Default: favicons shown. Enable to hide favicons.</div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="show-model-sections-toggle" />
+                <label for="show-model-sections-toggle" class="checkbox-label">Show engine-specific sections</label>
+            </div>
+            <div class="note">Default: off (sections auto-hide based on engine).</div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="enable-hardcap" />
+                <label for="enable-hardcap" class="checkbox-label">Enable 5s hard cap</label>
+            </div>
+            <div class="note">Default: off (recording stops on silence instead of fixed 5s).</div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="disable-grace-window" />
+                <label for="disable-grace-window" class="checkbox-label">Disable grace window</label>
+            </div>
+            <div class="note">Default: off (grace is enabled; set grace ms above).</div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="cache-default-model" />
+                <label for="cache-default-model" class="checkbox-label">Cache default model (prefetch on
+                    startup)</label>
+            </div>
+            <div class="note">Prefetches your default on-device Whisper model so first use is faster. Only applies when
+                using the local engine.</div>
+            <div class="status" id="status-dev">Saved</div>
+        </div>
+
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-save" aria-hidden="true"></span>
+                Save & Reset
+            </div>
+            <button id="save-btn-bottom">Save Everything</button>
+            <div class="note">Applies all current settings and overrides.</div>
+            <button id="factory-reset" class="btn-danger" type="button" style="margin-top:18px;">Factory Reset</button>
+            <div class="note">Resets all settings and overrides to defaults.</div>
+            <div class="status" id="status-save">Saved</div>
+        </div>
     </div>
-
     <script src="options.js"></script>
 </body>
+
 </html>
