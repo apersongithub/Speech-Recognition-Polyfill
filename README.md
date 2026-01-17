@@ -29,10 +29,10 @@
 | Q | A |
 |---|---|
 | How do I make an [API Key](https://www.assemblyai.com/dashboard/api-keys)? | Click the link, create an account, and you’ll get a key right after signing up. |
-| Is the cloud model paid? | AssemblyAI provides a generous free tier (IIRC, 300–500 hours/month). Beyond that, you have to pay or switch to the local model. |
-| Does audio leave my device? | Local: **No** audio stays on-device (after the model downloads). Default is local. Cloud (AssemblyAI): **Yes**, audio is uploaded for transcription. |
+| Is the cloud model paid? | AssemblyAI provides a free tier (IIRC, 300–500 hours/month). Beyond that, you have to pay or switch to the local model. |
+| Does audio leave my device? | Local (Default): **No** audio stays on-device (after the model downloads). Cloud (AssemblyAI): **Yes**, audio is uploaded for transcription. |
 | Can you explain the icon indicators? | Color reflects recording/processing/error; badges show downloading/cached/done/cancel. A red/error icon often means canceled, missing API key, or unintelligible speech...Not necessarily a bad mic. Pin the icon to monitor state. |
-| How do I improve accuracy? | Speak loud, slow, and clear; pick the correct mic. Use a larger Whisper model (slower) **or switch to the cloud engine** for better quality. |
+| How do I improve accuracy? | Speak loud, slow, and clear; pick the correct mic. Use a larger Whisper model (slower) **or switch to the cloud engine** for better speed & quality. |
 | How is silence handled? | Adaptive Voice Activity Detection plus a configurable silence timeout (global and per-site). |
 
 | Engine          | Model ID                       | Notes                                |
