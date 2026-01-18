@@ -2,14 +2,14 @@
   "manifest_version": 2,
   "default_locale": "en",
   "name": "__MSG_ext_name__",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "__MSG_ext_desc__",
   "permissions": [
     "<all_urls>",
     "storage",
     "tabs"
   ],
-    "browser_specific_settings": {
+  "browser_specific_settings": {
     "gecko": {
       "id": "@firefox-speech-polyfill",
       "data_collection_permissions": {
@@ -44,6 +44,7 @@
     }
   ],
   "web_accessible_resources": [
-    "polyfill.js"
+    "polyfill.js",
+    "asr-worker.js"
   ]
 }

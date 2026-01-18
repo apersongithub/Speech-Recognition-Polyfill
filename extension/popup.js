@@ -12,11 +12,15 @@ const ALLOWED_PROVIDERS = new Set(['local-whisper', 'assemblyai']);
 function t(key, fallback = '') { return browser.i18n?.getMessage(key) || fallback; }
 
 function applyI18n() {
+  const titleMsg = t('popup_page_title');
+  if (titleMsg) document.title = titleMsg;
+
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     const msg = t(key);
     if (msg) el.textContent = msg;
   });
+
   const timeout = document.getElementById('timeout');
   if (timeout) timeout.placeholder = t('popup_timeout_placeholder', timeout.placeholder || 'Use default');
 }

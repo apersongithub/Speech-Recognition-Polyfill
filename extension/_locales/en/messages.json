@@ -8,12 +8,60 @@
   "title_processing": { "message": "Speech Recognition: Processing" },
   "title_error": { "message": "Speech Recognition: Error" },
 
+  "options_page_title": { "message": "Speech Recognition Options" },
+  "popup_page_title": { "message": "Speech Recognition" },
+
+  "status_saved": { "message": "Saved" },
+
   "options_heading": { "message": "Speech Recognition Settings" },
   "banner_text": { "message": "⚠️ Experimental: This is not a bandaid fix to the webspeech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine." },
 
   "engine_label": { "message": "Engine" },
   "engine_local": { "message": "On-device Whisper (OpenAI)" },
   "engine_assemblyai": { "message": "Cloud (AssemblyAI)" },
+
+  "section_engine": { "message": "Engine" },
+  "engine_note": { "message": "Whisper runs locally; AssemblyAI sends audio to the cloud (requires API key)." },
+
+  "section_local_title": { "message": "On-device Whisper" },
+  "pill_local": { "message": "Local" },
+
+  "section_cloud_title": { "message": "Cloud (AssemblyAI)" },
+  "pill_cloud": { "message": "Cloud" },
+  "assemblyai_get_key_btn": { "message": "Get an AssemblyAI API Key" },
+  "assemblyai_key_placeholder": { "message": "Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
+
+  "section_shortcuts": { "message": "Speech shortcuts" },
+  "shortcut_enable": { "message": "Enable speech shortcut" },
+  "shortcut_enable_note": { "message": "Disables the keyboard shortcut entirely when off." },
+  "shortcut_hotkey_label": { "message": "Keyboard shortcut" },
+  "shortcut_hotkey_placeholder": { "message": "Click and press keys (Alt+A)" },
+  "shortcut_hotkey_note": { "message": "Click, press the combo you want. Backspace/Delete to clear. Esc to disable shortcut. Empty disables." },
+  "send_enter_after_label": { "message": "Send Enter after inserting text" },
+  "send_enter_after_note": { "message": "Off by default. When on, presses Enter on the focused field right after text is inserted." },
+
+  "section_overrides": { "message": "Site Overrides" },
+  "overrides_note": { "message": "Customize settings for specific websites (e.g., <b>google.com</b>)." },
+
+  "section_developer": { "message": "Developer Settings" },
+  "debug_banners": { "message": "Enable Debug Mode" },
+  "debug_note": { "message": "Enables toast banners and console debug logs. Default: Off." },
+  "disable_favicons_label": { "message": "Disable favicons in overrides table" },
+  "disable_favicons_note": { "message": "Default: favicons shown. Enable to hide favicons." },
+  "show_engine_sections_label": { "message": "Show engine-specific sections" },
+  "show_engine_sections_note": { "message": "Default: off (sections auto-hide based on engine)." },
+  "enable_hardcap_label": { "message": "Enable 5s hard cap" },
+  "enable_hardcap_note": { "message": "Default: off (recording stops on silence instead of fixed 5s)." },
+  "disable_grace_label": { "message": "Disable grace window" },
+  "disable_grace_note": { "message": "Default: off (grace is enabled; set grace ms above)." },
+  "cache_default_model_label": { "message": "Cache default model (prefetch on startup)" },
+  "cache_default_model_note": { "message": "Prefetches your default on-device Whisper model so first use is faster. Only applies when using the local engine." },
+
+  "section_save_reset": { "message": "Save & Reset" },
+  "save_everything": { "message": "Save Everything" },
+  "save_everything_note": { "message": "Applies all current settings and overrides." },
+  "factory_reset": { "message": "Factory Reset" },
+  "factory_reset_note": { "message": "Resets all settings and overrides to defaults." },
 
   "ai_model": { "message": "AI Model" },
   "group_en_fast": { "message": "English Only (Fast)" },
@@ -41,6 +89,9 @@
 
   "silence_timeout": { "message": "Silence Timeout (ms)" },
   "silence_note": { "message": "Time to wait after you stop speaking before sending." },
+  "grace_window_label": { "message": "Grace window (ms)" },
+  "grace_window_note": { "message": "Prevents late results after cancel/stop when grace is enabled (default on)." },
+
   "size_warning": { "message": "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny." },
 
   "assemblyai_key_label": { "message": "AssemblyAI API Key" },
@@ -60,8 +111,6 @@
   "table_lang": { "message": "Lang" },
   "table_timeout": { "message": "Timeout" },
   "table_engine": { "message": "Engine" },
-
-  "debug_banners": { "message": "Enable Debug Mode" },
 
   "popup_site_label": { "message": "Site: (loading…)" },
   "popup_site_prefix": { "message": "Site" },

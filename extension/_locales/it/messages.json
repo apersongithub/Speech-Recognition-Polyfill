@@ -1,19 +1,67 @@
 {
-  "ext_name": { "message": "Polyfill per riconoscimento vocale" },
-  "ext_desc": { "message": "Polyfill dell’API di riconoscimento vocale con Whisper locale o AssemblyAI" },
-  "browser_action_title": { "message": "Polyfill per riconoscimento vocale" },
+  "ext_name": { "message": "Polyfill di riconoscimento vocale" },
+  "ext_desc": { "message": "Polyfill dell’API Speech Recognition con Whisper sul dispositivo o AssemblyAI" },
+  "browser_action_title": { "message": "Polyfill di riconoscimento vocale" },
 
   "title_idle": { "message": "Riconoscimento vocale: Inattivo" },
   "title_recording": { "message": "Riconoscimento vocale: In ascolto" },
   "title_processing": { "message": "Riconoscimento vocale: Elaborazione" },
   "title_error": { "message": "Riconoscimento vocale: Errore" },
 
-  "options_heading": { "message": "Impostazioni riconoscimento vocale" },
-  "banner_text": { "message": "⚠️ Sperimentale: non è una correzione rapida della WebSpeech API. Possibili rallentamenti o interruzioni. Controlla lo stato dall’icona dell’estensione (fissala alla barra). Per prestazioni migliori usa il motore cloud." },
+  "options_page_title": { "message": "Opzioni di riconoscimento vocale" },
+  "popup_page_title": { "message": "Riconoscimento vocale" },
+
+  "status_saved": { "message": "Salvato" },
+
+  "options_heading": { "message": "Impostazioni di riconoscimento vocale" },
+  "banner_text": { "message": "⚠️ Sperimentale: non è una correzione dell’API WebSpeech. Aspettati rallentamenti o interruzioni occasionali. Puoi vedere lo stato tramite l’icona dell’estensione (fissala alla barra). Per le migliori prestazioni, usa il motore cloud." },
 
   "engine_label": { "message": "Motore" },
-  "engine_local": { "message": "Whisper locale (OpenAI)" },
+  "engine_local": { "message": "Whisper sul dispositivo (OpenAI)" },
   "engine_assemblyai": { "message": "Cloud (AssemblyAI)" },
+
+  "section_engine": { "message": "Motore" },
+  "engine_note": { "message": "Whisper gira localmente; AssemblyAI invia l’audio al cloud (richiede chiave API)." },
+
+  "section_local_title": { "message": "Whisper sul dispositivo" },
+  "pill_local": { "message": "Locale" },
+
+  "section_cloud_title": { "message": "Cloud (AssemblyAI)" },
+  "pill_cloud": { "message": "Cloud" },
+  "assemblyai_get_key_btn": { "message": "Ottieni una chiave API AssemblyAI" },
+  "assemblyai_key_placeholder": { "message": "Es.: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
+
+  "section_shortcuts": { "message": "Scorciatoie vocali" },
+  "shortcut_enable": { "message": "Abilita scorciatoia vocale" },
+  "shortcut_enable_note": { "message": "Disattiva completamente la scorciatoia da tastiera quando è off." },
+  "shortcut_hotkey_label": { "message": "Scorciatoia da tastiera" },
+  "shortcut_hotkey_placeholder": { "message": "Clicca e premi i tasti (Alt+A)" },
+  "shortcut_hotkey_note": { "message": "Clicca e premi la combinazione desiderata. Backspace/Canc per cancellare. Esc disabilita la scorciatoia. Vuoto = disabilitato." },
+  "send_enter_after_label": { "message": "Invia Invio dopo aver inserito il testo" },
+  "send_enter_after_note": { "message": "Disattivato per default. Se attivo, preme Invio nel campo attivo subito dopo l’inserimento del testo." },
+
+  "section_overrides": { "message": "Override per sito" },
+  "overrides_note": { "message": "Personalizza le impostazioni per siti specifici (es. <b>google.com</b>)." },
+
+  "section_developer": { "message": "Impostazioni sviluppatore" },
+  "debug_banners": { "message": "Abilita modalità debug" },
+  "debug_note": { "message": "Abilita toast e log di debug nella console. Predefinito: disattivato." },
+  "disable_favicons_label": { "message": "Disabilita le favicon nella tabella degli override" },
+  "disable_favicons_note": { "message": "Predefinito: favicon visibili. Attiva per nasconderle." },
+  "show_engine_sections_label": { "message": "Mostra sezioni specifiche del motore" },
+  "show_engine_sections_note": { "message": "Predefinito: disattivato (le sezioni si nascondono automaticamente in base al motore)." },
+  "enable_hardcap_label": { "message": "Abilita limite fisso di 5 s" },
+  "enable_hardcap_note": { "message": "Predefinito: disattivato (la registrazione si ferma con il silenzio invece che dopo 5 s)." },
+  "disable_grace_label": { "message": "Disabilita finestra di grazia" },
+  "disable_grace_note": { "message": "Predefinito: disattivato (la grazia è attiva; imposta i ms sopra)." },
+  "cache_default_model_label": { "message": "Metti in cache il modello predefinito (prefetch all’avvio)" },
+  "cache_default_model_note": { "message": "Precarica il modello Whisper predefinito per rendere più veloce il primo utilizzo. Vale solo per il motore locale." },
+
+  "section_save_reset": { "message": "Salva e ripristina" },
+  "save_everything": { "message": "Salva tutto" },
+  "save_everything_note": { "message": "Applica tutte le impostazioni e gli override correnti." },
+  "factory_reset": { "message": "Ripristino di fabbrica" },
+  "factory_reset_note": { "message": "Ripristina tutte le impostazioni e gli override ai valori predefiniti." },
 
   "ai_model": { "message": "Modello IA" },
   "group_en_fast": { "message": "Solo inglese (veloce)" },
@@ -25,10 +73,10 @@
   "model_tiny_multi": { "message": "Tiny multilingue (~150MB)" },
   "model_base_multi": { "message": "Base multilingue (~290MB)" },
   "model_small_multi": { "message": "Small multilingue (~1GB)" },
-  "model_distil_en": { "message": "Distil-Medium inglese (~600MB)" },
+  "model_distil_en": { "message": "Distil‑Medium inglese (~600MB)" },
 
   "language_label": { "message": "Lingua" },
-  "lang_auto": { "message": "Auto" },
+  "lang_auto": { "message": "Rilevamento automatico" },
   "lang_en": { "message": "Inglese" },
   "lang_es": { "message": "Spagnolo" },
   "lang_fr": { "message": "Francese" },
@@ -40,16 +88,19 @@
   "lang_ru": { "message": "Russo" },
 
   "silence_timeout": { "message": "Timeout di silenzio (ms)" },
-  "silence_note": { "message": "Attesa dopo aver smesso di parlare prima dell’invio." },
-  "size_warning": { "message": "⚠️ Modello pesante: il primo avvio sarà lento. Se va in errore, usa Base o Tiny." },
+  "silence_note": { "message": "Tempo di attesa dopo che smetti di parlare prima di inviare." },
+  "grace_window_label": { "message": "Finestra di grazia (ms)" },
+  "grace_window_note": { "message": "Evita risultati tardivi dopo annulla/stop quando la grazia è abilitata (predefinita attiva)." },
+
+  "size_warning": { "message": "⚠️ Modello pesante: la prima esecuzione sarà lenta. Se va in crash, usa Base o Tiny." },
 
   "assemblyai_key_label": { "message": "Chiave API AssemblyAI" },
-  "assemblyai_key_note": { "message": "Salvata localmente; usata solo con il motore cloud. L’audio viene inviato ad AssemblyAI." },
+  "assemblyai_key_note": { "message": "Salvata localmente; usata solo quando è selezionato il motore cloud. L’audio viene inviato ad AssemblyAI per l’elaborazione." },
 
-  "hostname_placeholder": { "message": "example.com" },
+  "hostname_placeholder": { "message": "esempio.com" },
   "override_timeout_placeholder": { "message": "(Predefinito)" },
 
-  "hostname": { "message": "Host" },
+  "hostname": { "message": "Hostname" },
   "model_label": { "message": "Modello" },
   "override_default_option": { "message": "(Predefinito)" },
   "timeout_label": { "message": "Timeout" },
@@ -61,8 +112,6 @@
   "table_timeout": { "message": "Timeout" },
   "table_engine": { "message": "Motore" },
 
-  "debug_banners": { "message": "Abilita modalità debug" },
-
   "popup_site_label": { "message": "Sito: (caricamento…)" },
   "popup_site_prefix": { "message": "Sito" },
   "popup_site_unknown": { "message": "Sito: (sconosciuto)" },
@@ -70,7 +119,7 @@
   "popup_timeout_label": { "message": "Timeout di silenzio (ms)" },
   "popup_timeout_placeholder": { "message": "Usa predefinito" },
   "popup_remove": { "message": "Rimuovi override" },
-  "popup_open_options": { "message": "Apri impostazioni complete" },
+  "popup_open_options": { "message": "Apri opzioni complete" },
   "popup_status_saved": { "message": "Salvato" },
   "popup_removed": { "message": "Rimosso" },
   "model_not_allowed": { "message": "Modello non consentito." }

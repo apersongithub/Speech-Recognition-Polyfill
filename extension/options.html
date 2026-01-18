@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>Speech Recognition Options</title>
+    <title data-i18n="options_page_title">Speech Recognition Options</title>
     <link rel="icon" type="image/png" href="images/microphone.png" id="favicon">
 
     <head>
@@ -196,7 +196,20 @@
                 color: #16a34a;
                 margin-top: 6px;
                 opacity: 0;
-                transition: opacity 0.25s;
+                transform: translateY(4px);
+                transition: opacity 0.25s, transform 0.25s;
+            }
+
+            .status.saved-pulse {
+                animation: savedPulse 260ms ease;
+                transform: translateY(0);
+            }
+
+            @keyframes savedPulse {
+                0% { transform: translateY(4px) scale(0.98); opacity: 0; }
+                35% { opacity: 1; }
+                60% { transform: translateY(0) scale(1.04); }
+                100% { transform: translateY(0) scale(1); opacity: 1; }
             }
 
             .banner {
@@ -274,6 +287,11 @@
             .icon-layers {
                 mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 3 7 12 12 21 7 12 2'/%3E%3Cpolyline points='3 12 12 17 21 12'/%3E%3Cpolyline points='3 17 12 22 21 17'/%3E%3C/svg%3E");
                 -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 3 7 12 12 21 7 12 2'/%3E%3Cpolyline points='3 12 12 17 21 12'/%3E%3Cpolyline points='3 17 12 22 21 17'/%3E%3C/svg%3E");
+            }
+
+            .icon-mic {
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M12 3a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z'/%3E%3Cpath d='M19 10v2a7 7 0 0 1-14 0v-2'/%3E%3Cpath d='M12 19v3'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M12 3a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z'/%3E%3Cpath d='M19 10v2a7 7 0 0 1-14 0v-2'/%3E%3Cpath d='M12 19v3'/%3E%3C/svg%3E");
             }
 
             .fav-icon {
@@ -377,23 +395,23 @@
         <div class="card">
             <div class="section-header">
                 <span class="icon icon-sliders" aria-hidden="true"></span>
-                Engine
+                <span data-i18n="section_engine">Engine</span>
             </div>
             <label data-i18n="engine_label">Engine</label>
             <select id="provider-select">
                 <option value="local-whisper" data-i18n="engine_local">On-device Whisper (OpenAI)</option>
                 <option value="assemblyai" data-i18n="engine_assemblyai">Cloud (AssemblyAI)</option>
             </select>
-            <div class="note">
+            <div class="note" data-i18n="engine_note">
                 Whisper runs locally; AssemblyAI sends audio to the cloud (requires API key).
             </div>
-            <div class="status" id="status-engine">Saved</div>
+            <div class="status" id="status-engine" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card" id="card-local">
             <div class="section-header">
                 <span class="icon icon-cpu" aria-hidden="true"></span>
-                On-device Whisper <span class="pill">Local</span>
+                <span data-i18n="section_local_title">On-device Whisper</span> <span class="pill" data-i18n="pill_local">Local</span>
             </div>
             <label data-i18n="ai_model">AI Model</label>
             <select id="model-select">
@@ -433,37 +451,62 @@
             <input id="silence-timeout" type="number" min="500" max="5000" step="100" value="1000" />
             <div class="note" data-i18n="silence_note">Time to wait after you stop speaking before sending.</div>
 
-            <label style="margin-top:6px;">Grace window (ms)</label>
+            <label style="margin-top:6px;" data-i18n="grace_window_label">Grace window (ms)</label>
             <input id="grace-ms" type="number" min="0" max="2000" step="50" value="450" />
-            <div class="note">
+            <div class="note" data-i18n="grace_window_note">
                 Prevents late results after cancel/stop when grace is enabled (default on).
             </div>
-            <div class="status" id="status-local">Saved</div>
+            <div class="status" id="status-local" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card" id="card-cloud">
             <div class="section-header">
                 <span class="icon icon-cloud" aria-hidden="true"></span>
-                Cloud (AssemblyAI) <span class="pill" style="background:#ecfeff;border-color:#a5f3fc;">Cloud</span>
+                <span data-i18n="section_cloud_title">Cloud (AssemblyAI)</span>
+                <span class="pill" style="background:#ecfeff;border-color:#a5f3fc;" data-i18n="pill_cloud">Cloud</span>
             </div>
             <label data-i18n="assemblyai_key_label">AssemblyAI API Key</label>
-            <input id="assemblyai-key" type="password" placeholder="Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d" />
+            <input id="assemblyai-key" type="password" data-i18n-placeholder="assemblyai_key_placeholder" placeholder="Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d" />
             <div class="actions" style="margin-top:8px;">
-                <button id="open-assemblyai" class="btn-secondary" type="button">Get an AssemblyAI API Key</button>
+                <button id="open-assemblyai" class="btn-secondary" type="button" data-i18n="assemblyai_get_key_btn">Get an AssemblyAI API Key</button>
             </div>
             <div class="note" data-i18n="assemblyai_key_note">
                 Stored locally; used only when the cloud engine is selected. It is free but requires an account since
                 speech data is sent to AssemblyAI for processing.
             </div>
-            <div class="status" id="status-cloud">Saved</div>
+            <div class="status" id="status-cloud" data-i18n="status_saved">Saved</div>
+        </div>
+
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-mic" aria-hidden="true"></span>
+                <span data-i18n="section_shortcuts">Speech shortcuts</span>
+            </div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="enable-shortcut" checked />
+                <label for="enable-shortcut" class="checkbox-label" data-i18n="shortcut_enable">Enable speech shortcut</label>
+            </div>
+            <div class="note" data-i18n="shortcut_enable_note">Disables the keyboard shortcut entirely when off.</div>
+
+            <label for="hotkey" style="margin-top:8px;" data-i18n="shortcut_hotkey_label">Keyboard shortcut</label>
+            <input id="hotkey" type="text" data-i18n-placeholder="shortcut_hotkey_placeholder" placeholder="Click and press keys (Alt+A)" autocomplete="off" />
+            <div class="note" data-i18n="shortcut_hotkey_note">Click, press the combo you want. Backspace/Delete to clear. Esc to disable shortcut. Empty disables.</div>
+
+            <div class="checkbox-wrapper" style="margin-top:8px;">
+                <input type="checkbox" id="send-enter-after" />
+                <label for="send-enter-after" class="checkbox-label" data-i18n="send_enter_after_label">Send Enter after inserting text</label>
+            </div>
+            <div class="note" data-i18n="send_enter_after_note">Off by default. When on, presses Enter on the focused field right after text is inserted.</div>
+
+            <div class="status" id="status-speech" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card">
             <div class="section-header">
                 <span class="icon icon-layers" aria-hidden="true"></span>
-                Site Overrides
+                <span data-i18n="section_overrides">Site Overrides</span>
             </div>
-            <div class="note overrides-note">Customize settings for specific websites (e.g., <b>google.com</b>).</div>
+            <div class="note overrides-note" data-i18n="overrides_note">Customize settings for specific websites (e.g., <b>google.com</b>).</div>
 
             <div class="actions">
                 <div>
@@ -543,61 +586,59 @@
                 </thead>
                 <tbody></tbody>
             </table>
-            <div class="status" id="status-overrides">Saved</div>
+            <div class="status" id="status-overrides" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card">
             <div class="section-header">
                 <span class="icon icon-terminal" aria-hidden="true"></span>
-                Developer Settings
+                <span data-i18n="section_developer">Developer Settings</span>
             </div>
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="debug-mode" />
                 <label for="debug-mode" class="checkbox-label" data-i18n="debug_banners">Enable Debug Mode</label>
             </div>
-            <div class="note">
+            <div class="note" data-i18n="debug_note">
                 Enables toast banners and console debug logs. Default: Off.
             </div>
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="disable-favicons" />
-                <label for="disable-favicons" class="checkbox-label">Disable favicons in overrides table</label>
+                <label for="disable-favicons" class="checkbox-label" data-i18n="disable_favicons_label">Disable favicons in overrides table</label>
             </div>
-            <div class="note">Default: favicons shown. Enable to hide favicons.</div>
+            <div class="note" data-i18n="disable_favicons_note">Default: favicons shown. Enable to hide favicons.</div>
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="show-model-sections-toggle" />
-                <label for="show-model-sections-toggle" class="checkbox-label">Show engine-specific sections</label>
+                <label for="show-model-sections-toggle" class="checkbox-label" data-i18n="show_engine_sections_label">Show engine-specific sections</label>
             </div>
-            <div class="note">Default: off (sections auto-hide based on engine).</div>
+            <div class="note" data-i18n="show_engine_sections_note">Default: off (sections auto-hide based on engine).</div>
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="enable-hardcap" />
-                <label for="enable-hardcap" class="checkbox-label">Enable 5s hard cap</label>
+                <label for="enable-hardcap" class="checkbox-label" data-i18n="enable_hardcap_label">Enable 5s hard cap</label>
             </div>
-            <div class="note">Default: off (recording stops on silence instead of fixed 5s).</div>
+            <div class="note" data-i18n="enable_hardcap_note">Default: off (recording stops on silence instead of fixed 5s).</div>
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="disable-grace-window" />
-                <label for="disable-grace-window" class="checkbox-label">Disable grace window</label>
+                <label for="disable-grace-window" class="checkbox-label" data-i18n="disable_grace_label">Disable grace window</label>
             </div>
-            <div class="note">Default: off (grace is enabled; set grace ms above).</div>
+            <div class="note" data-i18n="disable_grace_note">Default: off (grace is enabled; set grace ms above).</div>
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="cache-default-model" />
-                <label for="cache-default-model" class="checkbox-label">Cache default model (prefetch on
-                    startup)</label>
+                <label for="cache-default-model" class="checkbox-label" data-i18n="cache_default_model_label">Cache default model (prefetch on startup)</label>
             </div>
-            <div class="note">Prefetches your default on-device Whisper model so first use is faster. Only applies when
-                using the local engine.</div>
-            <div class="status" id="status-dev">Saved</div>
+            <div class="note" data-i18n="cache_default_model_note">Prefetches your default on-device Whisper model so first use is faster. Only applies when using the local engine.</div>
+            <div class="status" id="status-dev" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card">
             <div class="section-header">
                 <span class="icon icon-save" aria-hidden="true"></span>
-                Save & Reset
+                <span data-i18n="section_save_reset">Save & Reset</span>
             </div>
-            <button id="save-btn-bottom">Save Everything</button>
-            <div class="note">Applies all current settings and overrides.</div>
-            <button id="factory-reset" class="btn-danger" type="button" style="margin-top:18px;">Factory Reset</button>
-            <div class="note">Resets all settings and overrides to defaults.</div>
-            <div class="status" id="status-save">Saved</div>
+            <button id="save-btn-bottom" data-i18n="save_everything">Save Everything</button>
+            <div class="note" data-i18n="save_everything_note">Applies all current settings and overrides.</div>
+            <button id="factory-reset" class="btn-danger" type="button" style="margin-top:18px;" data-i18n="factory_reset">Factory Reset</button>
+            <div class="note" data-i18n="factory_reset_note">Resets all settings and overrides to defaults.</div>
+            <div class="status" id="status-save" data-i18n="status_saved">Saved</div>
         </div>
     </div>
     <script src="options.js"></script>
