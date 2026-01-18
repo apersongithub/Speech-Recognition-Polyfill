@@ -15,30 +15,37 @@ let capturingHotkey = false;
 let lastHotkeyValue = 'Alt+A';
 const statusTimers = new Map();
 
-// NEW: notify all open tabs so content scripts update immediately (no reload)
+// prevent UI echo loops while applying storage changes
+let isApplyingExternalUpdate = false;
+
+// NEW: remember selection in overrides list
+let selectedOverrideHost = null;
+
+// NEW: dropdown state for list visibility
+let overridesListOpen = false;
+
 async function broadcastConfigChanged() {
     try {
-        // background listeners (prefetch, etc.)
         try { browser.runtime.sendMessage({ type: 'CONFIG_CHANGED' }); } catch (_) { }
 
-        // content scripts in tabs
         const tabs = await browser.tabs.query({});
         await Promise.allSettled(
             tabs
                 .filter(t => typeof t.id === 'number')
                 .map(t => browser.tabs.sendMessage(t.id, { type: 'CONFIG_CHANGED' }))
         );
-    } catch (_) {
-        // ignore
-    }
+    } catch (_) { }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     applyI18n();
     restoreOptions();
+    installLiveSettingsListener();
+    installOverridesListToggle();
+    installOverrideRowClickToLoad();
 });
 
-document.getElementById('save-btn-bottom').addEventListener('click', () => saveDefaults(['save']));
+// Existing listeners
 document.getElementById('open-assemblyai').addEventListener('click', () => {
     browser.tabs.create({ url: 'https://www.assemblyai.com/dashboard/api-keys', active: true });
 });
@@ -56,6 +63,15 @@ document.getElementById('cache-default-model')?.addEventListener('change', () =>
 document.getElementById('enable-shortcut')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
 document.getElementById('send-enter-after')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
 
+// import/export
+document.getElementById('export-settings')?.addEventListener('click', exportSettingsToFile);
+document.getElementById('import-settings')?.addEventListener('click', () => document.getElementById('import-file')?.click());
+document.getElementById('import-file')?.addEventListener('change', importSettingsFromFile);
+
+// extra listeners
+document.getElementById('clear-override-inputs')?.addEventListener('click', clearOverrideInputs);
+
+// hotkey capture (unchanged behavior)
 const hotkeyInput = document.getElementById('hotkey');
 if (hotkeyInput) {
     hotkeyInput.addEventListener('focus', () => {
@@ -64,20 +80,18 @@ if (hotkeyInput) {
     });
     hotkeyInput.addEventListener('blur', () => {
         capturingHotkey = false;
-        ensureHotkeyValue(true); // enforce fallback + save on blur
+        ensureHotkeyValue(true);
     });
     hotkeyInput.addEventListener('keydown', (e) => {
         if (!capturingHotkey) return;
         e.preventDefault();
 
-        // Clear -> revert to last or default and save
         if (e.key === 'Backspace' || e.key === 'Delete') {
             ensureHotkeyValue(true);
             capturingHotkey = false;
             hotkeyInput.blur();
             return;
         }
-        // Cancel and disable, but keep a visible hotkey value
         if (e.key === 'Escape') {
             capturingHotkey = false;
             const enableChk = document.getElementById('enable-shortcut');
@@ -99,16 +113,12 @@ if (hotkeyInput) {
     });
 }
 
-function t(key, fallback = '') {
-    return browser.i18n?.getMessage(key) || fallback;
-}
+function t(key, fallback = '') { return browser.i18n?.getMessage(key) || fallback; }
 
 function applyI18n() {
-    // document title
     const titleMsg = t('options_page_title');
     if (titleMsg) document.title = titleMsg;
 
-    // generic text replacement
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         const msg = t(key);
@@ -119,20 +129,15 @@ function applyI18n() {
         if (tag === 'OPTGROUP') { el.label = msg; return; }
         if (tag === 'OPTION') { el.textContent = msg; return; }
 
-        // Allow HTML in banner/notes if provided by message (you already do with banner_text)
-        // Only inject HTML if it contains tags; otherwise set textContent.
         if (typeof msg === 'string' && /<\/?[a-z][\s\S]*>/i.test(msg)) {
             el.innerHTML = msg;
         } else if (el.children && el.children.length > 0) {
-            // do not clobber nested structure unless message includes HTML
-            // (section headers now wrap the label in a <span data-i18n=...>, so safe)
             return;
         } else {
             el.textContent = msg;
         }
     });
 
-    // placeholder support
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
         const key = el.getAttribute('data-i18n-placeholder');
         const msg = t(key);
@@ -152,17 +157,14 @@ function clampTimeout(val) {
     if (Number.isNaN(n)) return null;
     return Math.max(500, Math.min(5000, n));
 }
-
 function clampGrace(val) {
     const n = parseInt(val, 10);
     if (Number.isNaN(n)) return 450;
     return Math.max(0, Math.min(2000, n));
 }
-
 function normalizeProvider(p) {
     return ALLOWED_PROVIDERS.includes(p) ? p : 'local-whisper';
 }
-
 function checkModelSize() {
     const model = document.getElementById('model-select').value;
     const warningBox = document.getElementById('size-warning');
@@ -174,7 +176,6 @@ function checkModelSize() {
         warningBox.textContent = t('size_warning', "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny.");
     }
 }
-
 function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
 
 function applyVisibility() {
@@ -239,6 +240,8 @@ function ensureHotkeyValue(save = false) {
 }
 
 async function saveDefaults(statusKeys = []) {
+    if (isApplyingExternalUpdate) return;
+
     const model = document.getElementById('model-select').value;
     const language = document.getElementById('language-select').value;
     const silenceTimeout = clampTimeout(document.getElementById('silence-timeout').value) || 1500;
@@ -279,14 +282,12 @@ async function saveDefaults(statusKeys = []) {
     lastHotkeyValue = hotkey;
 
     await browser.storage.local.set({ settings });
-
     await broadcastConfigChanged();
-
     statusKeys.forEach(k => showSaved(k));
 }
 
 async function saveDebugMode(statusKeys = []) {
-    if (isRestoring) return;
+    if (isRestoring || isApplyingExternalUpdate) return;
     const debugMode = document.getElementById('debug-mode').checked;
     const stored = await browser.storage.local.get('settings');
     const settings = stored.settings || {};
@@ -297,7 +298,7 @@ async function saveDebugMode(statusKeys = []) {
 }
 
 async function saveGraceSetting(statusKeys = []) {
-    if (isRestoring) return;
+    if (isRestoring || isApplyingExternalUpdate) return;
     const disableGrace = document.getElementById('disable-grace-window')?.checked === true;
     const graceMs = clampGrace(document.getElementById('grace-ms').value);
     const stored = await browser.storage.local.get('settings');
@@ -337,7 +338,11 @@ async function addOrUpdateOverride() {
 
     await browser.storage.local.set({ settings });
 
+    // keep selection
+    selectedOverrideHost = host;
+
     renderOverrides(settings.overrides, settings.disableFavicons !== true);
+
     hostEl.value = '';
     timeoutEl.value = '';
     modelEl.value = '';
@@ -354,6 +359,7 @@ async function removeAllOverrides() {
     settings.overrides = {};
     await browser.storage.local.set({ settings });
 
+    selectedOverrideHost = null;
     renderOverrides(settings.overrides, settings.disableFavicons !== true);
 
     showSaved('overrides');
@@ -368,6 +374,7 @@ async function removeSingleOverride(host) {
         delete settings.overrides[host];
         await browser.storage.local.set({ settings });
 
+        if (selectedOverrideHost === host) selectedOverrideHost = null;
         renderOverrides(settings.overrides, settings.disableFavicons !== true);
 
         showSaved('overrides');
@@ -375,34 +382,55 @@ async function removeSingleOverride(host) {
     }
 }
 
+function setOverridesCount(n) {
+    const el = document.getElementById('overrides-count');
+    if (!el) return;
+    el.textContent = `(${n || 0})`;
+}
+
 function renderOverrides(overrides, showFavicons) {
     const tbody = document.querySelector('#override-table tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!overrides) return;
+    if (!overrides) { setOverridesCount(0); return; }
 
-    Object.entries(overrides).forEach(([host, cfg]) => {
+    const entries = Object.entries(overrides).sort((a, b) => a[0].localeCompare(b[0]));
+    setOverridesCount(entries.length);
+
+    for (const [host, cfg] of entries) {
         const favicon = showFavicons
             ? `<img class="fav-icon" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32" onerror="this.style.display='none'">`
             : '';
         const tr = document.createElement('tr');
+        tr.dataset.host = host;
+
+        if (selectedOverrideHost && selectedOverrideHost === host) {
+            tr.classList.add('selected');
+        }
+
         tr.innerHTML = `
           <td><span class="host-cell">${favicon}${host}</span></td>
           <td>${cfg.model || '—'}</td>
           <td>${cfg.language || '—'}</td>
           <td>${cfg.silenceTimeoutMs || '—'}</td>
           <td>${cfg.provider || '—'}</td>
-          <td style="text-align:right;"><button class="row-delete" data-host="${host}" aria-label="Remove ${host}">✖</button></td>
+          <td style="text-align:right;">
+            <button class="row-delete" data-host="${host}" aria-label="Remove ${host}">✖</button>
+          </td>
         `;
         tbody.appendChild(tr);
-    });
+    }
 }
 
+// delete button stays working; stopPropagation so row click doesn’t also load it
 document.querySelector('#override-table tbody')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.row-delete');
-    if (!btn) return;
-    const host = btn.getAttribute('data-host');
-    removeSingleOverride(host);
+    const del = e.target.closest('.row-delete');
+    if (del) {
+        e.stopPropagation();
+        const host = del.getAttribute('data-host');
+        removeSingleOverride(host);
+        return;
+    }
 });
 
 function toggleFavicons(statusKeys = []) {
@@ -468,8 +496,12 @@ async function restoreOptions() {
     lastHotkeyValue = hkVal || 'Alt+A';
 
     checkModelSize();
+
     renderOverrides(settings.overrides || {}, settings.disableFavicons !== true);
     applyVisibility();
+
+    // keep list collapsed by default after restore (unless user toggled open)
+    applyOverridesListOpenState();
 
     isRestoring = false;
 }
@@ -499,16 +531,243 @@ function showSaved(area = 'save') {
     const el = document.getElementById(id);
     if (!el) return;
 
-    if (statusTimers.has(id)) {
-        clearTimeout(statusTimers.get(id));
-    }
+    if (statusTimers.has(id)) clearTimeout(statusTimers.get(id));
     el.classList.remove('saved-pulse');
     void el.offsetWidth;
     el.classList.add('saved-pulse');
     el.style.opacity = '1';
+
     const timer = setTimeout(() => {
         el.style.opacity = '0';
         el.classList.remove('saved-pulse');
     }, 1200);
     statusTimers.set(id, timer);
+}
+
+// ---------------- dropdown/collapse for the list ----------------
+function applyOverridesListOpenState() {
+  const body = document.getElementById('overrides-list-body');
+  const btn = document.getElementById('toggle-overrides-list');
+  if (!body || !btn) return;
+
+  body.classList.toggle('open', overridesListOpen);
+  btn.textContent = overridesListOpen
+    ? t('hide', 'Hide')
+    : t('show', 'Show');
+}
+
+function installOverridesListToggle() {
+  const btn = document.getElementById('toggle-overrides-list');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    overridesListOpen = !overridesListOpen;
+    applyOverridesListOpenState();
+  });
+
+  // default: OPEN (was false)
+  overridesListOpen = true;
+  applyOverridesListOpenState();
+}
+
+// ---------------- click row -> load into inputs ----------------
+function loadOverrideIntoInputs(host, cfg) {
+    const hostEl = document.getElementById('override-host');
+    const modelEl = document.getElementById('override-model');
+    const langEl = document.getElementById('override-language');
+    const timeoutEl = document.getElementById('override-timeout');
+    const providerEl = document.getElementById('override-provider');
+
+    if (hostEl) hostEl.value = host || '';
+
+    // inputs use "" to mean default
+    if (modelEl) modelEl.value = cfg?.model || '';
+    if (langEl) langEl.value = (cfg?.language ?? '');
+    if (timeoutEl) timeoutEl.value = (typeof cfg?.silenceTimeoutMs === 'number') ? String(cfg.silenceTimeoutMs) : '';
+    if (providerEl) providerEl.value = cfg?.provider || '';
+}
+
+function clearOverrideInputs() {
+  const hostEl = document.getElementById('override-host');
+  const modelEl = document.getElementById('override-model');
+  const langEl = document.getElementById('override-language');
+  const timeoutEl = document.getElementById('override-timeout');
+  const providerEl = document.getElementById('override-provider');
+
+  if (hostEl) hostEl.value = '';
+  if (modelEl) modelEl.value = '';
+  if (langEl) langEl.value = '';
+  if (timeoutEl) timeoutEl.value = '';
+  if (providerEl) providerEl.value = '';
+
+  selectedOverrideHost = null;
+
+  // optional: remove row highlight immediately
+  browser.storage.local.get('settings').then(({ settings }) => {
+    renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
+  }).catch(() => {});
+}
+
+function installOverrideRowClickToLoad() {
+    const tbody = document.querySelector('#override-table tbody');
+    if (!tbody) return;
+
+    tbody.addEventListener('click', async (e) => {
+        // ignore delete clicks (handled elsewhere)
+        if (e.target.closest('.row-delete')) return;
+
+        const row = e.target.closest('tr');
+        const host = row?.dataset?.host;
+        if (!host) return;
+
+        const { settings } = await browser.storage.local.get('settings');
+        const cfg = settings?.overrides?.[host] || {};
+
+        selectedOverrideHost = host;
+        loadOverrideIntoInputs(host, cfg);
+
+        // highlight selection
+        renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
+
+        // (optional but helpful) open list so user sees selection; remove if you want it to stay closed
+        // overridesListOpen = true;
+        // applyOverridesListOpenState();
+    });
+}
+
+// ---------------- Live updates while options is open ----------------
+function installLiveSettingsListener() {
+    try {
+        browser.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== 'local') return;
+            if (!changes.settings) return;
+
+            const next = changes.settings.newValue || {};
+            if (isRestoring) return;
+
+            const hotkeyEl = document.getElementById('hotkey');
+            const isEditingHotkey = capturingHotkey || (document.activeElement === hotkeyEl);
+
+            isApplyingExternalUpdate = true;
+            try {
+                // Update overrides table instantly
+                renderOverrides(next.overrides || {}, next.disableFavicons !== true);
+
+                // keep toggles in sync
+                const hideModelSections = next.hideModelSections !== false;
+                const showToggle = document.getElementById('show-model-sections-toggle');
+                if (showToggle) showToggle.checked = !hideModelSections;
+
+                const providerSelect = document.getElementById('provider-select');
+                const nextProvider = normalizeProvider(next?.defaults?.provider || 'local-whisper');
+                if (providerSelect && providerSelect.value !== nextProvider) providerSelect.value = nextProvider;
+                applyVisibility();
+
+                const favToggle = document.getElementById('disable-favicons');
+                if (favToggle) favToggle.checked = next.disableFavicons === true;
+
+                const d = next.defaults || {};
+                const modelEl = document.getElementById('model-select');
+                const langEl = document.getElementById('language-select');
+                const silenceEl = document.getElementById('silence-timeout');
+                if (modelEl && d.model && modelEl.value !== d.model) modelEl.value = d.model;
+                if (langEl && d.language && langEl.value !== d.language) langEl.value = d.language;
+                if (silenceEl && typeof d.silenceTimeoutMs === 'number' && String(silenceEl.value) !== String(d.silenceTimeoutMs)) {
+                    silenceEl.value = d.silenceTimeoutMs;
+                }
+
+                const debugEl = document.getElementById('debug-mode');
+                if (debugEl) debugEl.checked = next.debugMode === true;
+
+                const enableHardcapEl = document.getElementById('enable-hardcap');
+                if (enableHardcapEl) enableHardcapEl.checked = !(next.disableHardCap === true);
+
+                const cacheEl = document.getElementById('cache-default-model');
+                if (cacheEl) cacheEl.checked = next.cacheDefaultModel === true;
+
+                const graceMsEl = document.getElementById('grace-ms');
+                if (graceMsEl) graceMsEl.value = (typeof next.graceMs === 'number') ? next.graceMs : 450;
+
+                const disableGraceEl = document.getElementById('disable-grace-window');
+                if (disableGraceEl) disableGraceEl.checked = next.graceEnabled === false;
+
+                const enableShortcutEl = document.getElementById('enable-shortcut');
+                if (enableShortcutEl) enableShortcutEl.checked = next.shortcutEnabled !== false;
+
+                const sendEnterEl = document.getElementById('send-enter-after');
+                if (sendEnterEl) sendEnterEl.checked = next.sendEnterAfterResult === true;
+
+                if (!isEditingHotkey) {
+                    const hk = typeof next.hotkey === 'string' ? next.hotkey : 'Alt+A';
+                    if (hotkeyEl && hotkeyEl.value !== hk) hotkeyEl.value = hk;
+                    lastHotkeyValue = hk || 'Alt+A';
+                }
+
+                const keyEl = document.getElementById('assemblyai-key');
+                const nextKey = next.assemblyaiApiKey || '';
+                if (keyEl && keyEl.value !== nextKey) keyEl.value = nextKey;
+
+                checkModelSize();
+            } finally {
+                isApplyingExternalUpdate = false;
+            }
+        });
+    } catch (_) { }
+}
+
+// ---------------- Import / Export ----------------
+async function exportSettingsToFile() {
+    try {
+        const stored = await browser.storage.local.get('settings');
+        const settings = stored.settings || {};
+        const payload = { version: 1, exportedAt: new Date().toISOString(), settings };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `whisper-settings-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        showSaved('save');
+    } catch (e) {
+        console.error('Export failed', e);
+        alert('Export failed: ' + (e?.message || e));
+    }
+}
+
+async function importSettingsFromFile(e) {
+    const input = e?.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        const incomingSettings = parsed?.settings && typeof parsed.settings === 'object'
+            ? parsed.settings
+            : (parsed && typeof parsed === 'object' ? parsed : null);
+
+        if (!incomingSettings || typeof incomingSettings !== 'object') {
+            throw new Error('No settings found in file.');
+        }
+
+        if (incomingSettings.defaults) {
+            const p = incomingSettings.defaults.provider;
+            if (p && !ALLOWED_PROVIDERS.includes(p)) incomingSettings.defaults.provider = 'local-whisper';
+        }
+
+        await browser.storage.local.set({ settings: incomingSettings });
+        await broadcastConfigChanged();
+        await restoreOptions();
+        showSaved('save');
+    } catch (err) {
+        console.error('Import failed', err);
+        alert('Import failed: ' + (err?.message || err));
+    } finally {
+        try { input.value = ''; } catch (_) { }
+    }
 }

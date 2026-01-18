@@ -57,9 +57,15 @@
   "cache_default_model_label": { "message": "Cache default model (prefetch on startup)" },
   "cache_default_model_note": { "message": "Prefetches your default on-device Whisper model so first use is faster. Only applies when using the local engine." },
 
-  "section_save_reset": { "message": "Save & Reset" },
+  "section_save_reset": { "message": "Data" },
+
   "save_everything": { "message": "Save Everything" },
   "save_everything_note": { "message": "Applies all current settings and overrides." },
+
+  "export_settings": { "message": "Export" },
+  "import_settings": { "message": "Import" },
+  "import_export_note": { "message": "Export or import your settings and site overrides as JSON." },
+
   "factory_reset": { "message": "Factory Reset" },
   "factory_reset_note": { "message": "Resets all settings and overrides to defaults." },
 
@@ -104,8 +110,15 @@
   "model_label": { "message": "Model" },
   "override_default_option": { "message": "(Default)" },
   "timeout_label": { "message": "Timeout" },
+
   "add_rule": { "message": "Add Rule" },
+  "clear_inputs": { "message": "Clear Inputs" },
   "remove_rule": { "message": "Remove All Rules" },
+
+  "overrides_list_title": { "message": "Saved overrides" },
+  "show": { "message": "Show" },
+  "hide": { "message": "Hide" },
+
   "table_host": { "message": "Host" },
   "table_model": { "message": "Model" },
   "table_lang": { "message": "Lang" },
