@@ -267,37 +267,108 @@ function showNotification(message, type = "info") {
   }, duration);
 }
 
+function simulateTyping(element, text) {
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    let key = char;
+    let code = `Key${char.toUpperCase()}`;
+    let keyCode = char.charCodeAt(0);
+    let charCode = keyCode;
+
+    if (char === ' ') {
+      key = ' ';
+      code = 'Space';
+      keyCode = 32;
+      charCode = 32;
+    } else if (!/[a-zA-Z0-9]/.test(char)) {
+      // For punctuation, use the char as key, and appropriate code
+      code = char;
+    }
+
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key,
+      code,
+      keyCode,
+      charCode,
+      which: keyCode,
+    };
+
+    const keydown = new KeyboardEvent('keydown', eventInit);
+    if (!element.dispatchEvent(keydown)) continue;
+
+    const keypress = new KeyboardEvent('keypress', eventInit);
+    if (!element.dispatchEvent(keypress)) continue;
+
+    // Dispatch input event to mimic text insertion
+    const inputEvent = new InputEvent('input', {
+      bubbles: true,
+      composed: true,
+      data: char,
+      inputType: 'insertText',
+    });
+    element.dispatchEvent(inputEvent);
+
+    const keyup = new KeyboardEvent('keyup', eventInit);
+    element.dispatchEvent(keyup);
+  }
+}
+
 function insertIntoActiveEditable(text) {
-  const el = document.activeElement;
-  if (!el || !isEditableTarget(el)) return false;
-
-  if (el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea') {
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? el.value.length;
-    const before = el.value.slice(0, start);
-    const after = el.value.slice(end);
-    el.value = before + text + after;
-    const caret = start + text.length;
-    el.selectionStart = caret;
-    el.selectionEnd = caret;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
+  const active = document.activeElement;
+  if (!isEditableTarget(active)) {
+    dbg('No editable target');
+    return;
   }
 
-  if (el.isContentEditable) {
-    el.focus();
-    const sel = window.getSelection();
-    if (!sel) return false;
-    sel.deleteFromDocument();
-    const range = sel.getRangeAt(0);
-    range.insertNode(document.createTextNode(text));
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    return true;
+  if (active.isContentEditable) {
+    if (location.hostname === 'docs.google.com' || location.hostname === 'sheets.google.com') {
+      // Use direct DOM manipulation for Google Docs and Sheets to insert text at cursor
+      insertTextAtCursor(active, text);
+    } else {
+      // Original method for other sites
+      document.execCommand('insertText', false, text);
+    }
+  } else {
+    // Original for input/textarea (unchanged)
+    const start = active.selectionStart;
+    const end = active.selectionEnd;
+    active.value = active.value.substring(0, start) + text + active.value.substring(end);
+    active.selectionStart = active.selectionEnd = start + text.length;
+    active.dispatchEvent(new Event('input', { bubbles: true }));
+    active.dispatchEvent(new Event('change', { bubbles: true }));
   }
+}
 
-  return false;
+function insertTextAtCursor(element, text) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents(); // Remove any selected content
+
+  const textNode = document.createTextNode(text);
+  range.insertNode(textNode);
+
+  // Move cursor to after the inserted text
+  range.setStartAfter(textNode);
+  range.setEndAfter(textNode);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  // Dispatch input event to notify the editor
+  const inputEvent = new InputEvent('input', {
+    bubbles: true,
+    composed: true,
+    inputType: 'insertText',
+    data: text
+  });
+  element.dispatchEvent(inputEvent);
+
+  // Also dispatch change if needed
+  element.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 // Robust "enter"/submit behavior (no site-specific clicking)

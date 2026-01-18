@@ -1,3 +1,5 @@
+// Updated polyfill.js (add aliases for modern SpeechRecognition API; replace the entire (function() { ... })() block)
+
 (function() {
   console.log(" >>> GTranslate Polyfill: Initializing...");
 
@@ -86,4 +88,9 @@
     dispatchEvent(event) { if (this["on" + event.type]) this["on" + event.type](event); }
     addEventListener(type, callback) { this["on" + type] = callback; }
   };
+
+  // Add aliases for modern API (this helps sites that check for SpeechRecognition)
+  window.SpeechRecognition = window.webkitSpeechRecognition;
+  window.SpeechRecognitionEvent = window.webkitSpeechRecognitionEvent;
+
 })();
