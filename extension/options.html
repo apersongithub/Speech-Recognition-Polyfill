@@ -24,6 +24,19 @@
                 --input-border: #e2e8f0;
                 --pill-bg: #e0f2fe;
                 --pill-border: #bae6fd;
+
+                /* NEW: backend indicator colors */
+                --backend-good-bg: #ecfdf5;
+                --backend-good-border: #a7f3d0;
+                --backend-good-text: #065f46;
+
+                --backend-warn-bg: #fff7ed;
+                --backend-warn-border: #fed7aa;
+                --backend-warn-text: #9a3412;
+
+                --backend-wasm-bg: #f5f3ff;
+                --backend-wasm-border: #c4b5fd;
+                --backend-wasm-text: #6d28d9;
             }
 
             @media (prefers-color-scheme: dark) {
@@ -42,6 +55,19 @@
                     --input-border: #1f2937;
                     --pill-bg: #0ea5e9;
                     --pill-border: #0284c7;
+
+                    /* NEW: backend indicator colors (dark) */
+                    --backend-good-bg: rgba(16, 185, 129, 0.12);
+                    --backend-good-border: rgba(16, 185, 129, 0.35);
+                    --backend-good-text: #6ee7b7;
+
+                    --backend-warn-bg: rgba(249, 115, 22, 0.10);
+                    --backend-warn-border: rgba(249, 115, 22, 0.35);
+                    --backend-warn-text: #fdba74;
+
+                    --backend-wasm-bg: rgba(109, 40, 217, 0.14);
+                    --backend-wasm-border: rgba(196, 181, 253, 0.35);
+                    --backend-wasm-text: #c4b5fd;
                 }
             }
 
@@ -470,6 +496,94 @@
                 width: 100%;
                 margin-top: 0;
             }
+
+            /* NEW: Backend indicator pill */
+            .backend-indicator {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: 10px 12px;
+                border-radius: 10px;
+                border: 1px solid var(--border);
+                background: rgba(148, 163, 184, 0.08);
+                margin-top: 10px;
+                margin-bottom: 18px;
+            }
+
+            .backend-indicator .left {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-width: 0;
+            }
+
+            .backend-indicator .label {
+                font-size: 12.5px;
+                font-weight: 700;
+                color: var(--text);
+                white-space: nowrap;
+            }
+
+            .backend-indicator .value {
+                font-size: 12.5px;
+                font-weight: 800;
+                letter-spacing: 0.01em;
+            }
+
+            .backend-indicator .hint {
+                font-size: 12px;
+                color: var(--muted);
+                margin-top: 2px;
+                line-height: 1.35;
+            }
+
+            .backend-indicator.good {
+                background: var(--backend-good-bg);
+                border-color: var(--backend-good-border);
+            }
+
+            .backend-indicator.good .value {
+                color: var(--backend-good-text);
+            }
+
+            .backend-indicator.warn {
+                background: var(--backend-warn-bg);
+                border-color: var(--backend-warn-border);
+            }
+
+            .backend-indicator.warn .value {
+                color: var(--backend-warn-text);
+            }
+
+            /* small chip on the right */
+            .backend-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 10px;
+                border-radius: 999px;
+                font-size: 12px;
+                font-weight: 800;
+                border: 1px solid currentColor;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+
+            .backend-chip .dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 999px;
+                background: currentColor;
+            }
+
+            /* simple GPU icon */
+            .icon-gpu {
+                width: 32px;
+                height: 32px;
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='15' height='10' rx='2'/%3E%3Cpath d='M18 9h3v6h-3'/%3E%3Cpath d='M6 17v3'/%3E%3Cpath d='M10 17v3'/%3E%3Cpath d='M14 17v3'/%3E%3Cpath d='M7 10h7'/%3E%3Cpath d='M7 14h7'/%3E%3C/svg%3E");
+                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='15' height='10' rx='2'/%3E%3Cpath d='M18 9h3v6h-3'/%3E%3Cpath d='M6 17v3'/%3E%3Cpath d='M10 17v3'/%3E%3Cpath d='M14 17v3'/%3E%3Cpath d='M7 10h7'/%3E%3Cpath d='M7 14h7'/%3E%3C/svg%3E");
+            }
         </style>
     </head>
 
@@ -477,8 +591,7 @@
     <div class="container">
         <h3 data-i18n="options_heading">Speech Recognition Settings</h3>
         <div class="banner" data-i18n="banner_text">
-            ⚠️ Experimental: This is not a bandaid fix to the webspeech API. Expect occasional slowdowns or
-            interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If
+            ⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the extension icon (pin it to your menu bar). If
             you want the best performance, use the cloud based engine. Some settings may require a page refresh to take
             effect. Any additional information is listed <a
                 href="https://github.com/apersongithub/Speech-Recognition-Polyfill"
@@ -731,6 +844,27 @@
             </div>
             <div class="note" data-i18n="developer_note">Advanced toggles for debugging and experimental behavior.
                 Sorted by understandability.</div>
+
+            <!-- NEW: Backend indicator (WebGPU vs WASM) -->
+<div id="backend-indicator" class="backend-indicator warn" aria-live="polite">
+  <div class="left">
+    <span class="icon icon-gpu" aria-hidden="true"></span>
+    <div style="min-width:0;">
+      <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+        <span class="label" data-i18n="backend_indicator_label">Local Whisper backend:</span>
+        <span class="value" id="backend-value" data-i18n="backend_indicator_value_unknown">Unknown</span>
+      </div>
+      <div class="hint" id="backend-hint" data-i18n="backend_hint_default">
+        Runs on WebGPU when available; falls back to WASM if not supported.
+      </div>
+    </div>
+  </div>
+  <span class="backend-chip" id="backend-chip" style="color: var(--backend-warn-text);">
+    <span class="dot" aria-hidden="true"></span>
+    <span id="backend-chip-text" data-i18n="backend_chip_unknown">Unknown</span>
+  </span>
+</div>
+
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="debug-mode" />
                 <label for="debug-mode" class="checkbox-label" data-i18n="debug_banners">Enable Debug Mode</label>

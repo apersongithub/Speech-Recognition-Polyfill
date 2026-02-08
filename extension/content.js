@@ -4,6 +4,11 @@
 // - Fall back to form.submit() or synthetic Enter only if needed.
 // - Debug mode: can mirror background debug logs into the *site's* console.
 
+// Behavior:
+// - Hotkey works even if we can't resolve an editable at keydown time (needed for shadow/contenteditable editors).
+// - BUT: we capture the "intended" editable target (when possible) at hotkey time,
+//   and insert the transcription back into that same element for full functionality.
+
 const IS_TOP_FRAME = (window.self === window.top);
 if (!IS_TOP_FRAME) {
   // Do not throw in iframes (Google Docs/Slides rely on them).
@@ -36,10 +41,10 @@ let silenceCheckTimer = null;
 
 let debugLogToSiteConsole = false;
 
-// NEW: per-site enabled
+// per-site enabled
 let extensionEnabledForSite = true;
 
-// NEW: dev options
+// dev options
 let stripTrailingPeriod = false;
 let boostMicGain = false;
 
@@ -47,7 +52,11 @@ let boostMicGain = false;
 let processingWatchdog = null;
 const PROCESSING_WATCHDOG_MS = 22000;
 
-// NEW: per-page instance id so background can reset stale session state on reload/navigation.
+// NEW: lock insertion target per session
+let lockedInsertTarget = null;
+let lockedInsertTargetInfo = null;
+
+// per-page instance id so background can reset stale session state on reload/navigation.
 const PAGE_INSTANCE_ID = (() => {
   try {
     if (crypto?.randomUUID) return crypto.randomUUID();
@@ -120,16 +129,87 @@ function isHotkeyEvent(e) {
     e.shiftKey === !!normalizedHotkey.shift;
 }
 
-function isEditableTarget(t) {
-  if (!t) return false;
-  if (t.isContentEditable) return true;
-  const tag = (t.tagName || '').toLowerCase();
-  if (tag === 'textarea') return true;
+function isEditableTarget(el) {
+  if (!el || el.nodeType !== 1) return false;
+  const tag = (el.tagName || '').toLowerCase();
+  if (tag === 'textarea') return !el.disabled && !el.readOnly;
   if (tag === 'input') {
-    const type = (t.type || '').toLowerCase();
-    return !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'range', 'color', 'hidden'].includes(type);
+    const type = (el.getAttribute('type') || 'text').toLowerCase();
+    const okTypes = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
+    if (!okTypes.has(type)) return false;
+    return !el.disabled && !el.readOnly;
   }
+  if (el.isContentEditable) return true;
   return false;
+}
+
+// Grab "best guess" editable from event path / active element.
+// This is used ONLY to lock insertion target on hotkey press.
+function findEditableFromEvent(e) {
+  const path = (typeof e.composedPath === 'function') ? e.composedPath() : [];
+  for (const node of path) {
+    if (node && node.nodeType === 1 && isEditableTarget(node)) return node;
+  }
+  if (isEditableTarget(e.target)) return e.target;
+  const a = document.activeElement;
+  if (isEditableTarget(a)) return a;
+  return null;
+}
+
+function findActiveEditable() {
+  const a = document.activeElement;
+  if (isEditableTarget(a)) return a;
+
+  const sel = window.getSelection?.();
+  const anchor = sel?.anchorNode;
+  let el = anchor && anchor.nodeType === 1 ? anchor : anchor?.parentElement;
+  while (el) {
+    if (el.isContentEditable) return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function snapshotTargetInfo(el) {
+  if (!el || el.nodeType !== 1) return null;
+  const tag = (el.tagName || '').toLowerCase();
+  const info = {
+    tag,
+    isContentEditable: !!el.isContentEditable,
+    id: el.id || null,
+    name: el.getAttribute?.('name') || null,
+    ariaLabel: el.getAttribute?.('aria-label') || null,
+    className: (typeof el.className === 'string') ? el.className : null
+  };
+
+  // capture caret for inputs/textareas
+  if (tag === 'textarea' || tag === 'input') {
+    try {
+      info.selectionStart = typeof el.selectionStart === 'number' ? el.selectionStart : null;
+      info.selectionEnd = typeof el.selectionEnd === 'number' ? el.selectionEnd : null;
+    } catch (_) {
+      info.selectionStart = null;
+      info.selectionEnd = null;
+    }
+  }
+  return info;
+}
+
+function lockInsertionTargetFromEvent(e) {
+  // Prefer a real editable if we can find one, otherwise keep null and we’ll fallback later.
+  const candidate = findEditableFromEvent(e) || findActiveEditable();
+  if (candidate && isEditableTarget(candidate)) {
+    lockedInsertTarget = candidate;
+    lockedInsertTargetInfo = snapshotTargetInfo(candidate);
+  } else {
+    lockedInsertTarget = null;
+    lockedInsertTargetInfo = null;
+  }
+}
+
+function clearLockedInsertionTarget() {
+  lockedInsertTarget = null;
+  lockedInsertTargetInfo = null;
 }
 
 function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
@@ -166,7 +246,6 @@ async function resolveEffectiveSettings() {
 
     extensionEnabledForSite = true;
 
-    // Futureproof: support disabledSites map and overrides[host].enabled=false
     const disabledSites = settings?.disabledSites || {};
     for (const [k, v] of Object.entries(disabledSites)) {
       if (v === true && hostMatchesRule(hostname, normalizeHost(k))) {
@@ -193,6 +272,7 @@ async function resolveEffectiveSettings() {
   // If the site just got disabled while running, stop immediately (no reload needed)
   if (prevEnabled && !extensionEnabledForSite) {
     clearProcessingWatchdog();
+    clearLockedInsertionTarget();
     try {
       if (captureActive) stopRecording(true);
     } catch (_) { }
@@ -223,6 +303,7 @@ browser.runtime.onMessage.addListener((message) => {
     processingSessionId = null;
     captureActive = false;
     skipTranscribe = true;
+    clearLockedInsertionTarget();
     try { stopRecording(true); } catch (_) { }
     showNotification("Canceled (settings changed)", "info");
   }
@@ -233,14 +314,13 @@ document.addEventListener('keydown', (e) => {
   if (!IS_TOP_FRAME) return;
   if (!extensionEnabledForSite) return;
   if (!shortcutEnabled || !normalizedHotkey) return;
-
-  // Docs/Slides: do not intercept unless event is from a real input/textarea
-  if (isGoogleDocsOrSlidesHost() && !isEditableTarget(e.target)) return;
-
-  if (!isEditableTarget(e.target)) return;
   if (!isHotkeyEvent(e)) return;
 
   e.preventDefault();
+
+  // Lock target at the moment user hits the hotkey (best-effort).
+  // This restores "full functionality": insert back into the intended textarea/contenteditable.
+  lockInsertionTargetFromEvent(e);
 
   const langGuess = (navigator.language || 'en').split('-')[0] || 'en';
   if (captureActive) {
@@ -375,51 +455,79 @@ function showNotification(message, type = "info") {
   }, duration);
 }
 
-function insertIntoActiveEditable(text) {
-  const active = document.activeElement;
-  if (!isEditableTarget(active)) {
-    dbg('No editable target');
-    return;
+function resolveInsertTarget() {
+  // If we still have a locked target and it’s still in the DOM, use it.
+  if (lockedInsertTarget && lockedInsertTarget.isConnected && isEditableTarget(lockedInsertTarget)) {
+    return lockedInsertTarget;
   }
 
-  // NEW: special handling for Google Docs/Slides to avoid selection/range manipulation.
-  if (isGoogleDocsOrSlidesHost()) {
-    // 1) Try execCommand first (least invasive for complex editors)
-    if (tryExecCommandInsert(text)) return;
-
-    // 2) If focused element is a real input/textarea, do the value-path insertion
-    const tag = (active.tagName || '').toLowerCase();
-    if (tag === 'textarea' || tag === 'input') {
-      const start = active.selectionStart;
-      const end = active.selectionEnd;
-      active.value = active.value.substring(0, start) + text + active.value.substring(end);
-      active.selectionStart = active.selectionEnd = start + text.length;
-      active.dispatchEvent(new Event('input', { bubbles: true }));
-      active.dispatchEvent(new Event('change', { bubbles: true }));
-      return;
-    }
-
-    // 3) Last resort: do nothing (but still send the SpeechRecognition event elsewhere)
-    dbg('Google host: insert skipped (no safe method)');
-    return;
-  }
-
-  // ---- original behavior for non-Google sites ----
-  if (active.isContentEditable) {
-    document.execCommand('insertText', false, text);
-  } else {
-    const start = active.selectionStart;
-    const end = active.selectionEnd;
-    active.value = active.value.substring(0, start) + text + active.value.substring(end);
-    active.selectionStart = active.selectionEnd = start + text.length;
-    active.dispatchEvent(new Event('input', { bubbles: true }));
-    active.dispatchEvent(new Event('change', { bubbles: true }));
-  }
+  // Otherwise fallback to current active.
+  return findActiveEditable();
 }
 
-function trySubmitClosestForm() {
-  const el = document.activeElement;
-  if (!el) return false;
+function insertIntoElement(el, text) {
+  if (!el || !isEditableTarget(el)) return false;
+
+  // Google Docs/Slides special handling stays
+  if (isGoogleDocsOrSlidesHost()) {
+    if (tryExecCommandInsert(text)) return true;
+
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag === 'textarea' || tag === 'input') {
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      el.value = el.value.substring(0, start) + text + el.value.substring(end);
+      el.selectionStart = el.selectionEnd = start + text.length;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+
+    dbg('Google host: insert skipped (no safe method)');
+    return false;
+  }
+
+  // Non-Google: prefer execCommand first (best for rich editors)
+  // Try focusing the element first, to improve insert reliability.
+  try { el.focus?.(); } catch (_) { }
+
+  if (tryExecCommandInsert(text)) return true;
+
+  if (el.isContentEditable) {
+    dbg('contentEditable insert failed (execCommand blocked)');
+    return false;
+  }
+
+  // input/textarea path
+  const tag = (el.tagName || '').toLowerCase();
+  if (tag === 'textarea' || tag === 'input') {
+    // Prefer restoring caret if we captured it
+    let start = el.selectionStart;
+    let end = el.selectionEnd;
+
+    if (lockedInsertTarget === el && lockedInsertTargetInfo) {
+      if (typeof lockedInsertTargetInfo.selectionStart === 'number') start = lockedInsertTargetInfo.selectionStart;
+      if (typeof lockedInsertTargetInfo.selectionEnd === 'number') end = lockedInsertTargetInfo.selectionEnd;
+      try {
+        if (typeof start === 'number' && typeof end === 'number') el.setSelectionRange?.(start, end);
+      } catch (_) { }
+    }
+
+    start = el.selectionStart;
+    end = el.selectionEnd;
+
+    el.value = el.value.substring(0, start) + text + el.value.substring(end);
+    el.selectionStart = el.selectionEnd = start + text.length;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  return false;
+}
+
+function trySubmitClosestFormForElement(el) {
+  if (!el || el.nodeType !== 1) return false;
 
   const form = el.closest ? el.closest('form') : null;
   if (!form) return false;
@@ -444,9 +552,10 @@ function trySubmitClosestForm() {
   return false;
 }
 
-function fallbackSendEnterKey() {
-  const el = document.activeElement;
+function fallbackSendEnterKeyForElement(el) {
   if (!el || !isEditableTarget(el)) return;
+
+  try { el.focus?.(); } catch (_) { }
 
   for (const type of ['keydown', 'keypress', 'keyup']) {
     const ev = new KeyboardEvent(type, {
@@ -461,9 +570,9 @@ function fallbackSendEnterKey() {
   }
 }
 
-function sendEnterAfterInsert() {
-  if (trySubmitClosestForm()) return;
-  fallbackSendEnterKey();
+function sendEnterAfterInsertForTarget(el) {
+  if (trySubmitClosestFormForElement(el)) return;
+  fallbackSendEnterKeyForElement(el);
 }
 
 function pickBestRecorderMimeType() {
@@ -511,6 +620,7 @@ window.addEventListener("message", async (event) => {
   }
   else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
     clearProcessingWatchdog();
+    clearLockedInsertionTarget();
     if (captureActive) {
       stopRecording(true);
       try {
@@ -624,10 +734,10 @@ async function startRecording(pageLanguage, sessionId) {
           });
         } catch (_) { }
 
-        if (skipTranscribe) { captureActive = false; return; }
-        if (duration < 300) { captureActive = false; return; }
-        if (sessionId !== activeSessionId) { captureActive = false; return; }
-        if (!extensionEnabledForSite) { captureActive = false; return; }
+        if (skipTranscribe) { captureActive = false; clearLockedInsertionTarget(); return; }
+        if (duration < 300) { captureActive = false; clearLockedInsertionTarget(); return; }
+        if (sessionId !== activeSessionId) { captureActive = false; clearLockedInsertionTarget(); return; }
+        if (!extensionEnabledForSite) { captureActive = false; clearLockedInsertionTarget(); return; }
 
         showNotification("Processing...", "processing");
 
@@ -651,6 +761,7 @@ async function startRecording(pageLanguage, sessionId) {
           clearProcessingWatchdog();
           processingSessionId = null;
           showNotification("Failed to send audio to background: " + (e?.message || e), "error");
+          clearLockedInsertionTarget();
         }
       } finally {
         captureActive = false;
@@ -667,6 +778,7 @@ async function startRecording(pageLanguage, sessionId) {
   } catch (err) {
     clearSilenceTimer();
     captureActive = false;
+    clearLockedInsertionTarget();
     try {
       browser.runtime.sendMessage({
         type: 'RECORDING_STOP',
@@ -710,19 +822,29 @@ browser.runtime.onMessage.addListener((message) => {
 
     showNotification(text, "success");
 
-    // Preserve previous behavior: insert where possible
-    insertIntoActiveEditable(text);
+    // Insert into the locked target when possible (full functionality restored)
+    const target = resolveInsertTarget();
+    const inserted = insertIntoElement(target, text);
+
+    if (!inserted) {
+      dbg('Insert failed; no editable target', { lockedInsertTargetInfo });
+    }
 
     if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
-      sendEnterAfterInsert();
+      // Submit/enter should apply to the same target we inserted into (or attempted to).
+      sendEnterAfterInsertForTarget(target || document.activeElement);
     }
 
     // Always forward to page SpeechRecognition bridge
     window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text }, "*");
+
+    // Clear lock after completion so next run can capture a new target
+    clearLockedInsertionTarget();
   }
   else if (message.type === 'WHISPER_NO_AUDIO') {
     clearProcessingWatchdog();
     processingSessionId = null;
+    clearLockedInsertionTarget();
 
     if (message.reason !== 'silence') showNotification("No speech detected", "info");
     else { const n = document.getElementById("whisper-pill"); if (n) n.style.opacity = "0"; }
@@ -730,16 +852,19 @@ browser.runtime.onMessage.addListener((message) => {
   else if (message.type === 'WHISPER_UNINTELLIGIBLE') {
     clearProcessingWatchdog();
     processingSessionId = null;
+    clearLockedInsertionTarget();
     showNotification("Didn't catch that", "error");
   }
   else if (message.type === 'WHISPER_ERROR') {
     clearProcessingWatchdog();
     processingSessionId = null;
+    clearLockedInsertionTarget();
     showNotification(message.error || "Transcription error", "error");
   }
   else if (message.type === 'WHISPER_DISABLED') {
     clearProcessingWatchdog();
     processingSessionId = null;
+    clearLockedInsertionTarget();
     showNotification("Whisper is disabled on this site.", "info");
   }
 });

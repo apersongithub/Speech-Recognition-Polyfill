@@ -8,7 +8,7 @@
   "options_page_title": { "message": "Speech Recognition Settings" },
   "options_heading": { "message": "Speech Recognition Settings" },
   "banner_text": {
-    "message": "⚠️ Experimental: This is not a bandaid fix to the Web Speech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine. Some settings may require a page refresh to take effect. Any additional information is listed <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HERE!</strong></a>"
+    "message": "⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine. Some settings may require a page refresh to take effect. Any additional information is listed <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HERE!</strong></a>"
   },
 
   "section_engine": { "message": "Engine" },
@@ -201,5 +201,43 @@
   "title_idle": { "message": "Whisper: Idle" },
   "title_recording": { "message": "Whisper: Listening" },
   "title_processing": { "message": "Whisper: Processing" },
-  "title_error": { "message": "Whisper: Error" }
+  "title_error": { "message": "Whisper: Error" },
+    "backend_indicator_label": { "message": "Local Whisper backend:" },
+  "backend_indicator_value_active": { "message": "Active" },
+  "backend_indicator_value_unknown": { "message": "Unknown" },
+
+  "backend_chip_webgpu": { "message": "WebGPU" },
+  "backend_chip_wasm": { "message": "WASM" },
+  "backend_chip_unknown": { "message": "Unknown" },
+
+  "backend_hint_default": {
+    "message": "Runs on WebGPU when available; falls back to WASM if not supported."
+  },
+  "backend_hint_webgpu": {
+    "message": "GPU accelerated (best performance when supported)."
+  },
+  "backend_hint_wasm": {
+    "message": "CPU fallback (WebGPU unsupported or failed to initialize)."
+  },
+  "backend_hint_unknown": {
+    "message": "Backend will be detected after the first local transcription/model load."
+  },
+  "backend_hint_webgpu_enabled_supported": {
+    "message": "WebGPU is enabled and supported. It will activate after the next local model load/transcription."
+  },
+  "backend_hint_preferred_wasm": {
+    "message": "WASM is selected as the preferred backend."
+  },
+  "backend_hint_webgpu_init_failed_prefix": {
+    "message": "WebGPU API exists, but adapter/device init failed:"
+  },
+  "backend_hint_webgpu_unavailable": {
+    "message": "WebGPU is not available in this context; using WASM."
+  },
+  "backend_hint_using_wasm": {
+    "message": "Using WASM."
+  },
+  "backend_unknown_error": {
+    "message": "unknown error"
+  }
 }

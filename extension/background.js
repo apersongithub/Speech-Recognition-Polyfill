@@ -1,5 +1,5 @@
 // background.js (MV2) - Firefox
-// Worker-based local Whisper to allow freeing WASM memory by terminating the worker.
+// Worker-based local Whisper to allow freeing WASM/WebGPU resources by terminating the worker.
 // Debug mode: can forward debug logs to the site console via content script.
 
 import { env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1';
@@ -124,7 +124,7 @@ async function onMessageMaybeResetEpoch(tabId, frameId, pageInstanceId, hostname
   pageInstanceByTabFrame.set(key, pageInstanceId);
 }
 
-// ---------------- ASR Worker (WASM isolation) ----------------
+// ---------------- ASR Worker (WASM/WebGPU isolation) ----------------
 let asrWorker = null;
 let asrSeq = 1;
 const asrInflight = new Map();
@@ -348,7 +348,6 @@ function drawSquircle(ctx, x, y, w, h) {
   ctx.bezierCurveTo(x, y + h * (0.5 - k), x + w * (0.5 - k), y, x + w * 0.5, y);
   ctx.closePath();
 }
-
 
 async function getIconImageData(baseColor, badge) {
   const badgeKey = badge ? `${badge.type}:${badge.color}` : 'none';
@@ -614,6 +613,9 @@ async function ensureModelForTab(tabId, modelID) {
     } else {
       showBadgeForTab(tabId, { type: 'download', color: colors.downloaded }, BADGE_MS.downloaded);
     }
+
+    // NEW: expose backend in debug logs so you can confirm webgpu vs wasm
+    dbgToTab(tabId, 0, 'model_backend', { backend: res.backend || 'unknown' });
   } catch (e) {
     showBadgeForTab(tabId, { type: 'download', color: colors.download_error }, BADGE_MS.download_error);
     throw e;
@@ -880,6 +882,23 @@ browser.runtime.onMessage.addListener((message, sender) => {
   // Fire-and-forget; we don't await because onMessage can't be async here.
   onMessageMaybeResetEpoch(tabId, frameId, message?.pageInstanceId, message?.hostname).catch(() => { });
 
+if (message?.type === 'ASR_BACKEND_PING') {
+  return (async () => {
+    try {
+      const res = await callAsrWorker('PING', {}, 3000);
+      return {
+        ok: true,
+        backend: res.activeBackend || res.backend || 'unknown',
+        preferredBackend: res.preferredBackend || 'unknown',
+        hasModelLoaded: !!res.hasModelLoaded,
+        webgpu: res.webgpu || null
+      };
+    } catch (_) {
+      return { ok: false, backend: 'unknown', preferredBackend: 'unknown', hasModelLoaded: false, webgpu: null };
+    }
+  })();
+}
+
   if (message?.type === 'CONFIG_CHANGED') {
     (async () => {
       let nextFp = null;
@@ -1031,14 +1050,13 @@ browser.runtime.onMessage.addListener((message, sender) => {
         );
 
         text = (res.text || '').trim();
-        dbgToTab(tabId, frameId, 'local_transcribed', { chars: text.length, model: res.model, cached: !!res.cached });
+        dbgToTab(tabId, frameId, 'local_transcribed', { chars: text.length, model: res.model, cached: !!res.cached, backend: res.backend });
       }
 
       if (isCanceled(tabId, sessionId)) return;
 
       await clearBadge(tabId);
 
-      // ... inside the transcription completion section ...
       text = collapseRepeats(text);
       const trimmed = text.trim();
       const words = trimmed.split(/\s+/).filter(Boolean);
@@ -1088,7 +1106,6 @@ browser.runtime.onInstalled.addListener((details) => {
     try { browser.runtime.openOptionsPage(); } catch (_) {}
   }
 });
-
 
 // ---------------- Tab lifecycle / cleanup ----------------
 function clearTabTracking(tabId) {
