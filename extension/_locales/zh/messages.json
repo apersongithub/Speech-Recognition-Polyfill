@@ -8,7 +8,7 @@
   "options_page_title": { "message": "语音识别设置" },
   "options_heading": { "message": "语音识别设置" },
   "banner_text": {
-    "message": "实验性功能：这不是 Web Speech API 的“创可贴式”修复，可能偶尔变慢或中断。你可以通过扩展图标查看状态（建议固定到工具栏）。如需最佳性能，请使用云端引擎。部分设置可能需要刷新页面后生效。更多信息请见 <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>这里！</strong></a>"
+    "message": "⚠️ 实验性功能：这不是 Web Speech API 的“创可贴式”修复，可能偶尔变慢或中断。你可以通过扩展图标查看状态（建议固定到工具栏）。如需最佳性能，请使用云端引擎。部分设置可能需要刷新页面后生效。更多信息请见 <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>这里！</strong></a>"
   },
 
   "section_engine": { "message": "引擎" },
@@ -128,14 +128,14 @@
   "cache_default_model_note": { "message": "预取默认设备端 Whisper 模型以加快首次使用（占用部分内存）。仅适用于本地引擎。" },
 
   "enable_hardcap_label": { "message": "启用 5 秒硬上限" },
-  "enable_hardcap_note": { "message": "录音会在静音时停止，而不是固定 5 秒" },
+  "enable_hardcap_note": { "message": "语音录音时长限制为固定的 5 秒。" },
 
   "disable_grace_label": { "message": "禁用宽限窗口" },
   "disable_grace_note": { "message": "宽限已启用；请在上方设置毫秒数。" },
 
   "section_save_reset": { "message": "数据" },
   "data_note": {
-    "message": "将设置导出/导入为 JSON，或恢复默认值。也提供预置覆盖规则：<a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>这里！</strong></a>"
+    "message": "将设置导出/导入为 JSON，或恢复默认值。也提供预置覆盖规则：<a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>这里！</strong></a>"
   },
   "export_settings": { "message": "导出" },
   "import_settings": { "message": "导入" },

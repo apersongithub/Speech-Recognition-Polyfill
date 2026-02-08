@@ -8,7 +8,7 @@
   "options_page_title": { "message": "Spracherkennung – Einstellungen" },
   "options_heading": { "message": "Spracherkennung – Einstellungen" },
   "banner_text": {
-    "message": "Experimentell: Dies ist kein Pflaster-Fix für die Web Speech API. Rechne mit gelegentlichen Verlangsamungen oder Unterbrechungen. Den Status der Spracherkennung siehst du über das Erweiterungssymbol (anheften). Für beste Leistung nutze die Cloud-Engine. Manche Einstellungen erfordern ein Neuladen der Seite. Weitere Informationen findest du <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HIER!</strong></a>"
+    "message": "⚠️ Experimentell: Dies ist kein Pflaster-Fix für die Web Speech API. Rechne mit gelegentlichen Verlangsamungen oder Unterbrechungen. Den Status der Spracherkennung siehst du über das Erweiterungssymbol (anheften). Für beste Leistung nutze die Cloud-Engine. Manche Einstellungen erfordern ein Neuladen der Seite. Weitere Informationen findest du <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HIER!</strong></a>"
   },
 
   "section_engine": { "message": "Engine" },
@@ -94,7 +94,7 @@
   "override_status_default": { "message": "(Standard: Aktiviert)" },
   "override_status_disabled": { "message": "Deaktiviert" },
 
-  "add_rule": { "message": "Regel hinzufügen" },
+  "add_rule": { "message": "Regels hinzufügen" },
   "clear_inputs": { "message": "Eingaben löschen" },
   "remove_rule": { "message": "Alle Regeln entfernen" },
 
@@ -130,14 +130,14 @@
   "cache_default_model_note": { "message": "Lädt das Standard-Whisper-Modell vorab, damit die erste Nutzung schneller ist (benötigt RAM). Nur für lokale Engine." },
 
   "enable_hardcap_label": { "message": "5s-Hardcap aktivieren" },
-  "enable_hardcap_note": { "message": "Aufnahme stoppt bei Stille statt nach festen 5s" },
+  "enable_hardcap_note": { "message": "Spraakopnames hebben een vaste limiet van 5 seconden." },
 
   "disable_grace_label": { "message": "Kulanzfenster deaktivieren" },
   "disable_grace_note": { "message": "Kulanz ist aktiv; oben die ms einstellen." },
 
   "section_save_reset": { "message": "Daten" },
   "data_note": {
-    "message": "Einstellungen als JSON exportieren/importieren oder auf Standard zurücksetzen. Vorgefertigte Overrides sind auch <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>HIER!</strong></a>"
+    "message": "Einstellungen als JSON exportieren/importieren oder auf Standard zurücksetzen. Vorgefertigte Overrides sind auch <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/rebuilt-overrides\" target=\"_blank\"><strong>HIER!</strong></a>"
   },
   "export_settings": { "message": "Exportieren" },
   "import_settings": { "message": "Importieren" },

@@ -8,7 +8,7 @@
   "options_page_title": { "message": "Configurações de reconhecimento de voz" },
   "options_heading": { "message": "Configurações de reconhecimento de voz" },
   "banner_text": {
-    "message": "Experimental: isto não é um conserto paliativo da Web Speech API. Espere lentidões ou interrupções ocasionais. Você pode ver o status pelo ícone da extensão (fixe). Para melhor desempenho, use o motor em nuvem. Algumas configurações podem exigir atualizar a página. Mais informações <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>AQUI!</strong></a>"
+    "message": "⚠️ Experimental: isto não é um conserto paliativo da Web Speech API. Espere lentidões ou interrupções ocasionais. Você pode ver o status pelo ícone da extensão (fixe). Para melhor desempenho, use o motor em nuvem. Algumas configurações podem exigir atualizar a página. Mais informações <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>AQUI!</strong></a>"
   },
 
   "section_engine": { "message": "Mecanismo" },
@@ -92,7 +92,7 @@
   "override_status_default": { "message": "(Padrão: Ativada)" },
   "override_status_disabled": { "message": "Desativada" },
 
-  "add_rule": { "message": "Adicionar regra" },
+  "add_rule": { "message": "Adicionar regras" },
   "clear_inputs": { "message": "Limpar campos" },
   "remove_rule": { "message": "Remover todas as regras" },
 
@@ -128,14 +128,14 @@
   "cache_default_model_note": { "message": "Pré-busca o modelo Whisper local padrão para acelerar o primeiro uso (usa RAM). Apenas no motor local." },
 
   "enable_hardcap_label": { "message": "Ativar limite rígido de 5s" },
-  "enable_hardcap_note": { "message": "A gravação para no silêncio em vez de 5s fixos" },
+  "enable_hardcap_note": { "message": "As gravações de voz têm um limite fixo de 5 segundos." },
 
   "disable_grace_label": { "message": "Desativar janela de tolerância" },
   "disable_grace_note": { "message": "A tolerância está ativa; ajuste os ms acima." },
 
   "section_save_reset": { "message": "Dados" },
   "data_note": {
-    "message": "Exporte/importe configurações como JSON ou restaure para o padrão. Substituições prontas também estão <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>AQUI!</strong></a>"
+    "message": "Exporte/importe configurações como JSON ou restaure para o padrão. Substituições prontas também estão <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>AQUI!</strong></a>"
   },
   "export_settings": { "message": "Exportar" },
   "import_settings": { "message": "Importar" },

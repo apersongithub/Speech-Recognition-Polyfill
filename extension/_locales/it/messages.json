@@ -8,7 +8,7 @@
   "options_page_title": { "message": "Impostazioni riconoscimento vocale" },
   "options_heading": { "message": "Impostazioni riconoscimento vocale" },
   "banner_text": {
-    "message": "Sperimentale: non è una soluzione tampone per la Web Speech API. Aspettati rallentamenti o interruzioni occasionali. Puoi vedere lo stato dall’icona dell’estensione (fissala). Per le migliori prestazioni usa il motore cloud. Alcune impostazioni potrebbero richiedere un refresh della pagina. Ulteriori informazioni <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>QUI!</strong></a>"
+    "message": "⚠️ Sperimentale: non è una soluzione tampone per la Web Speech API. Aspettati rallentamenti o interruzioni occasionali. Puoi vedere lo stato dall’icona dell’estensione (fissala). Per le migliori prestazioni usa il motore cloud. Alcune impostazioni potrebbero richiedere un refresh della pagina. Ulteriori informazioni <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>QUI!</strong></a>"
   },
 
   "section_engine": { "message": "Motore" },
@@ -92,7 +92,7 @@
   "override_status_default": { "message": "(Predefinito: Abilitata)" },
   "override_status_disabled": { "message": "Disabilitata" },
 
-  "add_rule": { "message": "Aggiungi regola" },
+  "add_rule": { "message": "Aggiungi regole" },
   "clear_inputs": { "message": "Pulisci campi" },
   "remove_rule": { "message": "Rimuovi tutte le regole" },
 
@@ -128,14 +128,14 @@
   "cache_default_model_note": { "message": "Precarica il modello Whisper locale predefinito per velocizzare il primo utilizzo (usa RAM). Solo con motore locale." },
 
   "enable_hardcap_label": { "message": "Abilita hard cap 5s" },
-  "enable_hardcap_note": { "message": "La registrazione si ferma sul silenzio invece di 5s fissi" },
+  "enable_hardcap_note": { "message": "Le registrazioni vocali hanno un limite fisso di 5 secondi." },
 
   "disable_grace_label": { "message": "Disabilita finestra di grazia" },
   "disable_grace_note": { "message": "La grazia è abilitata; imposta i ms sopra." },
 
   "section_save_reset": { "message": "Dati" },
   "data_note": {
-    "message": "Esporta/importa impostazioni come JSON o ripristina i valori predefiniti. Override predefiniti disponibili anche <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>QUI!</strong></a>"
+    "message": "Esporta/importa impostazioni come JSON o ripristina i valori predefiniti. Override predefiniti disponibili anche <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>QUI!</strong></a>"
   },
   "export_settings": { "message": "Esporta" },
   "import_settings": { "message": "Importa" },

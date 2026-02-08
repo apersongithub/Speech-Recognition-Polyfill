@@ -8,7 +8,7 @@
   "options_page_title": { "message": "Speech Recognition Settings" },
   "options_heading": { "message": "Speech Recognition Settings" },
   "banner_text": {
-    "message": "Experimental: This is not a bandaid fix to the Web Speech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine. Some settings may require a page refresh to take effect. Any additional information is listed <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HERE!</strong></a>"
+    "message": "⚠️ Experimental: This is not a bandaid fix to the Web Speech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine. Some settings may require a page refresh to take effect. Any additional information is listed <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HERE!</strong></a>"
   },
 
   "section_engine": { "message": "Engine" },
@@ -108,7 +108,7 @@
   "override_status_default": { "message": "(Default: Enabled)" },
   "override_status_disabled": { "message": "Disabled" },
 
-  "add_rule": { "message": "Add Rule" },
+  "add_rule": { "message": "Add Rules" },
   "clear_inputs": { "message": "Clear Inputs" },
   "remove_rule": { "message": "Remove All Rules" },
 
@@ -164,14 +164,14 @@
   },
 
   "enable_hardcap_label": { "message": "Enable 5s hard cap" },
-  "enable_hardcap_note": { "message": "Recording stops on silence instead of fixed 5s" },
+  "enable_hardcap_note": { "message": "Voice Recordings have a fixed 5s limit." },
 
   "disable_grace_label": { "message": "Disable grace window" },
   "disable_grace_note": { "message": "Grace is enabled; set grace ms above." },
 
   "section_save_reset": { "message": "Data" },
   "data_note": {
-    "message": "Export/import settings as JSON or reset to defaults. Prebuilt Overrides are also included <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>HERE!</strong></a>"
+    "message": "Export/import settings as JSON or reset to defaults. Prebuilt Overrides are also included <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>HERE!</strong></a>"
   },
   "export_settings": { "message": "Export" },
   "import_settings": { "message": "Import" },

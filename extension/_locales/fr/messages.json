@@ -8,7 +8,7 @@
   "options_page_title": { "message": "Paramètres de reconnaissance vocale" },
   "options_heading": { "message": "Paramètres de reconnaissance vocale" },
   "banner_text": {
-    "message": "Expérimental : ce n’est pas un correctif « pansement » pour la Web Speech API. Attendez-vous à des ralentissements ou interruptions occasionnels. Vous pouvez voir l’état via l’icône de l’extension (épinglez-la). Pour de meilleures performances, utilisez le moteur cloud. Certains paramètres peuvent nécessiter un rechargement de la page. Plus d’informations <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>ICI !</strong></a>"
+    "message": "⚠️ Expérimental : ce n’est pas un correctif « pansement » pour la Web Speech API. Attendez-vous à des ralentissements ou interruptions occasionnels. Vous pouvez voir l’état via l’icône de l’extension (épinglez-la). Pour de meilleures performances, utilisez le moteur cloud. Certains paramètres peuvent nécessiter un rechargement de la page. Plus d’informations <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>ICI !</strong></a>"
   },
 
   "section_engine": { "message": "Moteur" },
@@ -92,7 +92,7 @@
   "override_status_default": { "message": "(Par défaut : Activée)" },
   "override_status_disabled": { "message": "Désactivée" },
 
-  "add_rule": { "message": "Ajouter une règle" },
+  "add_rule": { "message": "Ajouter des règles" },
   "clear_inputs": { "message": "Vider les champs" },
   "remove_rule": { "message": "Supprimer toutes les règles" },
 
@@ -128,14 +128,14 @@
   "cache_default_model_note": { "message": "Précharge votre modèle Whisper local par défaut pour accélérer la première utilisation (utilise de la RAM). Uniquement avec le moteur local." },
 
   "enable_hardcap_label": { "message": "Activer la limite stricte de 5 s" },
-  "enable_hardcap_note": { "message": "L’enregistrement s’arrête au silence au lieu d’un 5 s fixe" },
+  "enable_hardcap_note": { "message": "Les enregistrements vocaux ont une limite fixe de 5 secondes." },
 
   "disable_grace_label": { "message": "Désactiver la fenêtre de grâce" },
   "disable_grace_note": { "message": "La grâce est activée ; réglez les ms ci-dessus." },
 
   "section_save_reset": { "message": "Données" },
   "data_note": {
-    "message": "Exporter/importer les paramètres en JSON ou réinitialiser aux valeurs par défaut. Des dérogations préconstruites sont aussi disponibles <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>ICI !</strong></a>"
+    "message": "Exporter/importer les paramètres en JSON ou réinitialiser aux valeurs par défaut. Des dérogations préconstruites sont aussi disponibles <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>ICI !</strong></a>"
   },
   "export_settings": { "message": "Exporter" },
   "import_settings": { "message": "Importer" },

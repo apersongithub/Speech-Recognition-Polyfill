@@ -8,7 +8,7 @@
   "options_page_title": { "message": "音声認識の設定" },
   "options_heading": { "message": "音声認識の設定" },
   "banner_text": {
-    "message": "実験的機能：これは Web Speech API の応急処置ではありません。遅延や中断が発生する可能性があります。状態は拡張機能アイコンから確認できます（ピン留め推奨）。最良のパフォーマンスにはクラウドエンジンを使用してください。設定によってはページの再読み込みが必要です。追加情報は <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>こちら！</strong></a>"
+    "message": "⚠️ 実験的機能：これは Web Speech API の応急処置ではありません。遅延や中断が発生する可能性があります。状態は拡張機能アイコンから確認できます（ピン留め推奨）。最良のパフォーマンスにはクラウドエンジンを使用してください。設定によってはページの再読み込みが必要です。追加情報は <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>こちら！</strong></a>"
   },
 
   "section_engine": { "message": "エンジン" },
@@ -128,14 +128,14 @@
   "cache_default_model_note": { "message": "デフォルトのローカル Whisper モデルを事前取得し初回を高速化します（RAM を使用）。ローカルエンジンのみ。" },
 
   "enable_hardcap_label": { "message": "5 秒ハードキャップを有効にする" },
-  "enable_hardcap_note": { "message": "固定 5 秒ではなく無音で録音を停止します" },
+  "enable_hardcap_note": { "message": "音声録音には5秒の制限があります。" },
 
   "disable_grace_label": { "message": "猶予ウィンドウを無効にする" },
   "disable_grace_note": { "message": "猶予は有効です。上の ms を設定してください。" },
 
   "section_save_reset": { "message": "データ" },
   "data_note": {
-    "message": "設定を JSON としてエクスポート/インポート、または初期化します。事前作成のオーバーライドも <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>こちら！</strong></a>"
+    "message": "設定を JSON としてエクスポート/インポート、または初期化します。事前作成のオーバーライドも <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>こちら！</strong></a>"
   },
   "export_settings": { "message": "エクスポート" },
   "import_settings": { "message": "インポート" },

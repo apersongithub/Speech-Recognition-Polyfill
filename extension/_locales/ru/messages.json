@@ -8,7 +8,7 @@
   "options_page_title": { "message": "Настройки распознавания речи" },
   "options_heading": { "message": "Настройки распознавания речи" },
   "banner_text": {
-    "message": "Экспериментально: это не «быстрый пластырь» для Web Speech API. Возможны замедления или прерывания. Статус можно смотреть через значок расширения (закрепите его). Для лучшей производительности используйте облачный движок. Некоторые настройки требуют обновления страницы. Доп. информация — <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>ЗДЕСЬ!</strong></a>"
+    "message": "⚠️ Экспериментально: это не «быстрый пластырь» для Web Speech API. Возможны замедления или прерывания. Статус можно смотреть через значок расширения (закрепите его). Для лучшей производительности используйте облачный движок. Некоторые настройки требуют обновления страницы. Доп. информация — <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>ЗДЕСЬ!</strong></a>"
   },
 
   "section_engine": { "message": "Движок" },
@@ -92,11 +92,11 @@
   "override_status_default": { "message": "(По умолчанию: Включено)" },
   "override_status_disabled": { "message": "Отключено" },
 
-  "add_rule": { "message": "Добавить правило" },
+  "add_rule": { "message": "Добавить правила" },
   "clear_inputs": { "message": "Очистить поля" },
   "remove_rule": { "message": "Удалить все правила" },
 
-  "overrides_list_title": { "message": "Сохранённые п��реопределения" },
+  "overrides_list_title": { "message": "Сохранённые переопределения" },
   "show": { "message": "Показать" },
   "hide": { "message": "Скрыть" },
 
@@ -128,14 +128,14 @@
   "cache_default_model_note": { "message": "Предзагружает локальную модель Whisper по умолчанию для ускорения первого запуска (использует RAM). Только для локального движка." },
 
   "enable_hardcap_label": { "message": "Включить жёсткий лимит 5 с" },
-  "enable_hardcap_note": { "message": "Запись останавливается по тишине вместо фиксированных 5 с" },
+  "enable_hardcap_note": { "message": "Длительность голосовых записей ограничена 5 секундами." },
 
   "disable_grace_label": { "message": "Отключить окно задержки" },
   "disable_grace_note": { "message": "Задержка включена; задайте ms выше." },
 
   "section_save_reset": { "message": "Данные" },
   "data_note": {
-    "message": "Экспорт/импорт настроек в JSON или сброс к умолчанию. Готовые переопределения также доступны <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>ЗДЕСЬ!</strong></a>"
+    "message": "Экспорт/импорт настроек в JSON или сброс к умолчанию. Готовые переопределения также доступны <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>ЗДЕСЬ!</strong></a>"
   },
   "export_settings": { "message": "Экспорт" },
   "import_settings": { "message": "Импорт" },
