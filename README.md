@@ -35,6 +35,7 @@
 | How do I improve accuracy? | Speak loud, slow, and clear; pick the correct mic. Use a larger Whisper model (slower) **or switch to the cloud engine** for better speed & quality. |
 | How is silence handled? | Adaptive Voice Activity Detection plus a configurable silence timeout (global and per-site). |
 | Can I disable it on certain sites? | Yes. You can disable the extension per-site from the popup (Extension Status) or via a Site Override. |
+| Where are the prebuilt overrides? | You can find them linked here [HERE](https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides). For Duolingo, just choose the language you are learning, then download and import the override. |
 
 | Engine          | Model ID                       | Notes                                |
 |-----------------|--------------------------------|--------------------------------------|

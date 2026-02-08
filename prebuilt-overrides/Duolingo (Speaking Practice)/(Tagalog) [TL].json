@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-02-08T17:49:57.345Z",
+  "settings": {
+    "overrides": {
+      "www.duolingo.com": {
+        "language": "tl"
+      },
+      "www.duolingo.cn": {
+        "language": "tl"
+      }
+    }
+  }
+}
