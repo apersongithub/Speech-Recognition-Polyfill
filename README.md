@@ -36,6 +36,7 @@
 | How is silence handled? | Adaptive Voice Activity Detection plus a configurable silence timeout (global and per-site). |
 | Can I disable it on certain sites? | Yes. You can disable the extension per-site from the popup (Extension Status) or via a Site Override. |
 | Where are the prebuilt overrides? | You can find them linked here [HERE](https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides). For Duolingo, just choose the language you are learning, then download and import the override. |
+| How does offline functionality work? | There is technically none, you can try the "Cache default model" option and it will work offline until you switch the model (manually or through a site override) or close the browser. |
 
 | Engine          | Model ID                       | Notes                                |
 |-----------------|--------------------------------|--------------------------------------|
