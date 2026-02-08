@@ -44,29 +44,38 @@ document.addEventListener('DOMContentLoaded', () => {
     installOverridesListToggle();
     installOverrideRowClickToLoad();
 
-    // NEW: backend indicator
+    // backend indicator
     refreshBackendIndicator().catch(() => { });
     // Poll a bit so it updates after first model load; cheap + simple.
     setInterval(() => refreshBackendIndicator().catch(() => { }), 2000);
 });
 
 // Existing listeners
-document.getElementById('open-assemblyai').addEventListener('click', () => {
+document.getElementById('open-assemblyai')?.addEventListener('click', () => {
     browser.tabs.create({ url: 'https://www.assemblyai.com/dashboard/api-keys', active: true });
 });
-document.getElementById('add-override').addEventListener('click', addOrUpdateOverride);
-document.getElementById('remove-override').addEventListener('click', removeAllOverrides);
-document.getElementById('debug-mode').addEventListener('change', () => saveDebugMode(['dev']));
-document.getElementById('grace-ms').addEventListener('change', () => saveGraceSetting(['local']));
-document.getElementById('factory-reset').addEventListener('click', factoryReset);
-document.getElementById('disable-favicons').addEventListener('change', () => toggleFavicons(['dev']));
-document.getElementById('show-model-sections-toggle').addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); applyVisibility(); });
-document.getElementById('provider-select').addEventListener('change', () => { if (!isRestoring) saveDefaults(['engine']); applyVisibility(); });
+document.getElementById('add-override')?.addEventListener('click', addOrUpdateOverride);
+document.getElementById('remove-override')?.addEventListener('click', removeAllOverrides);
+
+document.getElementById('debug-mode')?.addEventListener('change', () => saveDebugMode(['dev']));
+document.getElementById('grace-ms')?.addEventListener('change', () => saveGraceSetting(['local']));
+document.getElementById('factory-reset')?.addEventListener('click', factoryReset);
+document.getElementById('disable-favicons')?.addEventListener('change', () => toggleFavicons(['dev']));
+
+document.getElementById('show-model-sections-toggle')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['dev']);
+    applyVisibility();
+});
+document.getElementById('provider-select')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['engine']);
+    applyVisibility();
+});
 document.getElementById('enable-hardcap')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
 document.getElementById('disable-grace-window')?.addEventListener('change', () => { if (!isRestoring) saveGraceSetting(['dev']); });
 document.getElementById('cache-default-model')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
 document.getElementById('strip-trailing-period')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
 document.getElementById('boost-mic-gain')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
+
 document.getElementById('enable-shortcut')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
 document.getElementById('send-enter-after')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
 
@@ -173,9 +182,9 @@ function normalizeProvider(p) {
     return ALLOWED_PROVIDERS.includes(p) ? p : 'local-whisper';
 }
 function checkModelSize() {
-    const model = document.getElementById('model-select').value;
+    const model = document.getElementById('model-select')?.value;
     const warningBox = document.getElementById('size-warning');
-    if (!warningBox) return;
+    if (!warningBox || !model) return;
     warningBox.style.display = 'none';
 
     if (model.includes("small") || model.includes("distil-whisper")) {
@@ -188,7 +197,7 @@ function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
 function applyVisibility() {
     const showToggle = document.getElementById('show-model-sections-toggle')?.checked === true;
     const hideModelSections = !showToggle;
-    const provider = document.getElementById('provider-select').value || 'local-whisper';
+    const provider = document.getElementById('provider-select')?.value || 'local-whisper';
     const cardLocal = document.getElementById('card-local');
     const cardCloud = document.getElementById('card-cloud');
     if (!cardLocal || !cardCloud) return;
@@ -246,135 +255,128 @@ function ensureHotkeyValue(save = false) {
     return next;
 }
 
-// NEW: Backend indicator helpers
-// REPLACE setBackendIndicator() with this:
+// Backend indicator helpers
 function setBackendIndicator(backend) {
-  const root = document.getElementById('backend-indicator');
-  const valueEl = document.getElementById('backend-value');       // left value
-  const chipEl = document.getElementById('backend-chip');         // right chip
-  const chipText = document.getElementById('backend-chip-text');
-  const hintEl = document.getElementById('backend-hint');
+    const root = document.getElementById('backend-indicator');
+    const valueEl = document.getElementById('backend-value');       // left value
+    const chipEl = document.getElementById('backend-chip');         // right chip
+    const chipText = document.getElementById('backend-chip-text');
+    const hintEl = document.getElementById('backend-hint');
 
-  if (!root || !valueEl || !chipEl || !chipText || !hintEl) return;
+    if (!root || !valueEl || !chipEl || !chipText || !hintEl) return;
 
-  const b = (backend || '').toLowerCase();
+    const b = (backend || '').toLowerCase();
 
-  // left value
-  valueEl.textContent = t('backend_indicator_value_active', 'Active');
+    // left value
+    valueEl.textContent = t('backend_indicator_value_active', 'Active');
 
-  if (b === 'webgpu') {
-    root.classList.remove('warn');
-    root.classList.add('good');
+    if (b === 'webgpu') {
+        root.classList.remove('warn');
+        root.classList.add('good');
 
-    chipText.textContent = t('backend_chip_webgpu', 'WebGPU');
-    chipEl.style.color = 'var(--backend-good-text)';
-    hintEl.textContent = t('backend_hint_webgpu', 'GPU accelerated (best performance when supported).');
-    return;
-  }
+        chipText.textContent = t('backend_chip_webgpu', 'WebGPU');
+        chipEl.style.color = 'var(--backend-good-text)';
+        hintEl.textContent = t('backend_hint_webgpu', 'GPU accelerated (best performance when supported).');
+        return;
+    }
 
-  if (b === 'wasm') {
+    if (b === 'wasm') {
+        root.classList.remove('good');
+        root.classList.add('warn');
+
+        chipText.textContent = t('backend_chip_wasm', 'WASM');
+        chipEl.style.color = '#8b5cf6';
+        hintEl.textContent = t('backend_hint_wasm', 'CPU fallback (WebGPU unsupported or failed to initialize).');
+        return;
+    }
+
     root.classList.remove('good');
     root.classList.add('warn');
 
-    chipText.textContent = t('backend_chip_wasm', 'WASM');
-    chipEl.style.color = '#8b5cf6';
-    hintEl.textContent = t('backend_hint_wasm', 'CPU fallback (WebGPU unsupported or failed to initialize).');
-    return;
-  }
-
-  root.classList.remove('good');
-  root.classList.add('warn');
-
-  valueEl.textContent = t('backend_indicator_value_unknown', 'Unknown');
-  chipText.textContent = t('backend_chip_unknown', 'Unknown');
-  chipEl.style.color = 'var(--backend-warn-text)';
-  hintEl.textContent = t(
-    'backend_hint_unknown',
-    'Backend will be detected after the first local transcription/model load.'
-  );
-}
-
-// Then in refreshBackendIndicator(), change ONLY the hintEl.textContent assignments:
-
-// 2) In the (preferred === 'webgpu' && webgpuUsable) branch:
-const hintEl = document.getElementById('backend-hint');
-if (hintEl) hintEl.textContent = t(
-  'backend_hint_webgpu_enabled_supported',
-  'WebGPU is enabled and supported. It will activate after the next local model load/transcription.'
-);
-
-// 3) In the "Otherwise show wasm and explain why" branch:
-const hintEl2 = document.getElementById('backend-hint');
-if (hintEl2) {
-  if (preferred === 'wasm') hintEl2.textContent = t('backend_hint_preferred_wasm', 'WASM is selected as the preferred backend.');
-  else if (w && w.hasNavigatorGpu && (!w.adapterOk || !w.deviceOk)) {
-    // Keep the runtime error appended; translate the prefix.
-    hintEl2.textContent = `${t('backend_hint_webgpu_init_failed_prefix', 'WebGPU API exists, but adapter/device init failed:')} ${w.error || t('backend_unknown_error', 'unknown error')}`;
-  }
-  else if (w && !w.hasNavigatorGpu) hintEl2.textContent = t('backend_hint_webgpu_unavailable', 'WebGPU is not available in this context; using WASM.');
-  else hintEl2.textContent = t('backend_hint_using_wasm', 'Using WASM.');
+    valueEl.textContent = t('backend_indicator_value_unknown', 'Unknown');
+    chipText.textContent = t('backend_chip_unknown', 'Unknown');
+    chipEl.style.color = 'var(--backend-warn-text)';
+    hintEl.textContent = t(
+        'backend_hint_unknown',
+        'Backend will be detected after the first local transcription/model load.'
+    );
 }
 
 async function refreshBackendIndicator() {
-  try {
-    const resp = await browser.runtime.sendMessage({ type: 'ASR_BACKEND_PING' });
+    try {
+        const resp = await browser.runtime.sendMessage({ type: 'ASR_BACKEND_PING' });
 
-    const preferred = (resp?.preferredBackend || '').toLowerCase();
-    const active = (resp?.backend || '').toLowerCase(); // may be 'unloaded'
-    const hasModelLoaded = !!resp?.hasModelLoaded;
-    const w = resp?.webgpu;
+        const preferred = (resp?.preferredBackend || '').toLowerCase();
+        const active = (resp?.backend || '').toLowerCase(); // may be 'unloaded'
+        const hasModelLoaded = !!resp?.hasModelLoaded;
+        const w = resp?.webgpu;
 
-    const webgpuUsable = !!(w && w.hasNavigatorGpu && w.adapterOk && w.deviceOk);
+        const webgpuUsable = !!(w && w.hasNavigatorGpu && w.adapterOk && w.deviceOk);
 
-    // Decide what to *display*
-    // 1) If model is loaded, display the actual active backend.
-    if (hasModelLoaded && (active === 'webgpu' || active === 'wasm')) {
-      setBackendIndicator(active);
-      return;
+        // 1) If model is loaded, display the actual active backend.
+        if (hasModelLoaded && (active === 'webgpu' || active === 'wasm')) {
+            setBackendIndicator(active);
+            return;
+        }
+
+        // 2) If model isn't loaded, display "enabled" based on preference+capability.
+        if (preferred === 'webgpu' && webgpuUsable) {
+            setBackendIndicator('webgpu');
+            const hintEl = document.getElementById('backend-hint');
+            if (hintEl) hintEl.textContent = t(
+                'backend_hint_webgpu_enabled_supported',
+                'WebGPU is enabled and supported. It will activate after the next local model load/transcription.'
+            );
+            return;
+        }
+
+        // 3) Otherwise, show wasm and explain why
+        setBackendIndicator('wasm');
+        const hintEl2 = document.getElementById('backend-hint');
+        if (hintEl2) {
+            if (preferred === 'wasm') {
+                hintEl2.textContent = t('backend_hint_preferred_wasm', 'WASM is selected as the preferred backend.');
+            } else if (w && w.hasNavigatorGpu && (!w.adapterOk || !w.deviceOk)) {
+                hintEl2.textContent =
+                    `${t('backend_hint_webgpu_init_failed_prefix', 'WebGPU API exists, but adapter/device init failed:')} ` +
+                    `${w.error || t('backend_unknown_error', 'unknown error')}`;
+            } else if (w && !w.hasNavigatorGpu) {
+                hintEl2.textContent = t('backend_hint_webgpu_unavailable', 'WebGPU is not available in this context; using WASM.');
+            } else {
+                hintEl2.textContent = t('backend_hint_using_wasm', 'Using WASM.');
+            }
+        }
+    } catch (_) {
+        setBackendIndicator('unknown');
     }
-
-    // 2) If model isn't loaded (common because you GC the worker), display "enabled" based on preference+capability.
-    if (preferred === 'webgpu' && webgpuUsable) {
-      // show as WebGPU even though not currently active
-      setBackendIndicator('webgpu');
-      const hintEl = document.getElementById('backend-hint');
-      if (hintEl) hintEl.textContent = 'WebGPU is enabled and supported. It will activate after the next local model load/transcription.';
-      return;
-    }
-
-    // 3) Otherwise, show wasm and explain why
-    setBackendIndicator('wasm');
-    const hintEl = document.getElementById('backend-hint');
-    if (hintEl) {
-      if (preferred === 'wasm') hintEl.textContent = 'WASM is selected as the preferred backend.';
-      else if (w && w.hasNavigatorGpu && (!w.adapterOk || !w.deviceOk)) hintEl.textContent = `WebGPU API exists, but adapter/device init failed: ${w.error || 'unknown error'}`;
-      else if (w && !w.hasNavigatorGpu) hintEl.textContent = 'WebGPU is not available in this context; using WASM.';
-      else hintEl.textContent = 'Using WASM.';
-    }
-  } catch (_) {
-    setBackendIndicator('unknown');
-  }
 }
 
 async function saveDefaults(statusKeys = []) {
     if (isApplyingExternalUpdate) return;
 
-    const model = document.getElementById('model-select').value;
-    const language = document.getElementById('language-select').value;
-    const silenceTimeout = clampTimeout(document.getElementById('silence-timeout').value) || 1500;
-    const provider = normalizeProvider(document.getElementById('provider-select').value);
-    const assemblyaiApiKey = (document.getElementById('assemblyai-key').value || '').trim();
-    const disableFavicons = document.getElementById('disable-favicons').checked;
-    const showModelSections = document.getElementById('show-model-sections-toggle').checked === true;
+    const model = document.getElementById('model-select')?.value || 'Xenova/whisper-base';
+    const language = document.getElementById('language-select')?.value || 'auto';
+    const silenceTimeout = clampTimeout(document.getElementById('silence-timeout')?.value) ?? 1500;
+    const provider = normalizeProvider(document.getElementById('provider-select')?.value);
+    const assemblyaiApiKey = (document.getElementById('assemblyai-key')?.value || '').trim();
+    const disableFavicons = document.getElementById('disable-favicons')?.checked === true;
+
+    const showModelSections = document.getElementById('show-model-sections-toggle')?.checked === true;
     const hideModelSections = !showModelSections;
+
+    // IMPORTANT: default should NOT be checked => hard cap disabled by default
     const enableHardCap = document.getElementById('enable-hardcap')?.checked === true;
     const disableHardCap = !enableHardCap;
+
     const cacheDefaultModel = document.getElementById('cache-default-model')?.checked === true;
+
+    // Keep your existing semantics (checkbox label might be inverted, but preserve behavior)
     const stripTrailingPeriod = document.getElementById('strip-trailing-period')?.checked !== true;
     const boostMicGain = document.getElementById('boost-mic-gain')?.checked === true;
 
     const enableShortcut = document.getElementById('enable-shortcut')?.checked === true;
     const sendEnterAfter = document.getElementById('send-enter-after')?.checked === true;
+
     let hotkey = (document.getElementById('hotkey')?.value || '').trim();
     if (!hotkey) {
         hotkey = lastHotkeyValue || 'Alt+A';
@@ -392,11 +394,14 @@ async function saveDefaults(statusKeys = []) {
     settings.assemblyaiApiKey = assemblyaiApiKey || null;
     settings.disableFavicons = disableFavicons;
     settings.hideModelSections = hideModelSections;
+
+    // persisted dev flags
     settings.disableHardCap = disableHardCap;
     settings.cacheDefaultModel = cacheDefaultModel;
     settings.stripTrailingPeriod = stripTrailingPeriod;
     settings.boostMicGain = boostMicGain;
 
+    // speech flags
     settings.shortcutEnabled = enableShortcut;
     settings.hotkey = hotkey;
     settings.sendEnterAfterResult = sendEnterAfter;
@@ -409,7 +414,7 @@ async function saveDefaults(statusKeys = []) {
 
 async function saveDebugMode(statusKeys = []) {
     if (isRestoring || isApplyingExternalUpdate) return;
-    const debugMode = document.getElementById('debug-mode').checked;
+    const debugMode = document.getElementById('debug-mode')?.checked === true;
     const stored = await browser.storage.local.get('settings');
     const settings = stored.settings || {};
     settings.debugMode = debugMode;
@@ -421,7 +426,7 @@ async function saveDebugMode(statusKeys = []) {
 async function saveGraceSetting(statusKeys = []) {
     if (isRestoring || isApplyingExternalUpdate) return;
     const disableGrace = document.getElementById('disable-grace-window')?.checked === true;
-    const graceMs = clampGrace(document.getElementById('grace-ms').value);
+    const graceMs = clampGrace(document.getElementById('grace-ms')?.value);
     const stored = await browser.storage.local.get('settings');
     const settings = stored.settings || {};
     settings.graceEnabled = !disableGrace;
@@ -433,7 +438,7 @@ async function saveGraceSetting(statusKeys = []) {
 
 async function addOrUpdateOverride() {
     const hostEl = document.getElementById('override-host');
-    const host = normalizeHost(hostEl.value);
+    const host = normalizeHost(hostEl?.value);
     if (!host) return;
 
     const modelEl = document.getElementById('override-model');
@@ -442,10 +447,10 @@ async function addOrUpdateOverride() {
     const providerEl = document.getElementById('override-provider');
     const statusEl = document.getElementById('override-status');
 
-    const model = modelEl.value || null;
-    const language = langEl.value || null;
-    const silenceTimeout = clampTimeout(timeoutEl.value);
-    const provider = providerEl.value || null;
+    const model = modelEl?.value || null;
+    const language = langEl?.value || null;
+    const silenceTimeout = clampTimeout(timeoutEl?.value);
+    const provider = providerEl?.value || null;
 
     const siteStatus = (statusEl?.value || '').trim();
     const enabled = (siteStatus !== 'disabled');
@@ -470,10 +475,10 @@ async function addOrUpdateOverride() {
     renderOverrides(settings.overrides, settings.disableFavicons !== true);
 
     hostEl.value = '';
-    timeoutEl.value = '';
-    modelEl.value = '';
-    langEl.value = '';
-    providerEl.value = '';
+    if (timeoutEl) timeoutEl.value = '';
+    if (modelEl) modelEl.value = '';
+    if (langEl) langEl.value = '';
+    if (providerEl) providerEl.value = '';
     if (statusEl) statusEl.value = '';
 
     showSaved('overrides');
@@ -590,7 +595,7 @@ async function restoreOptions() {
     document.getElementById('provider-select').value = normalizeProvider(d.provider || 'local-whisper');
     document.getElementById('assemblyai-key').value = settings.assemblyaiApiKey || '';
 
-    document.getElementById('debug-mode').checked = settings.debugMode || false;
+    document.getElementById('debug-mode').checked = settings.debugMode === true;
 
     const graceMs = typeof settings.graceMs === 'number' ? settings.graceMs : 450;
     document.getElementById('grace-ms').value = graceMs;
@@ -601,7 +606,8 @@ async function restoreOptions() {
     const hideModelSections = settings.hideModelSections !== false;
     document.getElementById('show-model-sections-toggle').checked = !hideModelSections;
 
-    const disableHardCap = settings.disableHardCap !== false ? true : false;
+    // IMPORTANT: default should NOT be checked => enable-hardcap false unless explicitly enabled
+    const disableHardCap = settings.disableHardCap !== false; // default true (disabled)
     document.getElementById('enable-hardcap').checked = !disableHardCap;
 
     const disableGraceWindow = settings.graceEnabled === false;
@@ -641,7 +647,6 @@ async function restoreOptions() {
     // keep list collapsed by default after restore (unless user toggled open)
     applyOverridesListOpenState();
 
-    // NEW: update backend indicator
     refreshBackendIndicator().catch(() => { });
 
     isRestoring = false;
@@ -824,8 +829,12 @@ function installLiveSettingsListener() {
                 const debugEl = document.getElementById('debug-mode');
                 if (debugEl) debugEl.checked = next.debugMode === true;
 
+                // IMPORTANT: default should NOT be checked
                 const enableHardcapEl = document.getElementById('enable-hardcap');
-                if (enableHardcapEl) enableHardcapEl.checked = !(next.disableHardCap === true);
+                if (enableHardcapEl) {
+                    const disableHardCap = next.disableHardCap !== false; // default true (disabled)
+                    enableHardcapEl.checked = !disableHardCap;
+                }
 
                 const cacheEl = document.getElementById('cache-default-model');
                 if (cacheEl) cacheEl.checked = next.cacheDefaultModel === true;
@@ -854,7 +863,6 @@ function installLiveSettingsListener() {
 
                 checkModelSize();
 
-                // NEW: backend indicator update (in case config change triggers dispose/reload)
                 refreshBackendIndicator().catch(() => { });
             } finally {
                 isApplyingExternalUpdate = false;
