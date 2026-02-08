@@ -51,7 +51,7 @@
 ## Extra Tips
 - For learning sites (e.g., Duolingo): set the site language to the one you’re practicing for better speech recognition.
   - For Google Translate, auto-language usually suffices since the site gives us information.
-- It does not support continuous speech.
+- It does not support full-fledged continuous speech (as in instantaneous transcription word per word). You can still talk as long as you want and it will be processed and transcribed.
 - ❗Do NOT forget to remove your AssemblyAI API Key if you are sharing your config.
 
 ## Contributing
