@@ -4,9 +4,13 @@
 // - Fall back to form.submit() or synthetic Enter only if needed.
 // - Debug mode: can mirror background debug logs into the *site's* console.
 
-if (window.self !== window.top) {
-  throw new Error("Whisper: Skipping iframe execution.");
+const IS_TOP_FRAME = (window.self === window.top);
+if (!IS_TOP_FRAME) {
+  // Do not throw in iframes (Google Docs/Slides rely on them).
+  // Just don't initialize Whisper in iframes.
 }
+
+const MIC_GAIN_MULTIPLIER = 1.8;
 
 let silenceTimeoutMs = 1000;
 let shouldShowNotifications = false;
@@ -30,12 +34,40 @@ let globalChunks = [];
 let skipTranscribe = false;
 let silenceCheckTimer = null;
 
-// NEW: debug log forwarding (background -> content -> site console)
 let debugLogToSiteConsole = false;
+
+// NEW: per-site enabled
+let extensionEnabledForSite = true;
+
+// NEW: dev options
+let stripTrailingPeriod = false;
+let boostMicGain = false;
 
 // watchdog
 let processingWatchdog = null;
 const PROCESSING_WATCHDOG_MS = 22000;
+
+// NEW: per-page instance id so background can reset stale session state on reload/navigation.
+const PAGE_INSTANCE_ID = (() => {
+  try {
+    if (crypto?.randomUUID) return crypto.randomUUID();
+  } catch (_) { }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+})();
+
+function isGoogleDocsOrSlidesHost() {
+  const h = (location.hostname || '').toLowerCase();
+  return h === 'docs.google.com' || h === 'slides.google.com';
+}
+
+function tryExecCommandInsert(text) {
+  try {
+    // returns false if the command is unsupported/blocked
+    return document.execCommand && document.execCommand('insertText', false, text);
+  } catch (_) {
+    return false;
+  }
+}
 
 function dbg(...args) {
   if (shouldShowNotifications) console.log('[Whisper DEBUG]', ...args);
@@ -100,9 +132,18 @@ function isEditableTarget(t) {
   return false;
 }
 
+function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
+function hostMatchesRule(host, ruleHost) {
+  if (!host || !ruleHost) return false;
+  if (host === ruleHost) return true;
+  return host.endsWith('.' + ruleHost);
+}
+
 async function resolveEffectiveSettings() {
+  const prevEnabled = extensionEnabledForSite;
+
   try {
-    const hostname = location.hostname;
+    const hostname = normalizeHost(location.hostname);
     const { settings } = await browser.storage.local.get('settings');
     shouldShowNotifications = settings?.debugMode === true;
     debugLogToSiteConsole = settings?.debugMode === true;
@@ -119,6 +160,22 @@ async function resolveEffectiveSettings() {
     sendEnterAfterResult = settings?.sendEnterAfterResult === true;
 
     normalizedHotkey = shortcutEnabled ? normalizeHotkey(hotkey) : null;
+
+    stripTrailingPeriod = settings?.stripTrailingPeriod === true;
+    boostMicGain = settings?.boostMicGain === true;
+
+    extensionEnabledForSite = true;
+
+    // Futureproof: support disabledSites map and overrides[host].enabled=false
+    const disabledSites = settings?.disabledSites || {};
+    for (const [k, v] of Object.entries(disabledSites)) {
+      if (v === true && hostMatchesRule(hostname, normalizeHost(k))) {
+        extensionEnabledForSite = false;
+        break;
+      }
+    }
+    if (extensionEnabledForSite && site && site.enabled === false) extensionEnabledForSite = false;
+
   } catch (_) {
     silenceTimeoutMs = 1000;
     shouldShowNotifications = false;
@@ -128,6 +185,28 @@ async function resolveEffectiveSettings() {
     shortcutEnabled = true;
     sendEnterAfterResult = false;
     normalizedHotkey = normalizeHotkey(hotkey);
+    extensionEnabledForSite = true;
+    stripTrailingPeriod = false;
+    boostMicGain = false;
+  }
+
+  // If the site just got disabled while running, stop immediately (no reload needed)
+  if (prevEnabled && !extensionEnabledForSite) {
+    clearProcessingWatchdog();
+    try {
+      if (captureActive) stopRecording(true);
+    } catch (_) { }
+    if (processingSessionId != null) {
+      try {
+        browser.runtime.sendMessage({
+          type: 'CANCEL_SESSION',
+          sessionId: processingSessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      } catch (_) { }
+      processingSessionId = null;
+    }
   }
 }
 resolveEffectiveSettings();
@@ -135,21 +214,35 @@ resolveEffectiveSettings();
 browser.runtime.onMessage.addListener((message) => {
   if (message?.type === 'CONFIG_CHANGED') resolveEffectiveSettings();
 
-  // NEW: receive background debug logs and print to the site's console
   if (message?.type === 'WHISPER_DEBUG_LOG') {
     dbgSite(message.tag, message.data);
+  }
+
+  if (message?.type === 'WHISPER_CANCEL_ALL') {
+    clearProcessingWatchdog();
+    processingSessionId = null;
+    captureActive = false;
+    skipTranscribe = true;
+    try { stopRecording(true); } catch (_) { }
+    showNotification("Canceled (settings changed)", "info");
   }
 });
 
 // hotkey start/stop
 document.addEventListener('keydown', (e) => {
+  if (!IS_TOP_FRAME) return;
+  if (!extensionEnabledForSite) return;
   if (!shortcutEnabled || !normalizedHotkey) return;
+
+  // Docs/Slides: do not intercept unless event is from a real input/textarea
+  if (isGoogleDocsOrSlidesHost() && !isEditableTarget(e.target)) return;
+
   if (!isEditableTarget(e.target)) return;
   if (!isHotkeyEvent(e)) return;
+
   e.preventDefault();
 
   const langGuess = (navigator.language || 'en').split('-')[0] || 'en';
-
   if (captureActive) {
     window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
   } else {
@@ -158,67 +251,71 @@ document.addEventListener('keydown', (e) => {
   }
 }, true);
 
-// polyfill injection (unchanged)
-const INLINE_CODE = `
-(function() {
-  if (window.webkitSpeechRecognition) return;
-  window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {
-    constructor(type, options) {
-        super(type, options);
-        this.results = options ? options.results : [];
-        this.resultIndex = options ? options.resultIndex : 0;
-    }
-  };
-  window.webkitSpeechRecognition = class SpeechRecognition {
-    constructor() {
-      this.continuous = false; this.interimResults = false; this.lang = 'en-US';
-      this.onresult = null; this.onend = null; this.onstart = null; this.isRecording = false;
-      window.addEventListener("message", (e) => {
-        if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
-             if (!this.onresult) return;
-             const evt = new window.webkitSpeechRecognitionEvent('result', {
-                results: [[ { transcript: e.data.text, confidence: 0.98, isFinal: true } ]],
-                resultIndex: 0
-             });
-             evt.results[0].isFinal = true;
-             this.onresult?.(evt);
-             this.onend?.();
-             this.isRecording = false;
-             window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
-        }
-      });
-    }
-    start() {
-      if (this.isRecording) return;
-      this.isRecording = true; this.onstart?.();
-      let reqLang = (this.lang || 'en').split('-')[0];
-      window.postMessage({ type: 'WHISPER_START_RECORDING', language: reqLang }, "*");
-    }
-    stop() {
-      this.isRecording = false;
-      window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
-      this.onend?.();
-    }
-    abort() {
-      this.isRecording = false;
-      window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
-      this.onend?.();
-    }
-  };
-})();
-`;
+// polyfill injection (only when enabled + top frame)
+if (IS_TOP_FRAME) {
+  const INLINE_CODE = `
+  (function() {
+    if (window.webkitSpeechRecognition) return;
+    window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {
+      constructor(type, options) {
+          super(type, options);
+          this.results = options ? options.results : [];
+          this.resultIndex = options ? options.resultIndex : 0;
+      }
+    };
+    window.webkitSpeechRecognition = class SpeechRecognition {
+      constructor() {
+        this.continuous = false; this.interimResults = false; this.lang = 'en-US';
+        this.onresult = null; this.onend = null; this.onstart = null; this.isRecording = false;
+        window.addEventListener("message", (e) => {
+          if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
+               if (!this.onresult) return;
+               const evt = new window.webkitSpeechRecognitionEvent('result', {
+                  results: [[ { transcript: e.data.text, confidence: 0.98, isFinal: true } ]],
+                  resultIndex: 0
+               });
+               evt.results[0].isFinal = true;
+               this.onresult?.(evt);
+               this.onend?.();
+               this.isRecording = false;
+               window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+          }
+        });
+      }
+      start() {
+        if (this.isRecording) return;
+        this.isRecording = true; this.onstart?.();
+        let reqLang = (this.lang || 'en').split('-')[0];
+        window.postMessage({ type: 'WHISPER_START_RECORDING', language: reqLang }, "*");
+      }
+      stop() {
+        this.isRecording = false;
+        window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
+        this.onend?.();
+      }
+      abort() {
+        this.isRecording = false;
+        window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
+        this.onend?.();
+      }
+    };
+  })();
+  `;
 
-const isGoogle = window.location.hostname.includes("google");
-if (isGoogle) {
-  const script = document.createElement('script');
-  script.src = browser.runtime.getURL('polyfill.js');
-  script.onload = () => script.remove();
-  (document.head || document.documentElement).appendChild(script);
-} else {
-  const script = document.createElement('script');
-  script.textContent = INLINE_CODE;
-  (document.head || document.documentElement).appendChild(script);
-  script.remove();
+  if (extensionEnabledForSite) {
+    const isGoogle = window.location.hostname.includes("google");
+    if (isGoogle) {
+      const script = document.createElement('script');
+      script.src = browser.runtime.getURL('polyfill.js');
+      script.onload = () => script.remove();
+      (document.head || document.documentElement).appendChild(script);
+    } else {
+      const script = document.createElement('script');
+      script.textContent = INLINE_CODE;
+      (document.head || document.documentElement).appendChild(script);
+      script.remove();
+    }
+  }
 }
 
 function fixEncoding(text) {
@@ -230,6 +327,17 @@ function fixEncoding(text) {
     .replace(/â€œ/g, "“")
     .replace(/â€/g, "”")
     .replace(/â€¦/g, "…");
+}
+
+function applyOutputPostProcessing(text) {
+  if (!text) return text;
+  if (stripTrailingPeriod) {
+    const trimmed = text.trimEnd();
+    if (trimmed.endsWith('.')) {
+      return trimmed.slice(0, -1);
+    }
+  }
+  return text;
 }
 
 function showNotification(message, type = "info") {
@@ -267,55 +375,6 @@ function showNotification(message, type = "info") {
   }, duration);
 }
 
-function simulateTyping(element, text) {
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    let key = char;
-    let code = `Key${char.toUpperCase()}`;
-    let keyCode = char.charCodeAt(0);
-    let charCode = keyCode;
-
-    if (char === ' ') {
-      key = ' ';
-      code = 'Space';
-      keyCode = 32;
-      charCode = 32;
-    } else if (!/[a-zA-Z0-9]/.test(char)) {
-      // For punctuation, use the char as key, and appropriate code
-      code = char;
-    }
-
-    const eventInit = {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      key,
-      code,
-      keyCode,
-      charCode,
-      which: keyCode,
-    };
-
-    const keydown = new KeyboardEvent('keydown', eventInit);
-    if (!element.dispatchEvent(keydown)) continue;
-
-    const keypress = new KeyboardEvent('keypress', eventInit);
-    if (!element.dispatchEvent(keypress)) continue;
-
-    // Dispatch input event to mimic text insertion
-    const inputEvent = new InputEvent('input', {
-      bubbles: true,
-      composed: true,
-      data: char,
-      inputType: 'insertText',
-    });
-    element.dispatchEvent(inputEvent);
-
-    const keyup = new KeyboardEvent('keyup', eventInit);
-    element.dispatchEvent(keyup);
-  }
-}
-
 function insertIntoActiveEditable(text) {
   const active = document.activeElement;
   if (!isEditableTarget(active)) {
@@ -323,16 +382,32 @@ function insertIntoActiveEditable(text) {
     return;
   }
 
-  if (active.isContentEditable) {
-    if (location.hostname === 'docs.google.com' || location.hostname === 'sheets.google.com') {
-      // Use direct DOM manipulation for Google Docs and Sheets to insert text at cursor
-      insertTextAtCursor(active, text);
-    } else {
-      // Original method for other sites
-      document.execCommand('insertText', false, text);
+  // NEW: special handling for Google Docs/Slides to avoid selection/range manipulation.
+  if (isGoogleDocsOrSlidesHost()) {
+    // 1) Try execCommand first (least invasive for complex editors)
+    if (tryExecCommandInsert(text)) return;
+
+    // 2) If focused element is a real input/textarea, do the value-path insertion
+    const tag = (active.tagName || '').toLowerCase();
+    if (tag === 'textarea' || tag === 'input') {
+      const start = active.selectionStart;
+      const end = active.selectionEnd;
+      active.value = active.value.substring(0, start) + text + active.value.substring(end);
+      active.selectionStart = active.selectionEnd = start + text.length;
+      active.dispatchEvent(new Event('input', { bubbles: true }));
+      active.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
     }
+
+    // 3) Last resort: do nothing (but still send the SpeechRecognition event elsewhere)
+    dbg('Google host: insert skipped (no safe method)');
+    return;
+  }
+
+  // ---- original behavior for non-Google sites ----
+  if (active.isContentEditable) {
+    document.execCommand('insertText', false, text);
   } else {
-    // Original for input/textarea (unchanged)
     const start = active.selectionStart;
     const end = active.selectionEnd;
     active.value = active.value.substring(0, start) + text + active.value.substring(end);
@@ -342,36 +417,6 @@ function insertIntoActiveEditable(text) {
   }
 }
 
-function insertTextAtCursor(element, text) {
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-
-  const range = selection.getRangeAt(0);
-  range.deleteContents(); // Remove any selected content
-
-  const textNode = document.createTextNode(text);
-  range.insertNode(textNode);
-
-  // Move cursor to after the inserted text
-  range.setStartAfter(textNode);
-  range.setEndAfter(textNode);
-  selection.removeAllRanges();
-  selection.addRange(range);
-
-  // Dispatch input event to notify the editor
-  const inputEvent = new InputEvent('input', {
-    bubbles: true,
-    composed: true,
-    inputType: 'insertText',
-    data: text
-  });
-  element.dispatchEvent(inputEvent);
-
-  // Also dispatch change if needed
-  element.dispatchEvent(new Event('change', { bubbles: true }));
-}
-
-// Robust "enter"/submit behavior (no site-specific clicking)
 function trySubmitClosestForm() {
   const el = document.activeElement;
   if (!el) return false;
@@ -417,13 +462,10 @@ function fallbackSendEnterKey() {
 }
 
 function sendEnterAfterInsert() {
-  // 1) Try actual form submit
   if (trySubmitClosestForm()) return;
-  // 2) Fallback to synthetic Enter for non-form cases
   fallbackSendEnterKey();
 }
 
-// Futureproof recorder (unchanged from your last version)
 function pickBestRecorderMimeType() {
   const candidates = [
     'audio/webm;codecs=opus',
@@ -439,8 +481,10 @@ function pickBestRecorderMimeType() {
   return '';
 }
 
-// page bridge start/stop/abort (same as before)
+// page bridge start/stop/abort
 window.addEventListener("message", async (event) => {
+  if (!IS_TOP_FRAME) return;
+  if (!extensionEnabledForSite) return;
   if (!event.data) return;
 
   if (event.data.type === 'WHISPER_START_RECORDING') {
@@ -451,7 +495,14 @@ window.addEventListener("message", async (event) => {
     currentSessionId += 1;
     activeSessionId = currentSessionId;
 
-    try { browser.runtime.sendMessage({ type: 'RECORDING_START', sessionId: activeSessionId, hostname: location.hostname }); } catch (_) { }
+    try {
+      browser.runtime.sendMessage({
+        type: 'RECORDING_START',
+        sessionId: activeSessionId,
+        hostname: location.hostname,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) { }
 
     startRecording(event.data.language, activeSessionId);
   }
@@ -462,9 +513,23 @@ window.addEventListener("message", async (event) => {
     clearProcessingWatchdog();
     if (captureActive) {
       stopRecording(true);
-      try { browser.runtime.sendMessage({ type: 'CANCEL_SESSION', sessionId: activeSessionId, hostname: location.hostname }); } catch (_) { }
+      try {
+        browser.runtime.sendMessage({
+          type: 'CANCEL_SESSION',
+          sessionId: activeSessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      } catch (_) { }
     } else if (processingSessionId !== null) {
-      try { browser.runtime.sendMessage({ type: 'CANCEL_SESSION', sessionId: processingSessionId, hostname: location.hostname }); } catch (_) { }
+      try {
+        browser.runtime.sendMessage({
+          type: 'CANCEL_SESSION',
+          sessionId: processingSessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      } catch (_) { }
       processingSessionId = null;
     }
   }
@@ -485,17 +550,29 @@ async function startRecording(pageLanguage, sessionId) {
     recordingStartTime = Date.now();
     globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+    globalContext = new AudioContext();
+    const source = globalContext.createMediaStreamSource(globalStream);
+
+    const gainNode = globalContext.createGain();
+    gainNode.gain.value = boostMicGain ? MIC_GAIN_MULTIPLIER : 1;
+
+    const analyser = globalContext.createAnalyser();
+    analyser.fftSize = 256;
+
+    source.connect(gainNode);
+    gainNode.connect(analyser);
+
+    const destination = globalContext.createMediaStreamDestination();
+    gainNode.connect(destination);
+
     const mimeType = pickBestRecorderMimeType();
-    globalRecorder = mimeType ? new MediaRecorder(globalStream, { mimeType }) : new MediaRecorder(globalStream);
+    globalRecorder = mimeType
+      ? new MediaRecorder(destination.stream, { mimeType })
+      : new MediaRecorder(destination.stream);
 
     globalChunks = [];
     skipTranscribe = false;
 
-    globalContext = new AudioContext();
-    const source = globalContext.createMediaStreamSource(globalStream);
-    const analyser = globalContext.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
     let noiseFloor = 8;
@@ -538,12 +615,19 @@ async function startRecording(pageLanguage, sessionId) {
         const duration = Date.now() - recordingStartTime;
 
         try {
-          browser.runtime.sendMessage({ type: 'RECORDING_STOP', sessionId, hostname: location.hostname, canceled: skipTranscribe });
+          browser.runtime.sendMessage({
+            type: 'RECORDING_STOP',
+            sessionId,
+            hostname: location.hostname,
+            canceled: skipTranscribe,
+            pageInstanceId: PAGE_INSTANCE_ID
+          });
         } catch (_) { }
 
         if (skipTranscribe) { captureActive = false; return; }
         if (duration < 300) { captureActive = false; return; }
         if (sessionId !== activeSessionId) { captureActive = false; return; }
+        if (!extensionEnabledForSite) { captureActive = false; return; }
 
         showNotification("Processing...", "processing");
 
@@ -560,7 +644,8 @@ async function startRecording(pageLanguage, sessionId) {
             sessionId,
             audioData: arrayBuffer,
             language: pageLanguage,
-            hostname: location.hostname
+            hostname: location.hostname,
+            pageInstanceId: PAGE_INSTANCE_ID
           });
         } catch (e) {
           clearProcessingWatchdog();
@@ -582,7 +667,15 @@ async function startRecording(pageLanguage, sessionId) {
   } catch (err) {
     clearSilenceTimer();
     captureActive = false;
-    try { browser.runtime.sendMessage({ type: 'RECORDING_STOP', sessionId, hostname: location.hostname, canceled: true }); } catch (_) { }
+    try {
+      browser.runtime.sendMessage({
+        type: 'RECORDING_STOP',
+        sessionId,
+        hostname: location.hostname,
+        canceled: true,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) { }
     showNotification("Error: " + err.message, "error");
   }
 }
@@ -603,22 +696,28 @@ let lastTextTime = 0;
 let lastText = "";
 
 browser.runtime.onMessage.addListener((message) => {
+  if (!IS_TOP_FRAME) return;
+
   if (message.type === 'WHISPER_RESULT_TO_PAGE_BRIDGE') {
     clearProcessingWatchdog();
     processingSessionId = null;
 
     let text = fixEncoding(message.text);
+    text = applyOutputPostProcessing(text);
     const now = Date.now();
     if (text === lastText && (now - lastTextTime < 2000)) return;
     lastText = text; lastTextTime = now;
 
     showNotification(text, "success");
+
+    // Preserve previous behavior: insert where possible
     insertIntoActiveEditable(text);
 
-    if (sendEnterAfterResult) {
-      sendEnterAfterInsert(); // form submit first, then fallback
+    if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
+      sendEnterAfterInsert();
     }
 
+    // Always forward to page SpeechRecognition bridge
     window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text }, "*");
   }
   else if (message.type === 'WHISPER_NO_AUDIO') {
@@ -637,5 +736,10 @@ browser.runtime.onMessage.addListener((message) => {
     clearProcessingWatchdog();
     processingSessionId = null;
     showNotification(message.error || "Transcription error", "error");
+  }
+  else if (message.type === 'WHISPER_DISABLED') {
+    clearProcessingWatchdog();
+    processingSessionId = null;
+    showNotification("Whisper is disabled on this site.", "info");
   }
 });

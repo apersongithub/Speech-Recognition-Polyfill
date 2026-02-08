@@ -18,10 +18,10 @@ const statusTimers = new Map();
 // prevent UI echo loops while applying storage changes
 let isApplyingExternalUpdate = false;
 
-// NEW: remember selection in overrides list
+// remember selection in overrides list
 let selectedOverrideHost = null;
 
-// NEW: dropdown state for list visibility
+// dropdown state for list visibility
 let overridesListOpen = false;
 
 async function broadcastConfigChanged() {
@@ -60,6 +60,8 @@ document.getElementById('provider-select').addEventListener('change', () => { if
 document.getElementById('enable-hardcap')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
 document.getElementById('disable-grace-window')?.addEventListener('change', () => { if (!isRestoring) saveGraceSetting(['dev']); });
 document.getElementById('cache-default-model')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
+document.getElementById('strip-trailing-period')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
+document.getElementById('boost-mic-gain')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
 document.getElementById('enable-shortcut')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
 document.getElementById('send-enter-after')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
 
@@ -253,6 +255,8 @@ async function saveDefaults(statusKeys = []) {
     const enableHardCap = document.getElementById('enable-hardcap')?.checked === true;
     const disableHardCap = !enableHardCap;
     const cacheDefaultModel = document.getElementById('cache-default-model')?.checked === true;
+    const stripTrailingPeriod = document.getElementById('strip-trailing-period')?.checked !== true;
+    const boostMicGain = document.getElementById('boost-mic-gain')?.checked === true;
 
     const enableShortcut = document.getElementById('enable-shortcut')?.checked === true;
     const sendEnterAfter = document.getElementById('send-enter-after')?.checked === true;
@@ -275,6 +279,8 @@ async function saveDefaults(statusKeys = []) {
     settings.hideModelSections = hideModelSections;
     settings.disableHardCap = disableHardCap;
     settings.cacheDefaultModel = cacheDefaultModel;
+    settings.stripTrailingPeriod = stripTrailingPeriod;
+    settings.boostMicGain = boostMicGain;
 
     settings.shortcutEnabled = enableShortcut;
     settings.hotkey = hotkey;
@@ -319,11 +325,15 @@ async function addOrUpdateOverride() {
     const langEl = document.getElementById('override-language');
     const timeoutEl = document.getElementById('override-timeout');
     const providerEl = document.getElementById('override-provider');
+    const statusEl = document.getElementById('override-status');
 
     const model = modelEl.value || null;
     const language = langEl.value || null;
     const silenceTimeout = clampTimeout(timeoutEl.value);
     const provider = providerEl.value || null;
+
+    const siteStatus = (statusEl?.value || '').trim();
+    const enabled = (siteStatus !== 'disabled');
 
     const stored = await browser.storage.local.get('settings');
     const settings = stored.settings || {};
@@ -333,7 +343,8 @@ async function addOrUpdateOverride() {
         ...(model ? { model } : {}),
         ...(language ? { language } : {}),
         ...(silenceTimeout ? { silenceTimeoutMs: silenceTimeout } : {}),
-        ...(provider ? { provider: normalizeProvider(provider) } : {})
+        ...(provider ? { provider: normalizeProvider(provider) } : {}),
+        ...(enabled ? {} : { enabled: false })
     };
 
     await browser.storage.local.set({ settings });
@@ -348,6 +359,7 @@ async function addOrUpdateOverride() {
     modelEl.value = '';
     langEl.value = '';
     providerEl.value = '';
+    if (statusEl) statusEl.value = '';
 
     showSaved('overrides');
     await broadcastConfigChanged();
@@ -408,8 +420,11 @@ function renderOverrides(overrides, showFavicons) {
             tr.classList.add('selected');
         }
 
+        const enabled = cfg?.enabled !== false;
+
         tr.innerHTML = `
           <td><span class="host-cell">${favicon}${host}</span></td>
+          <td>${enabled ? 'Yes' : 'No'}</td>
           <td>${cfg.model || '—'}</td>
           <td>${cfg.language || '—'}</td>
           <td>${cfg.silenceTimeoutMs || '—'}</td>
@@ -454,7 +469,7 @@ async function restoreOptions() {
     const settings = stored.settings || {};
     const d = settings.defaults || {};
 
-    document.getElementById('model-select').value = d.model || 'Xenova/whisper-tiny';
+    document.getElementById('model-select').value = d.model || 'Xenova/whisper-base';
     document.getElementById('language-select').value = d.language || 'auto';
     document.getElementById('silence-timeout').value = d.silenceTimeoutMs || 1500;
     document.getElementById('provider-select').value = normalizeProvider(d.provider || 'local-whisper');
@@ -481,6 +496,14 @@ async function restoreOptions() {
     const cacheDefaultModel = settings.cacheDefaultModel === true;
     const cacheToggle = document.getElementById('cache-default-model');
     if (cacheToggle) cacheToggle.checked = cacheDefaultModel;
+
+    const stripTrailing = settings.stripTrailingPeriod !== false;
+    const stripToggle = document.getElementById('strip-trailing-period');
+    if (stripToggle) stripToggle.checked = !stripTrailing;
+
+    const boostMicGain = settings.boostMicGain === true;
+    const boostToggle = document.getElementById('boost-mic-gain');
+    if (boostToggle) boostToggle.checked = boostMicGain;
 
     const enableShortcut = settings.shortcutEnabled !== false;
     const sendEnterAfter = settings.sendEnterAfterResult === true;
@@ -546,27 +569,27 @@ function showSaved(area = 'save') {
 
 // ---------------- dropdown/collapse for the list ----------------
 function applyOverridesListOpenState() {
-  const body = document.getElementById('overrides-list-body');
-  const btn = document.getElementById('toggle-overrides-list');
-  if (!body || !btn) return;
+    const body = document.getElementById('overrides-list-body');
+    const btn = document.getElementById('toggle-overrides-list');
+    if (!body || !btn) return;
 
-  body.classList.toggle('open', overridesListOpen);
-  btn.textContent = overridesListOpen
-    ? t('hide', 'Hide')
-    : t('show', 'Show');
+    body.classList.toggle('open', overridesListOpen);
+    btn.textContent = overridesListOpen
+        ? t('hide', 'Hide')
+        : t('show', 'Show');
 }
 
 function installOverridesListToggle() {
-  const btn = document.getElementById('toggle-overrides-list');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    overridesListOpen = !overridesListOpen;
-    applyOverridesListOpenState();
-  });
+    const btn = document.getElementById('toggle-overrides-list');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        overridesListOpen = !overridesListOpen;
+        applyOverridesListOpenState();
+    });
 
-  // default: OPEN (was false)
-  overridesListOpen = true;
-  applyOverridesListOpenState();
+    // default: OPEN
+    overridesListOpen = true;
+    applyOverridesListOpenState();
 }
 
 // ---------------- click row -> load into inputs ----------------
@@ -576,35 +599,38 @@ function loadOverrideIntoInputs(host, cfg) {
     const langEl = document.getElementById('override-language');
     const timeoutEl = document.getElementById('override-timeout');
     const providerEl = document.getElementById('override-provider');
+    const statusEl = document.getElementById('override-status');
 
     if (hostEl) hostEl.value = host || '';
 
-    // inputs use "" to mean default
     if (modelEl) modelEl.value = cfg?.model || '';
     if (langEl) langEl.value = (cfg?.language ?? '');
     if (timeoutEl) timeoutEl.value = (typeof cfg?.silenceTimeoutMs === 'number') ? String(cfg.silenceTimeoutMs) : '';
     if (providerEl) providerEl.value = cfg?.provider || '';
+    if (statusEl) statusEl.value = (cfg?.enabled === false) ? 'disabled' : '';
 }
 
 function clearOverrideInputs() {
-  const hostEl = document.getElementById('override-host');
-  const modelEl = document.getElementById('override-model');
-  const langEl = document.getElementById('override-language');
-  const timeoutEl = document.getElementById('override-timeout');
-  const providerEl = document.getElementById('override-provider');
+    const hostEl = document.getElementById('override-host');
+    const modelEl = document.getElementById('override-model');
+    const langEl = document.getElementById('override-language');
+    const timeoutEl = document.getElementById('override-timeout');
+    const providerEl = document.getElementById('override-provider');
+    const statusEl = document.getElementById('override-status');
 
-  if (hostEl) hostEl.value = '';
-  if (modelEl) modelEl.value = '';
-  if (langEl) langEl.value = '';
-  if (timeoutEl) timeoutEl.value = '';
-  if (providerEl) providerEl.value = '';
+    if (hostEl) hostEl.value = '';
+    if (modelEl) modelEl.value = '';
+    if (langEl) langEl.value = '';
+    if (timeoutEl) timeoutEl.value = '';
+    if (providerEl) providerEl.value = '';
+    if (statusEl) statusEl.value = '';
 
-  selectedOverrideHost = null;
+    selectedOverrideHost = null;
 
-  // optional: remove row highlight immediately
-  browser.storage.local.get('settings').then(({ settings }) => {
-    renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
-  }).catch(() => {});
+    // optional: remove row highlight immediately
+    browser.storage.local.get('settings').then(({ settings }) => {
+        renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
+    }).catch(() => { });
 }
 
 function installOverrideRowClickToLoad() {
@@ -627,10 +653,6 @@ function installOverrideRowClickToLoad() {
 
         // highlight selection
         renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
-
-        // (optional but helpful) open list so user sees selection; remove if you want it to stay closed
-        // overridesListOpen = true;
-        // applyOverridesListOpenState();
     });
 }
 
@@ -664,6 +686,12 @@ function installLiveSettingsListener() {
 
                 const favToggle = document.getElementById('disable-favicons');
                 if (favToggle) favToggle.checked = next.disableFavicons === true;
+
+                const stripToggle = document.getElementById('strip-trailing-period');
+                if (stripToggle) stripToggle.checked = next.stripTrailingPeriod === false;
+
+                const boostToggle = document.getElementById('boost-mic-gain');
+                if (boostToggle) boostToggle.checked = next.boostMicGain === true;
 
                 const d = next.defaults || {};
                 const modelEl = document.getElementById('model-select');
@@ -719,7 +747,7 @@ async function exportSettingsToFile() {
     try {
         const stored = await browser.storage.local.get('settings');
         const settings = stored.settings || {};
-        const payload = { version: 1, exportedAt: new Date().toISOString(), settings };
+        const payload = { version: browser.runtime.getManifest().version, exportedAt: new Date().toISOString(), settings };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
 

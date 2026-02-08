@@ -1,85 +1,43 @@
 {
-  "ext_name": { "message": "语音识别 Polyfill" },
-  "ext_desc": { "message": "基于设备端 Whisper 或 AssemblyAI 的语音识别 API Polyfill" },
-  "browser_action_title": { "message": "语音识别 Polyfill" },
+  "ext_name": { "message": "Speech Recognition Polyfill" },
+  "ext_desc": {
+    "message": "带设备端 Whisper 与可选云端转写（AssemblyAI）的语音识别补丁。"
+  },
+  "browser_action_title": { "message": "语音识别" },
 
-  "title_idle": { "message": "语音识别：空闲" },
-  "title_recording": { "message": "语音识别：正在聆听" },
-  "title_processing": { "message": "语音识别：正在处理" },
-  "title_error": { "message": "语音识别：错误" },
+  "options_page_title": { "message": "语音识别设置" },
+  "options_heading": { "message": "语音识别设置" },
+  "banner_text": {
+    "message": "实验性功能：这不是 Web Speech API 的“创可贴式”修复，可能偶尔变慢或中断。你可以通过扩展图标查看状态（建议固定到工具栏）。如需最佳性能，请使用云端引擎。部分设置可能需要刷新页面后生效。更多信息请见 <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>这里！</strong></a>"
+  },
 
-  "options_page_title": { "message": "语音识别选项" },
-  "popup_page_title": { "message": "语音识别" },
+  "section_engine": { "message": "引擎" },
+  "engine_note": { "message": "Whisper 在本地运行；AssemblyAI 会将音频发送到云端（需要 API Key）。" },
+  "engine_label": { "message": "提供方" },
+  "engine_local": { "message": "设备端 Whisper（OpenAI）" },
+  "engine_assemblyai": { "message": "云端（AssemblyAI）" },
 
   "status_saved": { "message": "已保存" },
 
-  "options_heading": { "message": "语音识别设置" },
-  "banner_text": { "message": "⚠️ 实验性功能：这不是 webspeech API 的完美替代方案。可能会偶尔出现卡顿或中断。您可以通过扩展图标（建议固定在菜单栏）查看语音识别状态。如需最佳性能，请使用云端引擎。" },
-
-  "engine_label": { "message": "引擎" },
-  "engine_local": { "message": "设备端 Whisper (OpenAI)" },
-  "engine_assemblyai": { "message": "云端 (AssemblyAI)" },
-
-  "section_engine": { "message": "引擎" },
-  "engine_note": { "message": "Whisper 在本地运行；AssemblyAI 将音频发送到云端（需要 API 密钥）。" },
-
   "section_local_title": { "message": "设备端 Whisper" },
   "pill_local": { "message": "本地" },
-
-  "section_cloud_title": { "message": "云端 (AssemblyAI)" },
-  "pill_cloud": { "message": "云端" },
-  "assemblyai_get_key_btn": { "message": "获取 AssemblyAI API 密钥" },
-  "assemblyai_key_placeholder": { "message": "例如：68c0a2c49a4dc8e9c07b30dc8a9c06d" },
-
-  "section_shortcuts": { "message": "语音快捷键" },
-  "shortcut_enable": { "message": "启用语音快捷键" },
-  "shortcut_enable_note": { "message": "关闭时完全禁用键盘快捷键。" },
-  "shortcut_hotkey_label": { "message": "键盘快捷键" },
-  "shortcut_hotkey_placeholder": { "message": "点击并按下按键 (Alt+A)" },
-  "shortcut_hotkey_note": { "message": "点击后按下所需组合键。Backspace/Delete 清除。Esc 禁用。留空则禁用。" },
-  "send_enter_after_label": { "message": "插入文本后发送 Enter" },
-  "send_enter_after_note": { "message": "默认关闭。开启后，在文本插入后立即在焦点字段按 Enter 键。" },
-
-  "section_overrides": { "message": "站点例外设置" },
-  "overrides_note": { "message": "为特定网站（如 <b>google.com</b>）自定义设置。" },
-
-  "section_developer": { "message": "开发者设置" },
-  "debug_banners": { "message": "启用调试模式" },
-  "debug_note": { "message": "启用 Toast 提示和控制台调试日志。默认：关闭。" },
-  "disable_favicons_label": { "message": "在例外列表中禁用网站图标" },
-  "disable_favicons_note": { "message": "默认：显示图标。启用以隐藏图标。" },
-  "show_engine_sections_label": { "message": "显示引擎特定部分" },
-  "show_engine_sections_note": { "message": "默认：关闭（根据引擎自动隐藏部分）。" },
-  "enable_hardcap_label": { "message": "启用 5秒强制截断" },
-  "enable_hardcap_note": { "message": "默认：关闭（录音在静默时停止，而不是固定的 5秒）。" },
-  "disable_grace_label": { "message": "禁用缓冲窗口" },
-  "disable_grace_note": { "message": "默认：关闭（缓冲已启用；在上方设置毫秒数）。" },
-  "cache_default_model_label": { "message": "缓存默认模型（启动时预取）" },
-  "cache_default_model_note": { "message": "预取您的默认 Whisper 模型以便首次使用更快。仅适用于本地引擎。" },
-
-  "section_save_reset": { "message": "数据" },
-
-  "save_everything": { "message": "保存所有" },
-  "save_everything_note": { "message": "应用当前所有设置和例外。" },
-
-  "export_settings": { "message": "导出" },
-  "import_settings": { "message": "导入" },
-  "import_export_note": { "message": "以 JSON 格式导出或导入您的设置和站点例外。" },
-
-  "factory_reset": { "message": "恢复出厂设置" },
-  "factory_reset_note": { "message": "将所有设置和例外重置为默认值。" },
+  "local_config_note": { "message": "配置本地模型、语言与静音时间。" },
 
   "ai_model": { "message": "AI 模型" },
-  "group_en_fast": { "message": "仅英语 (快速)" },
-  "group_multi": { "message": "多语言 (通用)" },
-  "group_experimental": { "message": "实验性" },
-  "model_tiny_en": { "message": "Tiny 英语 (~75MB)" },
-  "model_base_en": { "message": "Base 英语 (~150MB)" },
-  "model_small_en": { "message": "Small 英语 (~500MB)" },
-  "model_tiny_multi": { "message": "Tiny 多语言 (~150MB)" },
-  "model_base_multi": { "message": "Base 多语言 (~290MB)" },
-  "model_small_multi": { "message": "Small 多语言 (~1GB)" },
-  "model_distil_en": { "message": "Distil-Medium 英语 (~600MB)" },
+  "group_en_fast": { "message": "仅英文" },
+  "group_multi": { "message": "多语言（通用）" },
+
+  "model_tiny_en": { "message": "Tiny 英文（~75MB）" },
+  "model_base_en": { "message": "Base 英文（~150MB）" },
+  "model_distil_en": { "message": "Distil-Medium 英文（~600MB）" },
+  "model_small_en": { "message": "Small 英文（~500MB）" },
+  "model_tiny_multi": { "message": "Tiny 多语言（~150MB）" },
+  "model_base_multi": { "message": "Base 多语言（~290MB）" },
+  "model_small_multi": { "message": "Small 多语言（~1GB）" },
+
+  "size_warning": {
+    "message": "⚠️ 较大模型：首次运行会较慢。如果崩溃，请使用 Base 或 Tiny。"
+  },
 
   "language_label": { "message": "语言" },
   "lang_auto": { "message": "自动检测" },
@@ -92,48 +50,120 @@
   "lang_ja": { "message": "日语" },
   "lang_zh": { "message": "中文" },
   "lang_ru": { "message": "俄语" },
+  "lang_note": { "message": "转写器将尝试识别的语言。" },
 
-  "silence_timeout": { "message": "静默超时 (ms)" },
-  "silence_note": { "message": "停止说话后等待发送的时间。" },
-  "grace_window_label": { "message": "缓冲窗口 (ms)" },
-  "grace_window_note": { "message": "防止取消/停止后出现延迟结果（默认开启）。" },
+  "silence_timeout": { "message": "静音超时（ms）" },
+  "silence_note": { "message": "停止说话后等待多久再发送。" },
 
-  "size_warning": { "message": "⚠️ 大模型：首次运行会较慢。如果崩溃，请使用 Base 或 Tiny。" },
+  "grace_window_label": { "message": "宽限窗口（ms）" },
+  "grace_window_note": { "message": "启用宽限时，防止取消/停止后出现延迟结果。" },
 
-  "assemblyai_key_label": { "message": "AssemblyAI API 密钥" },
-  "assemblyai_key_note": { "message": "本地存储；仅在选择云端引擎时使用。语音将发送到 AssemblyAI 进行处理。" },
+  "section_cloud_title": { "message": "云端（AssemblyAI）" },
+  "pill_cloud": { "message": "云端" },
+  "cloud_key_note": { "message": "提供 AssemblyAI Key 以启用云端转写。" },
+  "assemblyai_key_label": { "message": "AssemblyAI API Key" },
+  "assemblyai_key_placeholder": { "message": "例如：68c0a2c49a4dc8e9c07b30dc8a9c06d" },
+  "assemblyai_key_note": { "message": "仅本地保存；仅在选择云端引擎时使用。虽免费，但需要账户，因为语音数据会发送到 AssemblyAI 处理。" },
+  "assemblyai_get_key_btn": { "message": "获取 AssemblyAI API Key" },
 
-  "hostname_placeholder": { "message": "example.com" },
-  "override_timeout_placeholder": { "message": "(默认)" },
+  "section_shortcuts": { "message": "语音快捷键" },
+  "shortcuts_note": { "message": "配置语音热键与插入行为。" },
+  "shortcut_enable": { "message": "启用语音快捷键" },
+  "shortcut_enable_note": { "message": "不言自明…" },
+  "shortcut_hotkey_label": { "message": "键盘快捷键" },
+  "shortcut_hotkey_placeholder": { "message": "点击并按下按键组合（Alt+A）" },
+  "shortcut_hotkey_note": { "message": "点击后按下你想要的组合键。Backspace/Delete 清除。Esc 禁用快捷键。留空=禁用。" },
+  "send_enter_after_label": { "message": "插入文本后发送 Enter" },
+  "send_enter_after_note": { "message": "在插入文本后自动在当前焦点字段按下“Enter”。" },
+
+  "section_overrides": { "message": "站点覆盖" },
+  "overrides_note": { "message": "按站点覆盖模型、语言或引擎。" },
 
   "hostname": { "message": "主机名" },
+  "hostname_placeholder": { "message": "example.com" },
+
   "model_label": { "message": "模型" },
-  "override_default_option": { "message": "(默认)" },
+  "override_default_option": { "message": "（默认）" },
+
   "timeout_label": { "message": "超时" },
+  "override_timeout_placeholder": { "message": "（默认）" },
+
+  "override_status_label": { "message": "扩展状态" },
+  "override_status_default": { "message": "（默认：启用）" },
+  "override_status_disabled": { "message": "禁用" },
 
   "add_rule": { "message": "添加规则" },
-  "clear_inputs": { "message": "清除输入" },
+  "clear_inputs": { "message": "清空输入" },
   "remove_rule": { "message": "移除所有规则" },
 
-  "overrides_list_title": { "message": "已保存的例外" },
+  "overrides_list_title": { "message": "已保存的覆盖" },
   "show": { "message": "显示" },
   "hide": { "message": "隐藏" },
 
   "table_host": { "message": "主机" },
+  "table_enabled": { "message": "启用" },
   "table_model": { "message": "模型" },
   "table_lang": { "message": "语言" },
   "table_timeout": { "message": "超时" },
   "table_engine": { "message": "引擎" },
 
-  "popup_site_label": { "message": "站点：(加载中…)" },
-  "popup_site_prefix": { "message": "站点" },
-  "popup_site_unknown": { "message": "站点：(未知)" },
-  "override_use_default": { "message": "使用默认" },
-  "popup_timeout_label": { "message": "静默超时 (ms)" },
-  "popup_timeout_placeholder": { "message": "使用默认" },
-  "popup_remove": { "message": "移除例外" },
-  "popup_open_options": { "message": "打开完整选项" },
+  "section_developer": { "message": "开发者设置" },
+  "developer_note": { "message": "用于调试与实验行为的高级开关。按易懂程度排序。" },
+  "debug_banners": { "message": "启用调试模式" },
+  "debug_note": { "message": "启用 Toast 提示与控制台调试日志。" },
+
+  "boost_mic_label": { "message": "提升麦克风增益" },
+  "boost_mic_note": { "message": "录音前放大麦克风输入（固定增益）。" },
+
+  "strip_trailing_period_label": { "message": "禁用末尾句号移除" },
+  "strip_trailing_period_note": { "message": "会从识别文本末尾移除“.”。" },
+
+  "disable_favicons_label": { "message": "在覆盖表中禁用网站图标" },
+  "disable_favicons_note": { "message": "默认显示网站图标。启用后隐藏。" },
+
+  "show_engine_sections_label": { "message": "显示引擎相关分区" },
+  "show_engine_sections_note": { "message": "分区会根据引擎自动隐藏/显示。" },
+
+  "cache_default_model_label": { "message": "缓存默认模型（启动时预取）" },
+  "cache_default_model_note": { "message": "预取默认设备端 Whisper 模型以加快首次使用（占用部分内存）。仅适用于本地引擎。" },
+
+  "enable_hardcap_label": { "message": "启用 5 秒硬上限" },
+  "enable_hardcap_note": { "message": "录音会在静音时停止，而不是固定 5 秒" },
+
+  "disable_grace_label": { "message": "禁用宽限窗口" },
+  "disable_grace_note": { "message": "宽限已启用；请在上方设置毫秒数。" },
+
+  "section_save_reset": { "message": "数据" },
+  "data_note": {
+    "message": "将设置导出/导入为 JSON，或恢复默认值。也提供预置覆盖规则：<a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>这里！</strong></a>"
+  },
+  "export_settings": { "message": "导出" },
+  "import_settings": { "message": "导入" },
+  "factory_reset": { "message": "恢复出厂设置" },
+
+  "popup_page_title": { "message": "语音识别" },
+  "popup_site_label": { "message": "站点：（加载中…）" },
+  "popup_status_section": { "message": "扩展状态" },
+  "popup_status_default": { "message": "启用（默认）" },
+  "popup_status_disabled": { "message": "在此站点禁用" },
+
+  "override_use_default": { "message": "使用默认值" },
+
+  "popup_timeout_label": { "message": "静音超时（ms）" },
+  "popup_timeout_placeholder": { "message": "使用默认值" },
+
+  "popup_remove": { "message": "移除覆盖" },
+  "popup_open_options": { "message": "打开完整设置" },
   "popup_status_saved": { "message": "已保存" },
+
+  "popup_site_prefix": { "message": "站点" },
+  "popup_site_unknown": { "message": "站点：（未知）" },
   "popup_removed": { "message": "已移除" },
-  "model_not_allowed": { "message": "模型不被允许。" }
+
+  "model_not_allowed": { "message": "不允许使用该模型。" },
+
+  "title_idle": { "message": "Whisper：空闲" },
+  "title_recording": { "message": "Whisper：聆听中" },
+  "title_processing": { "message": "Whisper：处理中" },
+  "title_error": { "message": "Whisper：错误" }
 }

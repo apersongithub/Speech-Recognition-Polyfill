@@ -32,7 +32,7 @@ async function loadModel(modelID) {
 }
 
 async function ensureModel(modelID) {
-  const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-tiny';
+  const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-base';
 
   if (transcriber && currentModel === safeModel) return { model: safeModel, cached: true };
 
@@ -50,7 +50,7 @@ async function ensureModel(modelID) {
       await loadModel(safeModel);
     } catch (err) {
       await disposeCurrentModel();
-      if (safeModel !== 'Xenova/whisper-tiny') await loadModel('Xenova/whisper-tiny');
+      if (safeModel !== 'Xenova/whisper-base') await loadModel('Xenova/whisper-base');
       else throw err;
     }
   })();
@@ -90,7 +90,6 @@ self.onmessage = async (ev) => {
       const { modelID, language, input } = msg;
       if (!input) throw new Error('Missing input');
 
-      // input arrives as Float32Array (preferred) or buffer-like
       const float32 = (input instanceof Float32Array)
         ? input
         : (input?.buffer instanceof ArrayBuffer ? new Float32Array(input.buffer) : new Float32Array(input));

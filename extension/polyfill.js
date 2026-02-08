@@ -1,18 +1,23 @@
 // Updated polyfill.js (add aliases for modern SpeechRecognition API; replace the entire (function() { ... })() block)
 
-(function() {
+(function () {
   console.log(" >>> GTranslate Polyfill: Initializing...");
 
+  // NEW: Do NOT spoof UA on Google Docs/Slides (causes intermittent keyboard lockups)
+  const isDocsOrSlides = /(^|\.)docs\.google\.com$|(^|\.)slides\.google\.com$/i.test(location.hostname);
+
   try {
-    const CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-    Object.defineProperty(navigator, 'userAgent', { get: () => CHROME_UA });
-    Object.defineProperty(navigator, 'vendor', { get: () => "Google Inc." });
-    if (!navigator.userAgentData) {
+    if (!isDocsOrSlides) {
+      const CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+      Object.defineProperty(navigator, 'userAgent', { get: () => CHROME_UA });
+      Object.defineProperty(navigator, 'vendor', { get: () => "Google Inc." });
+      if (!navigator.userAgentData) {
         Object.defineProperty(navigator, 'userAgentData', {
-            get: () => ({ brands: [{ brand: "Chromium", version: "120" }], mobile: false, platform: "Windows" })
+          get: () => ({ brands: [{ brand: "Chromium", version: "120" }], mobile: false, platform: "Windows" })
         });
+      }
     }
-  } catch(e) {}
+  } catch (e) { }
 
   if (window.webkitSpeechRecognition) return;
 
@@ -23,7 +28,7 @@
       this.resultIndex = options ? options.resultIndex : 0;
     }
   };
-  
+
   window.webkitSpeechRecognition = class SpeechRecognition {
     constructor() {
       this.continuous = false;
@@ -33,22 +38,22 @@
       this.onend = null;
       this.onstart = null;
       this.isRecording = false;
-      
+
       window.addEventListener("message", (e) => {
         if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
-             if (!this.onresult) return;
-             const resultEvent = new window.webkitSpeechRecognitionEvent('result', {
-                results: [[ { transcript: e.data.text, confidence: 0.98, isFinal: true } ]],
-                resultIndex: 0
-             });
-             resultEvent.results[0].isFinal = true;
+          if (!this.onresult) return;
+          const resultEvent = new window.webkitSpeechRecognitionEvent('result', {
+            results: [[{ transcript: e.data.text, confidence: 0.98, isFinal: true }]],
+            resultIndex: 0
+          });
+          resultEvent.results[0].isFinal = true;
 
-             this.onresult?.(resultEvent);
-             this.onend?.();
-             this.isRecording = false;
+          this.onresult?.(resultEvent);
+          this.onend?.();
+          this.isRecording = false;
 
-             // Ack to content script to mark processing done
-             window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+          // Ack to content script to mark processing done
+          window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
         }
       });
     }
@@ -57,15 +62,15 @@
       if (this.isRecording) return;
       this.isRecording = true;
       this.onstart?.();
-      
+
       this.dispatchEvent(new Event('audiostart'));
 
-      let requestedLang = this.lang || 'en'; 
+      let requestedLang = this.lang || 'en';
       if (requestedLang.includes('-')) requestedLang = requestedLang.split('-')[0];
 
-      window.postMessage({ 
-          type: 'WHISPER_START_RECORDING',
-          language: requestedLang 
+      window.postMessage({
+        type: 'WHISPER_START_RECORDING',
+        language: requestedLang
       }, "*");
     }
 
@@ -76,7 +81,7 @@
       this.dispatchEvent(new Event('audioend'));
       this.onend?.();
     }
-    
+
     abort() {
       // Always signal cancel, even if isRecording is already false (late aborts from page)
       this.isRecording = false;

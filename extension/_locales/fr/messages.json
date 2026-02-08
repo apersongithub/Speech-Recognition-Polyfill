@@ -1,88 +1,46 @@
 {
-  "ext_name": { "message": "Polyfill de Reconnaissance Vocale" },
-  "ext_desc": { "message": "Polyfill de l'API de reconnaissance vocale propulsé par Whisper sur appareil ou AssemblyAI" },
-  "browser_action_title": { "message": "Polyfill de Reconnaissance Vocale" },
+  "ext_name": { "message": "Speech Recognition Polyfill" },
+  "ext_desc": {
+    "message": "Polyfill de reconnaissance vocale avec Whisper local et transcription cloud optionnelle (AssemblyAI)."
+  },
+  "browser_action_title": { "message": "Reconnaissance vocale" },
 
-  "title_idle": { "message": "Reconnaissance vocale : Inactif" },
-  "title_recording": { "message": "Reconnaissance vocale : Écoute" },
-  "title_processing": { "message": "Reconnaissance vocale : Traitement" },
-  "title_error": { "message": "Reconnaissance vocale : Erreur" },
+  "options_page_title": { "message": "Paramètres de reconnaissance vocale" },
+  "options_heading": { "message": "Paramètres de reconnaissance vocale" },
+  "banner_text": {
+    "message": "Expérimental : ce n’est pas un correctif « pansement » pour la Web Speech API. Attendez-vous à des ralentissements ou interruptions occasionnels. Vous pouvez voir l’état via l’icône de l’extension (épinglez-la). Pour de meilleures performances, utilisez le moteur cloud. Certains paramètres peuvent nécessiter un rechargement de la page. Plus d’informations <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>ICI !</strong></a>"
+  },
 
-  "options_page_title": { "message": "Options de reconnaissance vocale" },
-  "popup_page_title": { "message": "Reconnaissance vocale" },
+  "section_engine": { "message": "Moteur" },
+  "engine_note": { "message": "Whisper s’exécute localement ; AssemblyAI envoie l’audio dans le cloud (clé API requise)." },
+  "engine_label": { "message": "Fournisseur" },
+  "engine_local": { "message": "Whisper sur l’appareil (OpenAI)" },
+  "engine_assemblyai": { "message": "Cloud (AssemblyAI)" },
 
   "status_saved": { "message": "Enregistré" },
 
-  "options_heading": { "message": "Paramètres de reconnaissance vocale" },
-  "banner_text": { "message": "⚠️ Expérimental : Ceci n'est pas un correctif simple pour l'API webspeech. Attendez-vous à des ralentissements ou interruptions occasionnels. Vous pouvez voir l'état de la reconnaissance vocale via l'icône de l'extension (épinglez-la à votre barre de menu). Pour les meilleures performances, utilisez le moteur cloud." },
-
-  "engine_label": { "message": "Moteur" },
-  "engine_local": { "message": "Whisper sur l'appareil (OpenAI)" },
-  "engine_assemblyai": { "message": "Cloud (AssemblyAI)" },
-
-  "section_engine": { "message": "Moteur" },
-  "engine_note": { "message": "Whisper s'exécute localement ; AssemblyAI envoie l'audio vers le cloud (clé API requise)." },
-
-  "section_local_title": { "message": "Whisper sur l'appareil" },
+  "section_local_title": { "message": "Whisper sur l’appareil" },
   "pill_local": { "message": "Local" },
-
-  "section_cloud_title": { "message": "Cloud (AssemblyAI)" },
-  "pill_cloud": { "message": "Cloud" },
-  "assemblyai_get_key_btn": { "message": "Obtenir une clé API AssemblyAI" },
-  "assemblyai_key_placeholder": { "message": "Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
-
-  "section_shortcuts": { "message": "Raccourcis vocaux" },
-  "shortcut_enable": { "message": "Activer le raccourci vocal" },
-  "shortcut_enable_note": { "message": "Désactive entièrement le raccourci clavier lorsqu'il est éteint." },
-  "shortcut_hotkey_label": { "message": "Raccourci clavier" },
-  "shortcut_hotkey_placeholder": { "message": "Cliquez et appuyez sur les touches (Alt+A)" },
-  "shortcut_hotkey_note": { "message": "Cliquez, appuyez sur la combinaison souhaitée. Retour arrière/Suppr pour effacer. Échap pour désactiver. Vide pour désactiver." },
-  "send_enter_after_label": { "message": "Envoyer Entrée après l'insertion de texte" },
-  "send_enter_after_note": { "message": "Désactivé par défaut. Si activé, appuie sur Entrée dans le champ ciblé juste après l'insertion du texte." },
-
-  "section_overrides": { "message": "Exceptions par site" },
-  "overrides_note": { "message": "Personnaliser les paramètres pour des sites spécifiques (ex. <b>google.com</b>)." },
-
-  "section_developer": { "message": "Paramètres développeur" },
-  "debug_banners": { "message": "Activer le mode débogage" },
-  "debug_note": { "message": "Active les bannières toast et les journaux de débogage de la console. Défaut : Désactivé." },
-  "disable_favicons_label": { "message": "Désactiver les favicons dans le tableau d'exceptions" },
-  "disable_favicons_note": { "message": "Défaut : favicons affichés. Activez pour masquer les favicons." },
-  "show_engine_sections_label": { "message": "Afficher les sections spécifiques au moteur" },
-  "show_engine_sections_note": { "message": "Défaut : désactivé (les sections se masquent automatiquement selon le moteur)." },
-  "enable_hardcap_label": { "message": "Activer la limite fixe de 5s" },
-  "enable_hardcap_note": { "message": "Défaut : désactivé (l'enregistrement s'arrête au silence au lieu de 5s fixes)." },
-  "disable_grace_label": { "message": "Désactiver la fenêtre de grâce" },
-  "disable_grace_note": { "message": "Défaut : désactivé (la grâce est activée ; réglez les ms ci-dessus)." },
-  "cache_default_model_label": { "message": "Mettre en cache le modèle par défaut (préchargement au démarrage)" },
-  "cache_default_model_note": { "message": "Précharge votre modèle Whisper par défaut pour une première utilisation plus rapide. S'applique uniquement au moteur local." },
-
-  "section_save_reset": { "message": "Données" },
-
-  "save_everything": { "message": "Tout enregistrer" },
-  "save_everything_note": { "message": "Applique tous les paramètres et exceptions actuels." },
-
-  "export_settings": { "message": "Exporter" },
-  "import_settings": { "message": "Importer" },
-  "import_export_note": { "message": "Exportez ou importez vos paramètres et exceptions de site au format JSON." },
-
-  "factory_reset": { "message": "Réinitialisation d'usine" },
-  "factory_reset_note": { "message": "Réinitialise tous les paramètres et exceptions aux valeurs par défaut." },
+  "local_config_note": { "message": "Configurer le modèle local, la langue et le timing du silence." },
 
   "ai_model": { "message": "Modèle IA" },
-  "group_en_fast": { "message": "Anglais Uniquement (Rapide)" },
-  "group_multi": { "message": "Multilingue (Usage Général)" },
-  "group_experimental": { "message": "Expérimental" },
-  "model_tiny_en": { "message": "Tiny Anglais (~75MB)" },
-  "model_base_en": { "message": "Base Anglais (~150MB)" },
-  "model_small_en": { "message": "Small Anglais (~500MB)" },
-  "model_tiny_multi": { "message": "Tiny Multilingue (~150MB)" },
-  "model_base_multi": { "message": "Base Multilingue (~290MB)" },
-  "model_small_multi": { "message": "Small Multilingue (~1GB)" },
-  "model_distil_en": { "message": "Distil-Medium Anglais (~600MB)" },
+  "group_en_fast": { "message": "Anglais uniquement" },
+  "group_multi": { "message": "Multilingue (général)" },
+
+  "model_tiny_en": { "message": "Tiny anglais (~75MB)" },
+  "model_base_en": { "message": "Base anglais (~150MB)" },
+  "model_distil_en": { "message": "Distil-Medium anglais (~600MB)" },
+  "model_small_en": { "message": "Small anglais (~500MB)" },
+  "model_tiny_multi": { "message": "Tiny multilingue (~150MB)" },
+  "model_base_multi": { "message": "Base multilingue (~290MB)" },
+  "model_small_multi": { "message": "Small multilingue (~1GB)" },
+
+  "size_warning": {
+    "message": "⚠️ Modèle lourd : la première exécution sera lente. En cas de crash, utilisez Base ou Tiny."
+  },
 
   "language_label": { "message": "Langue" },
-  "lang_auto": { "message": "Détection Auto" },
+  "lang_auto": { "message": "Détection auto" },
   "lang_en": { "message": "Anglais" },
   "lang_es": { "message": "Espagnol" },
   "lang_fr": { "message": "Français" },
@@ -92,48 +50,120 @@
   "lang_ja": { "message": "Japonais" },
   "lang_zh": { "message": "Chinois" },
   "lang_ru": { "message": "Russe" },
+  "lang_note": { "message": "La langue que le transcripteur tentera de reconnaître." },
 
   "silence_timeout": { "message": "Délai de silence (ms)" },
-  "silence_note": { "message": "Temps à attendre après l'arrêt de la parole avant l'envoi." },
+  "silence_note": { "message": "Temps d’attente après que vous ayez cessé de parler avant l’envoi." },
+
   "grace_window_label": { "message": "Fenêtre de grâce (ms)" },
-  "grace_window_note": { "message": "Empêche les résultats tardifs après annulation/arrêt lorsque la grâce est activée (par défaut activé)." },
+  "grace_window_note": { "message": "Empêche des résultats tardifs après annulation/arrêt quand la grâce est activée." },
 
-  "size_warning": { "message": "⚠️ Modèle lourd : La première exécution sera lente. En cas de plantage, utilisez Base ou Tiny." },
-
+  "section_cloud_title": { "message": "Cloud (AssemblyAI)" },
+  "pill_cloud": { "message": "Cloud" },
+  "cloud_key_note": { "message": "Fournissez votre clé AssemblyAI pour activer la transcription cloud." },
   "assemblyai_key_label": { "message": "Clé API AssemblyAI" },
-  "assemblyai_key_note": { "message": "Stockée localement ; utilisée uniquement lorsque le moteur cloud est sélectionné. La parole est envoyée à AssemblyAI pour traitement." },
+  "assemblyai_key_placeholder": { "message": "Ex. : 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
+  "assemblyai_key_note": { "message": "Stockée localement ; utilisée uniquement quand le moteur cloud est sélectionné. Gratuit mais nécessite un compte car l’audio est envoyé à AssemblyAI." },
+  "assemblyai_get_key_btn": { "message": "Obtenir une clé API AssemblyAI" },
 
+  "section_shortcuts": { "message": "Raccourcis vocaux" },
+  "shortcuts_note": { "message": "Configurer la touche de raccourci et le comportement d’insertion." },
+  "shortcut_enable": { "message": "Activer le raccourci vocal" },
+  "shortcut_enable_note": { "message": "Assez explicite..." },
+  "shortcut_hotkey_label": { "message": "Raccourci clavier" },
+  "shortcut_hotkey_placeholder": { "message": "Cliquez et appuyez sur les touches (Alt+A)" },
+  "shortcut_hotkey_note": { "message": "Cliquez, puis appuyez sur la combinaison. Retour arrière/Suppr pour effacer. Échap pour désactiver. Vide = désactivé." },
+  "send_enter_after_label": { "message": "Envoyer Entrée après insertion du texte" },
+  "send_enter_after_note": { "message": "Appuie automatiquement sur « Entrée » dans le champ ciblé après insertion." },
+
+  "section_overrides": { "message": "Dérogations par site" },
+  "overrides_note": { "message": "Remplacer modèle, langue ou moteur par site." },
+
+  "hostname": { "message": "Nom d’hôte" },
   "hostname_placeholder": { "message": "exemple.com" },
-  "override_timeout_placeholder": { "message": "(Défaut)" },
 
-  "hostname": { "message": "Nom d'hôte" },
   "model_label": { "message": "Modèle" },
-  "override_default_option": { "message": "(Défaut)" },
+  "override_default_option": { "message": "(Par défaut)" },
+
   "timeout_label": { "message": "Délai" },
+  "override_timeout_placeholder": { "message": "(Par défaut)" },
+
+  "override_status_label": { "message": "Statut de l’extension" },
+  "override_status_default": { "message": "(Par défaut : Activée)" },
+  "override_status_disabled": { "message": "Désactivée" },
 
   "add_rule": { "message": "Ajouter une règle" },
-  "clear_inputs": { "message": "Effacer les champs" },
+  "clear_inputs": { "message": "Vider les champs" },
   "remove_rule": { "message": "Supprimer toutes les règles" },
 
-  "overrides_list_title": { "message": "Exceptions enregistrées" },
+  "overrides_list_title": { "message": "Dérogations enregistrées" },
   "show": { "message": "Afficher" },
   "hide": { "message": "Masquer" },
 
   "table_host": { "message": "Hôte" },
+  "table_enabled": { "message": "Activée" },
   "table_model": { "message": "Modèle" },
   "table_lang": { "message": "Langue" },
   "table_timeout": { "message": "Délai" },
   "table_engine": { "message": "Moteur" },
 
+  "section_developer": { "message": "Paramètres développeur" },
+  "developer_note": { "message": "Options avancées pour le débogage et le comportement expérimental. Triées par facilité de compréhension." },
+  "debug_banners": { "message": "Activer le mode débogage" },
+  "debug_note": { "message": "Active les bannières toast et les logs de debug dans la console." },
+
+  "boost_mic_label": { "message": "Augmenter le gain du micro" },
+  "boost_mic_note": { "message": "Amplifie l’entrée micro avant l’enregistrement (boost fixe)." },
+
+  "strip_trailing_period_label": { "message": "Désactiver la suppression du point final" },
+  "strip_trailing_period_note": { "message": "Supprime un « . » final du texte reconnu." },
+
+  "disable_favicons_label": { "message": "Désactiver les favicons dans la table des dérogations" },
+  "disable_favicons_note": { "message": "Les favicons sont affichés par défaut. Activez pour les masquer." },
+
+  "show_engine_sections_label": { "message": "Afficher les sections spécifiques au moteur" },
+  "show_engine_sections_note": { "message": "Les sections se masquent automatiquement selon le moteur." },
+
+  "cache_default_model_label": { "message": "Mettre en cache le modèle par défaut (préchargement au démarrage)" },
+  "cache_default_model_note": { "message": "Précharge votre modèle Whisper local par défaut pour accélérer la première utilisation (utilise de la RAM). Uniquement avec le moteur local." },
+
+  "enable_hardcap_label": { "message": "Activer la limite stricte de 5 s" },
+  "enable_hardcap_note": { "message": "L’enregistrement s’arrête au silence au lieu d’un 5 s fixe" },
+
+  "disable_grace_label": { "message": "Désactiver la fenêtre de grâce" },
+  "disable_grace_note": { "message": "La grâce est activée ; réglez les ms ci-dessus." },
+
+  "section_save_reset": { "message": "Données" },
+  "data_note": {
+    "message": "Exporter/importer les paramètres en JSON ou réinitialiser aux valeurs par défaut. Des dérogations préconstruites sont aussi disponibles <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>ICI !</strong></a>"
+  },
+  "export_settings": { "message": "Exporter" },
+  "import_settings": { "message": "Importer" },
+  "factory_reset": { "message": "Réinitialisation" },
+
+  "popup_page_title": { "message": "Reconnaissance vocale" },
   "popup_site_label": { "message": "Site : (chargement…)" },
+  "popup_status_section": { "message": "Statut de l’extension" },
+  "popup_status_default": { "message": "Activée (par défaut)" },
+  "popup_status_disabled": { "message": "Désactivée sur ce site" },
+
+  "override_use_default": { "message": "Utiliser par défaut" },
+
+  "popup_timeout_label": { "message": "Délai de silence (ms)" },
+  "popup_timeout_placeholder": { "message": "Utiliser par défaut" },
+
+  "popup_remove": { "message": "Supprimer la dérogation" },
+  "popup_open_options": { "message": "Ouvrir les options" },
+  "popup_status_saved": { "message": "Enregistré" },
+
   "popup_site_prefix": { "message": "Site" },
   "popup_site_unknown": { "message": "Site : (inconnu)" },
-  "override_use_default": { "message": "Utiliser défaut" },
-  "popup_timeout_label": { "message": "Délai silence (ms)" },
-  "popup_timeout_placeholder": { "message": "Utiliser défaut" },
-  "popup_remove": { "message": "Supprimer l'exception" },
-  "popup_open_options": { "message": "Ouvrir options complètes" },
-  "popup_status_saved": { "message": "Enregistré" },
   "popup_removed": { "message": "Supprimé" },
-  "model_not_allowed": { "message": "Modèle non autorisé." }
+
+  "model_not_allowed": { "message": "Modèle non autorisé." },
+
+  "title_idle": { "message": "Whisper : Inactif" },
+  "title_recording": { "message": "Whisper : Écoute" },
+  "title_processing": { "message": "Whisper : Traitement" },
+  "title_error": { "message": "Whisper : Erreur" }
 }

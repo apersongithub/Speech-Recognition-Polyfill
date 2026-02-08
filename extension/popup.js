@@ -63,6 +63,7 @@ async function loadState() {
   const url = tab?.url || '';
   let host = '';
   try { host = new URL(url).hostname; } catch { host = ''; }
+
   const hostLabel = document.getElementById('host-label');
   hostLabel.textContent = host ? `${t('popup_site_prefix', 'Site')}: ${host}` : t('popup_site_unknown', 'Site: (unknown)');
 
@@ -79,12 +80,17 @@ async function loadState() {
   const { settings } = await browser.storage.local.get('settings');
   const overrides = settings?.overrides || {};
   const o = overrides[host] || {};
+
   const provider = o.provider || '';
   document.getElementById('model').value = o.model || '';
   document.getElementById('language').value = o.language || '';
   document.getElementById('timeout').value = o.silenceTimeoutMs ?? '';
   document.getElementById('provider').value = provider;
-  const hideToggle = settings?.hideModelSections !== false; // shared single toggle from options
+
+  const siteStatus = document.getElementById('site-status');
+  if (siteStatus) siteStatus.value = (o.enabled === false) ? 'disabled' : '';
+
+  const hideToggle = settings?.hideModelSections !== false;
   applyPopupVisibility(provider, hideToggle);
 }
 
@@ -93,26 +99,33 @@ async function saveOverride(autoText) {
   let host = '';
   try { host = new URL(tab?.url || '').hostname; } catch { host = ''; }
   if (!host) return;
+
   const model = document.getElementById('model').value;
   const language = document.getElementById('language').value;
   const timeout = clampTimeout(document.getElementById('timeout').value);
   const provider = normalizeProvider(document.getElementById('provider').value);
 
+  const siteStatus = (document.getElementById('site-status')?.value || '').trim();
+  const enabled = (siteStatus !== 'disabled');
+
   if (model && !ALLOWED_MODELS.has(model)) {
     alert(t('model_not_allowed', 'Model not allowed.'));
     return;
   }
+
   const { settings } = await browser.storage.local.get('settings');
   const next = settings || {};
-  next.defaults = next.defaults || { model: 'Xenova/whisper-tiny', language: 'auto', silenceTimeoutMs: 1500, provider: 'local-whisper' };
-  // respect the single toggle from options; do not change here
+  next.defaults = next.defaults || { model: 'Xenova/whisper-base', language: 'auto', silenceTimeoutMs: 1500, provider: 'local-whisper' };
   next.hideModelSections = settings?.hideModelSections !== false;
   next.overrides = next.overrides || {};
+
   const override = {};
   if (model) override.model = model;
   if (language) override.language = language;
   if (timeout) override.silenceTimeoutMs = timeout;
   if (provider) override.provider = provider;
+  if (!enabled) override.enabled = false;
+
   next.overrides[host] = override;
   await browser.storage.local.set({ settings: next });
   notifySaved(autoText || t('popup_status_saved', 'Saved'));
@@ -143,8 +156,7 @@ function notifySaved(text = t('popup_status_saved', 'Saved')) {
   setTimeout(() => s.classList.remove('show'), 1200);
 }
 
-// Auto-save on change
-['model','language','timeout','provider'].forEach(id => {
+['model', 'language', 'timeout', 'provider', 'site-status'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   const evt = (id === 'timeout') ? 'input' : 'change';

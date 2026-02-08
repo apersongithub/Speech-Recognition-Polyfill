@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-02-08T07:52:35.643Z",
+  "settings": {
+    "overrides": {
+      "www.duolingo.com": {
+        "model": "Xenova/whisper-base",
+        "language": "en"
+      },
+      "www.duolingo.cn": {
+        "model": "Xenova/whisper-base",
+        "language": "en"
+      }
+    }
+  }
+}

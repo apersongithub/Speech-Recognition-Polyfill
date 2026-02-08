@@ -22,7 +22,8 @@ const PROVIDERS = {
   ASSEMBLY: 'assemblyai'
 };
 
-let currentModel = 'Xenova/whisper-tiny';
+// Default model: base multilingual
+let currentModel = 'Xenova/whisper-base';
 
 // used only to serialize ENSURE_MODEL + show badges
 let modelLoadPromise = null;
@@ -31,11 +32,17 @@ let modelLoadPromise = null;
 let keepModelResident = false;
 let residentModelId = null;
 
+// Track defaults so we can cancel sessions when model/provider changes
+let lastDefaultsFingerprint = null;
+
 // Per-tab processing state
 const inflightByTab = new Map();
 const canceledSessionsByTab = new Map();
 const lastSessionByTab = new Map();
 const processingTimeoutByTab = new Map();
+
+// NEW: track content-script instance per tab+frame to prevent "stale session" after reload/navigation.
+const pageInstanceByTabFrame = new Map(); // key: `${tabId}:${frameId}` -> pageInstanceId
 
 // Per-tab toolbar icon state
 const tabStateById = new Map();
@@ -79,6 +86,42 @@ function dbgToTab(tabId, frameId, tag, data = {}) {
   try {
     browser.tabs.sendMessage(tabId, { type: 'WHISPER_DEBUG_LOG', tag, data, ts: Date.now() }, { frameId });
   } catch (_) { }
+}
+
+function tabFrameKey(tabId, frameId) {
+  // Normalize missing frameId to 0 (top frame) so keys are stable.
+  const fid = (typeof frameId === 'number') ? frameId : 0;
+  return `${tabId}:${fid}`;
+}
+
+async function onMessageMaybeResetEpoch(tabId, frameId, pageInstanceId, hostname) {
+  if (tabId == null) return;
+
+  const key = tabFrameKey(tabId, frameId);
+  if (!pageInstanceId) {
+    // If page doesn't send it (older content.js), do nothing.
+    return;
+  }
+
+  const prev = pageInstanceByTabFrame.get(key);
+  if (prev && prev !== pageInstanceId) {
+    // Content script instance changed (reload/navigation). Reset per-tab ordering state.
+    dbg('page_instance_changed_reset', { tabId, frameId, hostname, prev, next: pageInstanceId });
+
+    // Reset monotonic session tracking for this tab.
+    lastSessionByTab.delete(tabId);
+
+    // Cancel inflight work for this tab (best-effort).
+    const inflight = inflightByTab.get(tabId);
+    if (inflight?.sessionId) markCanceled(tabId, inflight.sessionId);
+    inflightByTab.delete(tabId);
+    clearProcessingTimeout(tabId);
+
+    try { await clearBadge(tabId); } catch (_) { }
+    try { await setTabState(tabId, 'idle', null); } catch (_) { }
+  }
+
+  pageInstanceByTabFrame.set(key, pageInstanceId);
 }
 
 // ---------------- ASR Worker (WASM isolation) ----------------
@@ -157,12 +200,15 @@ async function refreshRuntimeFlagsFromStorage() {
     const cacheDefaultModel = settings?.cacheDefaultModel === true;
     const defaults = settings?.defaults || {};
     const provider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
-    const model = defaults.model || 'Xenova/whisper-tiny';
+
+    const model = (defaults.model && ALLOWED_MODELS.has(defaults.model))
+      ? defaults.model
+      : 'Xenova/whisper-base';
 
     keepModelResident = !!(cacheDefaultModel && provider === PROVIDERS.LOCAL && ALLOWED_MODELS.has(model));
     residentModelId = keepModelResident ? model : null;
 
-    dbg('runtime_flags', { debugMode, keepModelResident, residentModelId, provider });
+    dbg('runtime_flags', { debugMode, keepModelResident, residentModelId, provider, model });
   } catch (_) {
     debugMode = false;
     keepModelResident = false;
@@ -188,8 +234,20 @@ const ICON_COLORS = () => ({
   cached: '#0ea5e9',
   cloudprocessing: '#0ea5e9',
   done: '#16a34a',
-  cancel: '#ef4444'
+  cancel: '#ef4444',
+
+  // NEW: disabled badge color (orange)
+  disabled: '#f97316'
 });
+
+function badgePathForType(type) {
+  if (type === 'cached') return 'images/cached.svg';
+  if (type === 'done') return 'images/check.svg';
+  if (type === 'cancel') return 'images/cancel.svg';
+  if (type === 'cloudprocessing') return 'images/cloudprocessing.svg';
+  if (type === 'disabled') return 'images/disabled.svg'; // NEW
+  return 'images/downmodel.svg';
+}
 
 window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', async () => {
   try {
@@ -203,6 +261,40 @@ window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change'
 
 function t(key, fallback) {
   return (browser.i18n && browser.i18n.getMessage(key)) || fallback;
+}
+
+function applyDisabledBadge(tabId, isDisabled) {
+  if (tabId == null) return;
+  const ts = getTabState(tabId);
+
+  if (isDisabled) {
+    // Only show when idle so we don't override recording/processing states.
+    if (ts.state !== 'idle') return;
+    showBadgeForTab(
+      tabId,
+      { type: 'disabled', color: ICON_COLORS().disabled },
+      0 // persistent
+    );
+    return;
+  }
+
+  if (ts.badge?.type === 'disabled') {
+    ts.badge = null;
+    applyIconForTab(tabId).catch(() => { });
+  }
+}
+
+async function updateDisabledBadgesForAllTabs() {
+  const { settings } = await browser.storage.local.get('settings');
+  const tabs = await browser.tabs.query({});
+
+  for (const tab of tabs) {
+    if (tab?.id == null || !tab.url) continue;
+    let host = '';
+    try { host = new URL(tab.url).hostname; } catch { host = ''; }
+    const disabled = isHostDisabled(settings, host);
+    applyDisabledBadge(tab.id, disabled);
+  }
 }
 
 // ---------------- LRU icon cache helpers ----------------
@@ -257,13 +349,6 @@ function drawSquircle(ctx, x, y, w, h) {
   ctx.closePath();
 }
 
-function badgePathForType(type) {
-  if (type === 'cached') return 'images/cached.svg';
-  if (type === 'done') return 'images/check.svg';
-  if (type === 'cancel') return 'images/cancel.svg';
-  if (type === 'cloudprocessing') return 'images/cloudprocessing.svg';
-  return 'images/downmodel.svg';
-}
 
 async function getIconImageData(baseColor, badge) {
   const badgeKey = badge ? `${badge.type}:${badge.color}` : 'none';
@@ -409,14 +494,14 @@ async function setTabErrorHold(tabId, ms = ERROR_HOLD_MS) {
 function showBadgeForTab(tabId, badge, ms) {
   const ts = getTabState(tabId);
   ts.badge = badge;
-  applyIconForTab(tabId).catch(() => {});
+  applyIconForTab(tabId).catch(() => { });
   if (ms > 0) {
     setTimeout(() => {
       const t2 = tabStateById.get(tabId);
       if (!t2) return;
       if (t2.badge && t2.badge.type === badge.type) {
         t2.badge = null;
-        applyIconForTab(tabId).catch(() => {});
+        applyIconForTab(tabId).catch(() => { });
       }
     }, ms);
   }
@@ -505,13 +590,13 @@ function scheduleModelGc() {
 }
 
 async function ensureModelSilently(modelID) {
-  const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-tiny';
+  const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-base';
   await callAsrWorker('ENSURE_MODEL', { modelID: safeModel }, PROCESSING_TIMEOUT_MS);
   currentModel = safeModel;
 }
 
 async function ensureModelForTab(tabId, modelID) {
-  const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-tiny';
+  const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-base';
   const colors = ICON_COLORS();
 
   showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
@@ -586,6 +671,7 @@ function collapseRepeats(text) {
   return collapsed.trim();
 }
 
+// ---------------- quality guard helpers ----------------
 function isPathological(text) {
   if (!text) return true;
   const tokens = text.split(/\s+/);
@@ -593,22 +679,101 @@ function isPathological(text) {
   return (text.length > 80 && unique.size <= 3) || tokens.length === 0;
 }
 
+// NEW: robust spam detector (run-length + dominance + entropy)
+function isSpammyRepetition(text) {
+  if (!text) return true;
+  const s = text.trim();
+  if (s.length < 8) return false;
+
+  // 1) Run-length (e.g., "FFFFFFFFFFFF")
+  let maxRun = 1;
+  let currentRun = 1;
+  for (let i = 1; i < s.length; i++) {
+    if (s[i] === s[i - 1]) {
+      currentRun += 1;
+      if (currentRun > maxRun) maxRun = currentRun;
+    } else {
+      currentRun = 1;
+    }
+  }
+  if (maxRun >= 12) return true;
+
+  // 2) Dominance ratio (one char dominates the string)
+  const counts = new Map();
+  for (const ch of s) counts.set(ch, (counts.get(ch) || 0) + 1);
+  const maxCount = Math.max(...counts.values());
+  const dominance = maxCount / s.length;
+  if (s.length >= 20 && dominance >= 0.72) return true;
+
+  // 3) Low entropy (very low diversity at longer lengths)
+  const uniqueCount = counts.size;
+  if (s.length >= 30 && uniqueCount <= 2) return true;
+
+  return false;
+}
+
+function isExcessiveRepeat(words) {
+  if (!Array.isArray(words) || words.length === 0) return true;
+  const normalized = words.map(w => w.toLowerCase());
+  const unique = new Set(normalized);
+
+  // Same word repeated 4+ times is likely a glitch
+  if (unique.size === 1 && normalized.length >= 4) return true;
+
+  // Two-word loop repeated many times can also be a glitch
+  if (unique.size <= 2 && normalized.length >= 8) return true;
+
+  return false;
+}
+
+function normalizeHost(hostname) {
+  return (hostname || '').trim().toLowerCase();
+}
+
+function hostMatchesRule(host, ruleHost) {
+  if (!host || !ruleHost) return false;
+  if (host === ruleHost) return true;
+  return host.endsWith('.' + ruleHost);
+}
+
+function isHostDisabled(settings, hostname) {
+  const host = normalizeHost(hostname);
+  if (!host) return false;
+
+  const disabled = settings?.disabledSites || {};
+  for (const [k, v] of Object.entries(disabled)) {
+    if (v === true && hostMatchesRule(host, normalizeHost(k))) return true;
+  }
+
+  const overrides = settings?.overrides || {};
+  for (const [k, cfg] of Object.entries(overrides)) {
+    if (!hostMatchesRule(host, normalizeHost(k))) continue;
+    if (cfg && cfg.enabled === false) return true;
+  }
+
+  return false;
+}
+
 async function getEffectiveSettings(hostname) {
   const { settings } = await browser.storage.local.get('settings');
-  const defaults = settings?.defaults || { model: 'Xenova/whisper-tiny', language: 'auto', provider: PROVIDERS.LOCAL };
+  const defaults = settings?.defaults || { model: 'Xenova/whisper-base', language: 'auto', provider: PROVIDERS.LOCAL };
   const graceEnabled = settings?.graceEnabled !== false;
   const graceMs = typeof settings?.graceMs === 'number' ? settings.graceMs : RESULT_GRACE_MS_DEFAULT;
   const assemblyaiApiKey = settings?.assemblyaiApiKey || null;
 
   const baseProvider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
   const overrides = settings?.overrides || {};
-  const site = hostname ? (overrides[hostname] || {}) : {};
+  const host = normalizeHost(hostname);
+  const site = host ? (overrides[host] || {}) : {};
   const provider = (site.provider ?? baseProvider) === PROVIDERS.ASSEMBLY ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
 
+  const disabled = isHostDisabled(settings, host);
+
   return {
+    enabled: !disabled,
     model: (site.model && ALLOWED_MODELS.has(site.model))
       ? site.model
-      : (ALLOWED_MODELS.has(defaults.model) ? defaults.model : 'Xenova/whisper-tiny'),
+      : (ALLOWED_MODELS.has(defaults.model) ? defaults.model : 'Xenova/whisper-base'),
     language: site.language ?? defaults.language ?? 'auto',
     graceEnabled,
     graceMs,
@@ -673,30 +838,83 @@ async function transcribeWithAssemblyAI(audioBlob, language, apiKey) {
   }
 }
 
+// ---------------- Cancel all sessions (used on model change / config change) ----------------
+async function cancelAllSessions(reason = 'config_changed') {
+  dbg('cancel_all_sessions', { reason, inflightTabs: inflightByTab.size });
+
+  for (const [tabId, inflight] of inflightByTab.entries()) {
+    if (inflight?.sessionId) markCanceled(tabId, inflight.sessionId);
+
+    inflightByTab.delete(tabId);
+    clearProcessingTimeout(tabId);
+
+    try { await clearBadge(tabId); } catch (_) { }
+    try { await setTabState(tabId, 'idle', null); } catch (_) { }
+
+    try {
+      browser.tabs.sendMessage(tabId, { type: 'WHISPER_CANCEL_ALL', reason }, { frameId: inflight?.frameId });
+    } catch (_) { }
+  }
+
+  for (const tabId of tabStateById.keys()) {
+    try { await clearBadge(tabId); } catch (_) { }
+    try { await setTabState(tabId, 'idle', null); } catch (_) { }
+  }
+
+  canceledSessionsByTab.clear();
+  lastSessionByTab.clear();
+
+  await disposeCurrentModel();
+  await terminateAsrWorker();
+}
+
 // ---------------- Main message handling ----------------
 browser.runtime.onMessage.addListener((message, sender) => {
   const tabId = sender?.tab?.id;
   const frameId = sender?.frameId;
   if (tabId == null) return;
 
-  ensureTabIconInitialized(tabId).catch(() => {});
+  ensureTabIconInitialized(tabId).catch(() => { });
+
+  // NEW: reset epoch/order state if this is a new content-script instance.
+  // Fire-and-forget; we don't await because onMessage can't be async here.
+  onMessageMaybeResetEpoch(tabId, frameId, message?.pageInstanceId, message?.hostname).catch(() => { });
 
   if (message?.type === 'CONFIG_CHANGED') {
-    refreshRuntimeFlagsFromStorage().then(() => prefetchDefaultModelIfEnabled());
+    (async () => {
+      let nextFp = null;
+      try {
+        const { settings } = await browser.storage.local.get('settings');
+        const d = settings?.defaults || {};
+        nextFp = JSON.stringify({
+          provider: d.provider || PROVIDERS.LOCAL,
+          model: d.model || 'Xenova/whisper-base'
+        });
+
+        if (lastDefaultsFingerprint && nextFp && nextFp !== lastDefaultsFingerprint) {
+          await cancelAllSessions('defaults_changed');
+        }
+        lastDefaultsFingerprint = nextFp;
+      } catch (_) { }
+
+      await refreshRuntimeFlagsFromStorage();
+      await prefetchDefaultModelIfEnabled();
+      await updateDisabledBadgesForAllTabs();
+    })();
     return;
   }
 
   if (message?.type === 'RECORDING_START') {
     const ts = getTabState(tabId);
-    if (ts.state !== 'processing') setTabState(tabId, 'recording', null).catch(() => {});
-    dbgToTab(tabId, frameId, 'recording_start', { sessionId: message.sessionId, hostname: message.hostname });
+    if (ts.state !== 'processing') setTabState(tabId, 'recording', null).catch(() => { });
+    dbgToTab(tabId, frameId, 'recording_start', { sessionId: message.sessionId, hostname: message.hostname, pageInstanceId: message.pageInstanceId });
     return;
   }
 
   if (message?.type === 'RECORDING_STOP') {
     const ts = getTabState(tabId);
-    if (ts.state === 'recording') setTabState(tabId, 'idle', null).catch(() => {});
-    dbgToTab(tabId, frameId, 'recording_stop', { sessionId: message.sessionId, canceled: !!message.canceled });
+    if (ts.state === 'recording') setTabState(tabId, 'idle', null).catch(() => { });
+    dbgToTab(tabId, frameId, 'recording_stop', { sessionId: message.sessionId, canceled: !!message.canceled, pageInstanceId: message.pageInstanceId });
     return;
   }
 
@@ -708,12 +926,12 @@ browser.runtime.onMessage.addListener((message, sender) => {
     if (inflight && inflight.sessionId === sessionId) {
       inflightByTab.delete(tabId);
       clearProcessingTimeout(tabId);
-      clearBadge(tabId).catch(() => {});
-      setTabState(tabId, 'idle', null).catch(() => {});
+      clearBadge(tabId).catch(() => { });
+      setTabState(tabId, 'idle', null).catch(() => { });
     }
 
     showBadgeForTab(tabId, { type: 'cancel', color: ICON_COLORS().cancel }, BADGE_MS.cancel);
-    dbgToTab(tabId, frameId, 'cancel_session', { sessionId });
+    dbgToTab(tabId, frameId, 'cancel_session', { sessionId, pageInstanceId: message.pageInstanceId });
     scheduleModelGc();
     return;
   }
@@ -727,13 +945,14 @@ browser.runtime.onMessage.addListener((message, sender) => {
   dbgToTab(tabId, frameId, 'transcribe_request', {
     sessionId,
     hostname,
+    pageInstanceId: message.pageInstanceId,
     audioBytes: audioBuf ? audioBuf.byteLength : 0
   });
 
   if (inflightByTab.has(tabId)) {
     sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'Transcription busy - please retry' });
-    setTabErrorHold(tabId, 1200).catch(() => {});
-    dbgToTab(tabId, frameId, 'busy_reject', { sessionId });
+    setTabErrorHold(tabId, 1200).catch(() => { });
+    dbgToTab(tabId, frameId, 'busy_reject', { sessionId, pageInstanceId: message.pageInstanceId });
     return;
   }
 
@@ -742,21 +961,21 @@ browser.runtime.onMessage.addListener((message, sender) => {
   if (last && last.hostname !== hostname) lastSessionByTab.set(tabId, { sessionId: 0, hostname });
   if (sessionId <= lastForHost) {
     sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'Stale session ignored' });
-    setTabErrorHold(tabId, 800).catch(() => {});
-    dbgToTab(tabId, frameId, 'stale_reject', { sessionId, lastForHost });
+    setTabErrorHold(tabId, 800).catch(() => { });
+    dbgToTab(tabId, frameId, 'stale_reject', { sessionId, lastForHost, pageInstanceId: message.pageInstanceId });
     return;
   }
   lastSessionByTab.set(tabId, { sessionId, hostname });
 
   if (!audioBuf) {
     sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'Invalid audio payload' });
-    setTabErrorHold(tabId, ERROR_HOLD_MS).catch(() => {});
-    dbgToTab(tabId, frameId, 'invalid_audio', { sessionId });
+    setTabErrorHold(tabId, ERROR_HOLD_MS).catch(() => { });
+    dbgToTab(tabId, frameId, 'invalid_audio', { sessionId, pageInstanceId: message.pageInstanceId });
     return;
   }
 
   inflightByTab.set(tabId, { sessionId, hostname, frameId });
-  setTabState(tabId, 'processing', null).catch(() => {});
+  setTabState(tabId, 'processing', null).catch(() => { });
   armProcessingTimeout(tabId, sessionId, frameId);
 
   (async () => {
@@ -764,9 +983,16 @@ browser.runtime.onMessage.addListener((message, sender) => {
       if (isCanceled(tabId, sessionId)) return;
 
       const settings = await getEffectiveSettings(hostname);
-      const { model, language, graceEnabled, graceMs, provider, assemblyaiApiKey } = settings;
+      const { enabled, model, language, graceEnabled, graceMs, provider, assemblyaiApiKey } = settings;
 
-      dbgToTab(tabId, frameId, 'effective_settings', { provider, model, language, graceEnabled, graceMs });
+      dbgToTab(tabId, frameId, 'effective_settings', { enabled, provider, model, language, graceEnabled, graceMs });
+
+      if (!enabled) {
+        sendTerminal(tabId, frameId, { type: 'WHISPER_DISABLED', reason: 'site_disabled' });
+        await clearBadge(tabId);
+        await setTabState(tabId, 'idle', null);
+        return;
+      }
 
       if (provider === PROVIDERS.ASSEMBLY) {
         showBadgeForTab(tabId, { type: 'cloudprocessing', color: ICON_COLORS().cloudprocessing }, BADGE_MS.cloudprocessing);
@@ -812,15 +1038,16 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
       await clearBadge(tabId);
 
+      // ... inside the transcription completion section ...
       text = collapseRepeats(text);
       const trimmed = text.trim();
       const words = trimmed.split(/\s+/).filter(Boolean);
 
-      if (!trimmed || trimmed.length < 6 || words.length <= 1 || isPathological(text)) {
+      if (!trimmed || isPathological(text) || isExcessiveRepeat(words) || isSpammyRepetition(trimmed)) {
         sendTerminal(tabId, frameId, { type: 'WHISPER_NO_AUDIO' });
         sendTerminal(tabId, frameId, { type: 'WHISPER_UNINTELLIGIBLE' });
         await setTabErrorHold(tabId, 2000);
-        dbgToTab(tabId, frameId, 'unintelligible', { trimmedLen: trimmed.length, wordCount: words.length });
+        dbgToTab(tabId, frameId, 'rejected_by_quality_gate', { text });
         return;
       }
 
@@ -865,20 +1092,25 @@ function clearTabTracking(tabId) {
   lastSessionByTab.delete(tabId);
   clearProcessingTimeout(tabId);
   tabStateById.delete(tabId);
+
+  // NEW: drop any epoch mapping for this tab (all frames)
+  for (const k of pageInstanceByTabFrame.keys()) {
+    if (k.startsWith(`${tabId}:`)) pageInstanceByTabFrame.delete(k);
+  }
 }
 
 browser.tabs.onCreated.addListener((tab) => {
   if (tab?.id == null) return;
-  ensureTabIconInitialized(tab.id).catch(() => {});
+  ensureTabIconInitialized(tab.id).catch(() => { });
 });
 
 browser.tabs.onActivated.addListener(({ tabId }) => {
-  ensureTabIconInitialized(tabId).catch(() => {});
+  ensureTabIconInitialized(tabId).catch(() => { });
 });
 
 browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === 'loading' || typeof changeInfo.url === 'string') {
-    ensureTabIconInitialized(tabId).catch(() => {});
+    ensureTabIconInitialized(tabId).catch(() => { });
   }
   if (changeInfo.discarded === true || changeInfo.status === 'unloaded') {
     clearTabTracking(tabId);
@@ -891,11 +1123,24 @@ browser.tabs.onRemoved.addListener((tabId) => {
   scheduleModelGc();
 });
 
+// In tabs.onUpdated (when URL changes)
+browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'loading' || typeof changeInfo.url === 'string') {
+    ensureTabIconInitialized(tabId).catch(() => { });
+    updateDisabledBadgesForAllTabs().catch(() => { });
+  }
+  if (changeInfo.discarded === true || changeInfo.status === 'unloaded') {
+    clearTabTracking(tabId);
+    scheduleModelGc();
+  }
+});
+
 // Init existing tabs + load flags + maybe prefetch
 (async () => {
   try {
     await refreshRuntimeFlagsFromStorage();
     await prefetchDefaultModelIfEnabled();
+    await updateDisabledBadgesForAllTabs();
   } catch (_) { }
   try {
     const tabs = await browser.tabs.query({});

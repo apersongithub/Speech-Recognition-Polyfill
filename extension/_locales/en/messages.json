@@ -1,85 +1,43 @@
 {
   "ext_name": { "message": "Speech Recognition Polyfill" },
-  "ext_desc": { "message": "Speech Recognition API polyfill powered by on-device Whisper or AssemblyAI" },
-  "browser_action_title": { "message": "Speech Recognition Polyfill" },
+  "ext_desc": {
+    "message": "Speech recognition polyfill with local Whisper and optional cloud transcription (AssemblyAI)."
+  },
+  "browser_action_title": { "message": "Speech Recognition" },
 
-  "title_idle": { "message": "Speech Recognition: Idle" },
-  "title_recording": { "message": "Speech Recognition: Listening" },
-  "title_processing": { "message": "Speech Recognition: Processing" },
-  "title_error": { "message": "Speech Recognition: Error" },
-
-  "options_page_title": { "message": "Speech Recognition Options" },
-  "popup_page_title": { "message": "Speech Recognition" },
-
-  "status_saved": { "message": "Saved" },
-
+  "options_page_title": { "message": "Speech Recognition Settings" },
   "options_heading": { "message": "Speech Recognition Settings" },
-  "banner_text": { "message": "⚠️ Experimental: This is not a bandaid fix to the webspeech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine." },
-
-  "engine_label": { "message": "Engine" },
-  "engine_local": { "message": "On-device Whisper (OpenAI)" },
-  "engine_assemblyai": { "message": "Cloud (AssemblyAI)" },
+  "banner_text": {
+    "message": "Experimental: This is not a bandaid fix to the Web Speech API. Expect occasional slowdowns or interruptions. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine. Some settings may require a page refresh to take effect. Any additional information is listed <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HERE!</strong></a>"
+  },
 
   "section_engine": { "message": "Engine" },
   "engine_note": { "message": "Whisper runs locally; AssemblyAI sends audio to the cloud (requires API key)." },
+  "engine_label": { "message": "Provider" },
+  "engine_local": { "message": "On-device Whisper (OpenAI)" },
+  "engine_assemblyai": { "message": "Cloud (AssemblyAI)" },
+
+  "status_saved": { "message": "Saved" },
 
   "section_local_title": { "message": "On-device Whisper" },
   "pill_local": { "message": "Local" },
-
-  "section_cloud_title": { "message": "Cloud (AssemblyAI)" },
-  "pill_cloud": { "message": "Cloud" },
-  "assemblyai_get_key_btn": { "message": "Get an AssemblyAI API Key" },
-  "assemblyai_key_placeholder": { "message": "Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
-
-  "section_shortcuts": { "message": "Speech shortcuts" },
-  "shortcut_enable": { "message": "Enable speech shortcut" },
-  "shortcut_enable_note": { "message": "Disables the keyboard shortcut entirely when off." },
-  "shortcut_hotkey_label": { "message": "Keyboard shortcut" },
-  "shortcut_hotkey_placeholder": { "message": "Click and press keys (Alt+A)" },
-  "shortcut_hotkey_note": { "message": "Click, press the combo you want. Backspace/Delete to clear. Esc to disable shortcut. Empty disables." },
-  "send_enter_after_label": { "message": "Send Enter after inserting text" },
-  "send_enter_after_note": { "message": "Off by default. When on, presses Enter on the focused field right after text is inserted." },
-
-  "section_overrides": { "message": "Site Overrides" },
-  "overrides_note": { "message": "Customize settings for specific websites (e.g., <b>google.com</b>)." },
-
-  "section_developer": { "message": "Developer Settings" },
-  "debug_banners": { "message": "Enable Debug Mode" },
-  "debug_note": { "message": "Enables toast banners and console debug logs. Default: Off." },
-  "disable_favicons_label": { "message": "Disable favicons in overrides table" },
-  "disable_favicons_note": { "message": "Default: favicons shown. Enable to hide favicons." },
-  "show_engine_sections_label": { "message": "Show engine-specific sections" },
-  "show_engine_sections_note": { "message": "Default: off (sections auto-hide based on engine)." },
-  "enable_hardcap_label": { "message": "Enable 5s hard cap" },
-  "enable_hardcap_note": { "message": "Default: off (recording stops on silence instead of fixed 5s)." },
-  "disable_grace_label": { "message": "Disable grace window" },
-  "disable_grace_note": { "message": "Default: off (grace is enabled; set grace ms above)." },
-  "cache_default_model_label": { "message": "Cache default model (prefetch on startup)" },
-  "cache_default_model_note": { "message": "Prefetches your default on-device Whisper model so first use is faster. Only applies when using the local engine." },
-
-  "section_save_reset": { "message": "Data" },
-
-  "save_everything": { "message": "Save Everything" },
-  "save_everything_note": { "message": "Applies all current settings and overrides." },
-
-  "export_settings": { "message": "Export" },
-  "import_settings": { "message": "Import" },
-  "import_export_note": { "message": "Export or import your settings and site overrides as JSON." },
-
-  "factory_reset": { "message": "Factory Reset" },
-  "factory_reset_note": { "message": "Resets all settings and overrides to defaults." },
+  "local_config_note": { "message": "Configure local model, language, and silence timing." },
 
   "ai_model": { "message": "AI Model" },
-  "group_en_fast": { "message": "English Only (Fast)" },
+  "group_en_fast": { "message": "English Only" },
   "group_multi": { "message": "Multilingual (General Purpose)" },
-  "group_experimental": { "message": "Experimental" },
+
   "model_tiny_en": { "message": "Tiny English (~75MB)" },
   "model_base_en": { "message": "Base English (~150MB)" },
+  "model_distil_en": { "message": "Distil-Medium English (~600MB)" },
   "model_small_en": { "message": "Small English (~500MB)" },
   "model_tiny_multi": { "message": "Tiny Multilingual (~150MB)" },
   "model_base_multi": { "message": "Base Multilingual (~290MB)" },
   "model_small_multi": { "message": "Small Multilingual (~1GB)" },
-  "model_distil_en": { "message": "Distil-Medium English (~600MB)" },
+
+  "size_warning": {
+    "message": "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny."
+  },
 
   "language_label": { "message": "Language" },
   "lang_auto": { "message": "Auto-Detect" },
@@ -92,24 +50,63 @@
   "lang_ja": { "message": "Japanese" },
   "lang_zh": { "message": "Chinese" },
   "lang_ru": { "message": "Russian" },
+  "lang_note": { "message": "The language the translator will attempt to decipher." },
 
   "silence_timeout": { "message": "Silence Timeout (ms)" },
   "silence_note": { "message": "Time to wait after you stop speaking before sending." },
+
   "grace_window_label": { "message": "Grace window (ms)" },
-  "grace_window_note": { "message": "Prevents late results after cancel/stop when grace is enabled (default on)." },
+  "grace_window_note": {
+    "message": "Prevents late results after cancel/stop when grace is enabled."
+  },
 
-  "size_warning": { "message": "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny." },
-
+  "section_cloud_title": { "message": "Cloud (AssemblyAI)" },
+  "pill_cloud": { "message": "Cloud" },
+  "cloud_key_note": {
+    "message": "Provide your AssemblyAI key to enable cloud transcription."
+  },
   "assemblyai_key_label": { "message": "AssemblyAI API Key" },
-  "assemblyai_key_note": { "message": "Stored locally; used only when the cloud engine is selected. Speech is sent to AssemblyAI for processing." },
+  "assemblyai_key_placeholder": {
+    "message": "Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d"
+  },
+  "assemblyai_key_note": {
+    "message": "Stored locally; used only when the cloud engine is selected. It is free but requires an account since speech data is sent to AssemblyAI for processing."
+  },
+  "assemblyai_get_key_btn": { "message": "Get an AssemblyAI API Key" },
 
-  "hostname_placeholder": { "message": "example.com" },
-  "override_timeout_placeholder": { "message": "(Default)" },
+  "section_shortcuts": { "message": "Speech Shortcuts" },
+  "shortcuts_note": {
+    "message": "Configure the speech hotkey and insertion behavior."
+  },
+  "shortcut_enable": { "message": "Enable speech shortcut" },
+  "shortcut_enable_note": { "message": "Pretty self explanatory..." },
+  "shortcut_hotkey_label": { "message": "Keyboard shortcut" },
+  "shortcut_hotkey_placeholder": { "message": "Click and press keys (Alt+A)" },
+  "shortcut_hotkey_note": {
+    "message": "Click, press the combo you want. Backspace/Delete to clear. Esc to disable shortcut. Empty disables."
+  },
+  "send_enter_after_label": { "message": "Send Enter after inserting text" },
+  "send_enter_after_note": {
+    "message": "Automatically presses 'Enter' on the focused field right after text is inserted."
+  },
+
+  "section_overrides": { "message": "Site Overrides" },
+  "overrides_note": {
+    "message": "Override model, language, or engine per site."
+  },
 
   "hostname": { "message": "Hostname" },
+  "hostname_placeholder": { "message": "example.com" },
+
   "model_label": { "message": "Model" },
   "override_default_option": { "message": "(Default)" },
+
   "timeout_label": { "message": "Timeout" },
+  "override_timeout_placeholder": { "message": "(Default)" },
+
+  "override_status_label": { "message": "Extension Status" },
+  "override_status_default": { "message": "(Default: Enabled)" },
+  "override_status_disabled": { "message": "Disabled" },
 
   "add_rule": { "message": "Add Rule" },
   "clear_inputs": { "message": "Clear Inputs" },
@@ -120,20 +117,89 @@
   "hide": { "message": "Hide" },
 
   "table_host": { "message": "Host" },
+  "table_enabled": { "message": "Enabled" },
   "table_model": { "message": "Model" },
   "table_lang": { "message": "Lang" },
   "table_timeout": { "message": "Timeout" },
   "table_engine": { "message": "Engine" },
 
+  "section_developer": { "message": "Developer Settings" },
+  "developer_note": {
+    "message": "Advanced toggles for debugging and experimental behavior. Sorted by understandability."
+  },
+  "debug_banners": { "message": "Enable Debug Mode" },
+  "debug_note": { "message": "Enables toast banners and console debug logs." },
+
+  "boost_mic_label": { "message": "Boost microphone gain" },
+  "boost_mic_note": {
+    "message": "Amplifies mic input before recording to help detect quieter speech (fixed boost)."
+  },
+
+  "strip_trailing_period_label": {
+    "message": "Disable trailing period removal"
+  },
+  "strip_trailing_period_note": {
+    "message": "Removes a final “.” from recognized text."
+  },
+
+  "disable_favicons_label": {
+    "message": "Disable favicons in overrides table"
+  },
+  "disable_favicons_note": {
+    "message": "Favicons are shown by default. Enable to hide favicons."
+  },
+
+  "show_engine_sections_label": {
+    "message": "Show engine-specific sections"
+  },
+  "show_engine_sections_note": {
+    "message": "Sections auto-hide based on engine."
+  },
+
+  "cache_default_model_label": {
+    "message": "Cache default model (prefetch on startup)"
+  },
+  "cache_default_model_note": {
+    "message": "Prefetches your default on-device Whisper model so first use is faster (This will take up some RAM). Only applies when using the local engine."
+  },
+
+  "enable_hardcap_label": { "message": "Enable 5s hard cap" },
+  "enable_hardcap_note": { "message": "Recording stops on silence instead of fixed 5s" },
+
+  "disable_grace_label": { "message": "Disable grace window" },
+  "disable_grace_note": { "message": "Grace is enabled; set grace ms above." },
+
+  "section_save_reset": { "message": "Data" },
+  "data_note": {
+    "message": "Export/import settings as JSON or reset to defaults. Prebuilt Overrides are also included <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/prebuilt-overrides\" target=\"_blank\"><strong>HERE!</strong></a>"
+  },
+  "export_settings": { "message": "Export" },
+  "import_settings": { "message": "Import" },
+  "factory_reset": { "message": "Factory Reset" },
+
+  "popup_page_title": { "message": "Speech Recognition" },
   "popup_site_label": { "message": "Site: (loading…)" },
-  "popup_site_prefix": { "message": "Site" },
-  "popup_site_unknown": { "message": "Site: (unknown)" },
+  "popup_status_section": { "message": "Extension Status" },
+  "popup_status_default": { "message": "Enabled (default)" },
+  "popup_status_disabled": { "message": "Disabled on this site" },
+
   "override_use_default": { "message": "Use default" },
+
   "popup_timeout_label": { "message": "Silence timeout (ms)" },
   "popup_timeout_placeholder": { "message": "Use default" },
+
   "popup_remove": { "message": "Remove override" },
   "popup_open_options": { "message": "Open full options" },
   "popup_status_saved": { "message": "Saved" },
+
+  "popup_site_prefix": { "message": "Site" },
+  "popup_site_unknown": { "message": "Site: (unknown)" },
   "popup_removed": { "message": "Removed" },
-  "model_not_allowed": { "message": "Model not allowed." }
+
+  "model_not_allowed": { "message": "Model not allowed." },
+
+  "title_idle": { "message": "Whisper: Idle" },
+  "title_recording": { "message": "Whisper: Listening" },
+  "title_processing": { "message": "Whisper: Processing" },
+  "title_error": { "message": "Whisper: Error" }
 }
