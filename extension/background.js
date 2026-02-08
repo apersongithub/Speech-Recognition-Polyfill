@@ -1081,9 +1081,14 @@ browser.runtime.onMessage.addListener((message, sender) => {
 browser.runtime.onStartup?.addListener(() => {
   refreshRuntimeFlagsFromStorage().then(() => prefetchDefaultModelIfEnabled());
 });
-browser.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener((details) => {
   refreshRuntimeFlagsFromStorage().then(() => prefetchDefaultModelIfEnabled());
+
+  if (details?.reason === 'install') {
+    try { browser.runtime.openOptionsPage(); } catch (_) {}
+  }
 });
+
 
 // ---------------- Tab lifecycle / cleanup ----------------
 function clearTabTracking(tabId) {

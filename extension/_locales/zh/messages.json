@@ -105,7 +105,7 @@
   "table_model": { "message": "模型" },
   "table_lang": { "message": "语言" },
   "table_timeout": { "message": "超时" },
-  "table_engine": { "message": "引擎" },
+  "table_engine": { "message": "提供方" },
 
   "section_developer": { "message": "开发者设置" },
   "developer_note": { "message": "用于调试与实验行为的高级开关。按易懂程度排序。" },

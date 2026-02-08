@@ -105,7 +105,7 @@
   "table_model": { "message": "モデル" },
   "table_lang": { "message": "言語" },
   "table_timeout": { "message": "タイムアウト" },
-  "table_engine": { "message": "エンジン" },
+  "table_engine": { "message": "プロバイダー" },
 
   "section_developer": { "message": "開発者向け設定" },
   "developer_note": { "message": "デバッグや実験的挙動のための高度なトグルです。分かりやすさ順。" },

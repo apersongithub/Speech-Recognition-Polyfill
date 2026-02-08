@@ -107,7 +107,7 @@
   "table_model": { "message": "Modell" },
   "table_lang": { "message": "Sprache" },
   "table_timeout": { "message": "Timeout" },
-  "table_engine": { "message": "Engine" },
+  "table_engine": { "message": "Anbieter" },
 
   "section_developer": { "message": "Entwickleroptionen" },
   "developer_note": { "message": "Erweiterte Schalter für Debugging und experimentelles Verhalten. Nach Verständlichkeit sortiert." },

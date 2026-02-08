@@ -105,7 +105,7 @@
   "table_model": { "message": "Modelo" },
   "table_lang": { "message": "Idioma" },
   "table_timeout": { "message": "Tempo" },
-  "table_engine": { "message": "Mecanismo" },
+  "table_engine": { "message": "Provedor" },
 
   "section_developer": { "message": "Configurações do desenvolvedor" },
   "developer_note": { "message": "Alternâncias avançadas para depuração e comportamento experimental. Ordenadas por clareza." },

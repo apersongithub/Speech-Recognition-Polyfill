@@ -105,7 +105,7 @@
   "table_model": { "message": "Modèle" },
   "table_lang": { "message": "Langue" },
   "table_timeout": { "message": "Délai" },
-  "table_engine": { "message": "Moteur" },
+  "table_engine": { "message": "Fournisseur" },
 
   "section_developer": { "message": "Paramètres développeur" },
   "developer_note": { "message": "Options avancées pour le débogage et le comportement expérimental. Triées par facilité de compréhension." },

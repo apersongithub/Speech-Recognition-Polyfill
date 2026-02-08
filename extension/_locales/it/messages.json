@@ -105,7 +105,7 @@
   "table_model": { "message": "Modello" },
   "table_lang": { "message": "Lingua" },
   "table_timeout": { "message": "Timeout" },
-  "table_engine": { "message": "Motore" },
+  "table_engine": { "message": "Provider" },
 
   "section_developer": { "message": "Impostazioni sviluppatore" },
   "developer_note": { "message": "Opzioni avanzate per debug e comportamento sperimentale. Ordinate per comprensibilità." },

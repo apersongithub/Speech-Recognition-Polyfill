@@ -105,7 +105,7 @@
   "table_model": { "message": "Modelo" },
   "table_lang": { "message": "Idioma" },
   "table_timeout": { "message": "Tiempo" },
-  "table_engine": { "message": "Motor" },
+  "table_engine": { "message": "Proveedor" },
 
   "section_developer": { "message": "Ajustes de desarrollador" },
   "developer_note": { "message": "Opciones avanzadas para depuración y comportamiento experimental. Ordenadas por facilidad de entender." },

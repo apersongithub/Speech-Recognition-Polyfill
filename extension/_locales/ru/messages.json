@@ -105,7 +105,7 @@
   "table_model": { "message": "Модель" },
   "table_lang": { "message": "Язык" },
   "table_timeout": { "message": "Таймаут" },
-  "table_engine": { "message": "Движок" },
+  "table_engine": { "message": "Провайдер" },
 
   "section_developer": { "message": "Настройки разработчика" },
   "developer_note": { "message": "Продвинутые переключатели для отладки и экспериментального поведения. Отсортировано по понятности." },

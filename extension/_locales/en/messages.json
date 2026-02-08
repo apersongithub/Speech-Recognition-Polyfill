@@ -121,7 +121,7 @@
   "table_model": { "message": "Model" },
   "table_lang": { "message": "Lang" },
   "table_timeout": { "message": "Timeout" },
-  "table_engine": { "message": "Engine" },
+  "table_engine": { "message": "Provider" },
 
   "section_developer": { "message": "Developer Settings" },
   "developer_note": {
