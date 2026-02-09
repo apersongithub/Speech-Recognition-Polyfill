@@ -1,9 +1,14 @@
-// Updated polyfill.js (add aliases for modern SpeechRecognition API; replace the entire (function() { ... })() block)
+// Updated polyfill.js
+// Caveat: WHISPER_PAGE_HANDLED means "I delivered the onresult callback" (not strictly "page inserted").
+// For apps like speechnotes.co, their onresult handler inserts, so this prevents duplicates.
+// If you ever find a site that consumes onresult but does NOT insert (rare), you may want to:
+// - increase the PAGE_ACK_TIMEOUT_MS in content.js, OR
+// - change the ack semantics to only send when you know insertion happened (not possible generically).
 
 (function () {
   console.log(" >>> GTranslate Polyfill: Initializing...");
 
-  // NEW: Do NOT spoof UA on Google Docs/Slides (causes intermittent keyboard lockups)
+  // Do NOT spoof UA on Google Docs/Slides (causes intermittent keyboard lockups)
   const isDocsOrSlides = /(^|\.)docs\.google\.com$|(^|\.)slides\.google\.com$/i.test(location.hostname);
 
   try {
@@ -42,6 +47,7 @@
       window.addEventListener("message", (e) => {
         if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
           if (!this.onresult) return;
+
           const resultEvent = new window.webkitSpeechRecognitionEvent('result', {
             results: [[{ transcript: e.data.text, confidence: 0.98, isFinal: true }]],
             resultIndex: 0
@@ -52,7 +58,8 @@
           this.onend?.();
           this.isRecording = false;
 
-          // Ack to content script to mark processing done
+          // Ack back to content script:
+          // signals "page bridge delivered the result"
           window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
         }
       });

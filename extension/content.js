@@ -9,6 +9,16 @@
 // - BUT: we capture the "intended" editable target (when possible) at hotkey time,
 //   and insert the transcription back into that same element for full functionality.
 
+// NOTE (duplicate-text fix):
+// Some sites (e.g. speechnotes.co) already insert text when they receive a WebSpeech result.
+// Previously we BOTH inserted directly AND forwarded the result to the SpeechRecognition bridge,
+// causing duplicated text.
+// Now we do: forward to page FIRST, then wait briefly for a WHISPER_PAGE_HANDLED ack.
+// - If ack arrives => assume page handled insertion => do NOT insert.
+// - If no ack => fall back to direct insertion.
+// Caveat: a site could ack but not actually insert text. This is rare for sites that ack,
+// but if it happens, increase PAGE_ACK_TIMEOUT_MS or add a "did editor change?" check.
+
 const IS_TOP_FRAME = (window.self === window.top);
 if (!IS_TOP_FRAME) {
   // Do not throw in iframes (Google Docs/Slides rely on them).
@@ -56,13 +66,43 @@ const PROCESSING_WATCHDOG_MS = 22000;
 let lockedInsertTarget = null;
 let lockedInsertTargetInfo = null;
 
-// per-page instance id so background can reset stale session state on reload/navigation.
-const PAGE_INSTANCE_ID = (() => {
-  try {
-    if (crypto?.randomUUID) return crypto.randomUUID();
-  } catch (_) { }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-})();
+// NEW: page-bridge ack tracking (duplicate-text fix)
+let pendingPageAck = null; // { sessionId, timer, resolve }
+const PAGE_ACK_TIMEOUT_MS = 220;
+
+function clearPendingPageAck() {
+  if (pendingPageAck?.timer) {
+    try { clearTimeout(pendingPageAck.timer); } catch (_) { }
+  }
+  pendingPageAck = null;
+}
+
+function waitForPageHandledAck(sessionId) {
+  // One pending ack at a time is enough (results are serialized per tab/session).
+  clearPendingPageAck();
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      // Timed out => treat as "page did not handle"
+      if (pendingPageAck && pendingPageAck.sessionId === sessionId) pendingPageAck = null;
+      resolve(false);
+    }, PAGE_ACK_TIMEOUT_MS);
+
+    pendingPageAck = { sessionId, timer, resolve };
+  });
+}
+
+// Listen for page ack from polyfill/page script
+window.addEventListener('message', (e) => {
+  if (!IS_TOP_FRAME) return;
+  if (!e?.data || e.data.type !== 'WHISPER_PAGE_HANDLED') return;
+
+  if (pendingPageAck?.resolve) {
+    const r = pendingPageAck.resolve;
+    clearPendingPageAck();
+    r(true);
+  }
+});
 
 function isGoogleDocsOrSlidesHost() {
   const h = (location.hostname || '').toLowerCase();
@@ -273,6 +313,7 @@ async function resolveEffectiveSettings() {
   if (prevEnabled && !extensionEnabledForSite) {
     clearProcessingWatchdog();
     clearLockedInsertionTarget();
+    clearPendingPageAck();
     try {
       if (captureActive) stopRecording(true);
     } catch (_) { }
@@ -291,6 +332,14 @@ async function resolveEffectiveSettings() {
 }
 resolveEffectiveSettings();
 
+// per-page instance id so background can reset stale session state on reload/navigation.
+const PAGE_INSTANCE_ID = (() => {
+  try {
+    if (crypto?.randomUUID) return crypto.randomUUID();
+  } catch (_) { }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+})();
+
 browser.runtime.onMessage.addListener((message) => {
   if (message?.type === 'CONFIG_CHANGED') resolveEffectiveSettings();
 
@@ -304,6 +353,7 @@ browser.runtime.onMessage.addListener((message) => {
     captureActive = false;
     skipTranscribe = true;
     clearLockedInsertionTarget();
+    clearPendingPageAck();
     try { stopRecording(true); } catch (_) { }
     showNotification("Canceled (settings changed)", "info");
   }
@@ -621,6 +671,7 @@ window.addEventListener("message", async (event) => {
   else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
     clearProcessingWatchdog();
     clearLockedInsertionTarget();
+    clearPendingPageAck();
     if (captureActive) {
       stopRecording(true);
       try {
@@ -734,10 +785,10 @@ async function startRecording(pageLanguage, sessionId) {
           });
         } catch (_) { }
 
-        if (skipTranscribe) { captureActive = false; clearLockedInsertionTarget(); return; }
-        if (duration < 300) { captureActive = false; clearLockedInsertionTarget(); return; }
-        if (sessionId !== activeSessionId) { captureActive = false; clearLockedInsertionTarget(); return; }
-        if (!extensionEnabledForSite) { captureActive = false; clearLockedInsertionTarget(); return; }
+        if (skipTranscribe) { captureActive = false; clearLockedInsertionTarget(); clearPendingPageAck(); return; }
+        if (duration < 300) { captureActive = false; clearLockedInsertionTarget(); clearPendingPageAck(); return; }
+        if (sessionId !== activeSessionId) { captureActive = false; clearLockedInsertionTarget(); clearPendingPageAck(); return; }
+        if (!extensionEnabledForSite) { captureActive = false; clearLockedInsertionTarget(); clearPendingPageAck(); return; }
 
         showNotification("Processing...", "processing");
 
@@ -762,6 +813,7 @@ async function startRecording(pageLanguage, sessionId) {
           processingSessionId = null;
           showNotification("Failed to send audio to background: " + (e?.message || e), "error");
           clearLockedInsertionTarget();
+          clearPendingPageAck();
         }
       } finally {
         captureActive = false;
@@ -779,6 +831,7 @@ async function startRecording(pageLanguage, sessionId) {
     clearSilenceTimer();
     captureActive = false;
     clearLockedInsertionTarget();
+    clearPendingPageAck();
     try {
       browser.runtime.sendMessage({
         type: 'RECORDING_STOP',
@@ -822,29 +875,44 @@ browser.runtime.onMessage.addListener((message) => {
 
     showNotification(text, "success");
 
-    // Insert into the locked target when possible (full functionality restored)
+    // Always resolve target now (we'll use it only if we need fallback insertion)
     const target = resolveInsertTarget();
-    const inserted = insertIntoElement(target, text);
 
-    if (!inserted) {
-      dbg('Insert failed; no editable target', { lockedInsertTargetInfo });
-    }
+    // NEW: bridge-first, insertion fallback (prevents duplicate insertion on sites that handle WebSpeech)
+    const sid = message.sessionId || activeSessionId || 0;
+    const ackPromise = waitForPageHandledAck(sid);
 
-    if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
-      // Submit/enter should apply to the same target we inserted into (or attempted to).
-      sendEnterAfterInsertForTarget(target || document.activeElement);
-    }
-
-    // Always forward to page SpeechRecognition bridge
+    // Forward to page SpeechRecognition bridge first
     window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text }, "*");
 
-    // Clear lock after completion so next run can capture a new target
-    clearLockedInsertionTarget();
+    ackPromise.then((pageHandled) => {
+      if (pageHandled) {
+        // Page handled the result (likely inserted). Do NOT insert.
+        return;
+      }
+
+      // Fallback: insert ourselves
+      const inserted = insertIntoElement(target, text);
+      if (!inserted) {
+        dbg('Insert failed; no editable target', { lockedInsertTargetInfo });
+      }
+
+      if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
+        // Submit/enter should apply to the same target we inserted into (or attempted to).
+        sendEnterAfterInsertForTarget(target || document.activeElement);
+      }
+    }).finally(() => {
+      // Clear lock after completion so next run can capture a new target
+      clearLockedInsertionTarget();
+      // ack state already cleared by waiter; but safe:
+      // clearPendingPageAck();
+    });
   }
   else if (message.type === 'WHISPER_NO_AUDIO') {
     clearProcessingWatchdog();
     processingSessionId = null;
     clearLockedInsertionTarget();
+    clearPendingPageAck();
 
     if (message.reason !== 'silence') showNotification("No speech detected", "info");
     else { const n = document.getElementById("whisper-pill"); if (n) n.style.opacity = "0"; }
@@ -853,18 +921,21 @@ browser.runtime.onMessage.addListener((message) => {
     clearProcessingWatchdog();
     processingSessionId = null;
     clearLockedInsertionTarget();
+    clearPendingPageAck();
     showNotification("Didn't catch that", "error");
   }
   else if (message.type === 'WHISPER_ERROR') {
     clearProcessingWatchdog();
     processingSessionId = null;
     clearLockedInsertionTarget();
+    clearPendingPageAck();
     showNotification(message.error || "Transcription error", "error");
   }
   else if (message.type === 'WHISPER_DISABLED') {
     clearProcessingWatchdog();
     processingSessionId = null;
     clearLockedInsertionTarget();
+    clearPendingPageAck();
     showNotification("Whisper is disabled on this site.", "info");
   }
 });
