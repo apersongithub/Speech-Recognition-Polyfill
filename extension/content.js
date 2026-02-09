@@ -70,6 +70,17 @@ let lockedInsertTargetInfo = null;
 let pendingPageAck = null; // { sessionId, timer, resolve }
 const PAGE_ACK_TIMEOUT_MS = 220;
 
+// NEW: recording-start watchdog to prevent "Listening..." desync
+let startRecordingWatchdog = null;
+const START_RECORDING_WATCHDOG_MS = 1200;
+
+function clearStartRecordingWatchdog() {
+  if (startRecordingWatchdog) {
+    try { clearTimeout(startRecordingWatchdog); } catch (_) { }
+    startRecordingWatchdog = null;
+  }
+}
+
 function clearPendingPageAck() {
   if (pendingPageAck?.timer) {
     try { clearTimeout(pendingPageAck.timer); } catch (_) { }
@@ -314,6 +325,7 @@ async function resolveEffectiveSettings() {
     clearProcessingWatchdog();
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    clearStartRecordingWatchdog();
     try {
       if (captureActive) stopRecording(true);
     } catch (_) { }
@@ -354,6 +366,7 @@ browser.runtime.onMessage.addListener((message) => {
     skipTranscribe = true;
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    clearStartRecordingWatchdog();
     try { stopRecording(true); } catch (_) { }
     showNotification("Canceled (settings changed)", "info");
   }
@@ -650,28 +663,29 @@ window.addEventListener("message", async (event) => {
     if (processingSessionId !== null) return;
     if (captureActive) return;
 
-    captureActive = true;
+    // IMPORTANT: do NOT set captureActive=true yet.
+    // We'll only flip it on MediaRecorder.onstart to avoid "Listening..." desync.
     currentSessionId += 1;
     activeSessionId = currentSessionId;
 
-    try {
-      browser.runtime.sendMessage({
-        type: 'RECORDING_START',
-        sessionId: activeSessionId,
-        hostname: location.hostname,
-        pageInstanceId: PAGE_INSTANCE_ID
-      });
-    } catch (_) { }
+    dbg('start_recording_requested', {
+      sessionId: activeSessionId,
+      host: location.hostname,
+      lang: event.data.language,
+      pageInstanceId: PAGE_INSTANCE_ID
+    });
 
     startRecording(event.data.language, activeSessionId);
   }
   else if (event.data.type === 'WHISPER_STOP_RECORDING') {
     if (captureActive) stopRecording(false);
+    else dbg('stop_recording_ignored_not_active', { sessionId: activeSessionId });
   }
   else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
     clearProcessingWatchdog();
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    clearStartRecordingWatchdog();
     if (captureActive) {
       stopRecording(true);
       try {
@@ -704,14 +718,29 @@ function clearSilenceTimer() {
 }
 
 async function startRecording(pageLanguage, sessionId) {
+  clearStartRecordingWatchdog();
+
+  // Don't allow a stale start to proceed if session changed quickly.
+  if (sessionId !== activeSessionId) {
+    dbg('start_recording_aborted_session_mismatch', { sessionId, activeSessionId });
+    return;
+  }
+
   try {
     const langDisplay = pageLanguage ? pageLanguage.toUpperCase() : "AUTO";
     showNotification(`Listening (${langDisplay})...`, "recording");
 
     recordingStartTime = Date.now();
-    globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+    // Acquire mic first
+    globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    dbg('gum_ok', { sessionId });
+
+    // Create context and resume (avoids "suspended" edge cases)
     globalContext = new AudioContext();
+    try { await globalContext.resume?.(); } catch (_) { }
+    dbg('audiocontext_state', { sessionId, state: globalContext?.state });
+
     const source = globalContext.createMediaStreamSource(globalStream);
 
     const gainNode = globalContext.createGain();
@@ -742,8 +771,61 @@ async function startRecording(pageLanguage, sessionId) {
     const startTime = Date.now();
     const maxNoSpeechMs = Math.max(2500, silenceTimeoutMs * 2.5);
 
+    // ---- NEW: confirmed-start logic (prevents "Listening..." but not recording) ----
+    let started = false;
+
+    globalRecorder.onstart = () => {
+      started = true;
+      captureActive = true;
+      clearStartRecordingWatchdog();
+      dbg('mediarecorder_onstart', { sessionId, state: globalRecorder?.state, mimeType: globalRecorder?.mimeType });
+
+      try {
+        browser.runtime.sendMessage({
+          type: 'RECORDING_START',
+          sessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      } catch (_) { }
+    };
+
+    globalRecorder.onerror = (e) => {
+      dbg('mediarecorder_error', { sessionId, error: e?.error?.name || e?.message || String(e) });
+      // If start never happened, watchdog will clean up; but provide immediate feedback in debug mode.
+      if (!started) {
+        showNotification("Failed to start recording. Click again.", "error");
+      }
+    };
+
+    // Watchdog: if onstart doesn't fire quickly, force reset.
+    startRecordingWatchdog = setTimeout(() => {
+      startRecordingWatchdog = null;
+
+      const state = globalRecorder?.state || 'unknown';
+      dbg('start_watchdog_fired', { sessionId, state, started });
+
+      if (state !== 'recording') {
+        try { stopRecording(true); } catch (_) { }
+        captureActive = false;
+
+        // Best-effort: keep background icon in sync
+        try {
+          browser.runtime.sendMessage({
+            type: 'RECORDING_STOP',
+            sessionId,
+            hostname: location.hostname,
+            canceled: true,
+            pageInstanceId: PAGE_INSTANCE_ID
+          });
+        } catch (_) { }
+
+        showNotification("Mic didn’t start recording—please click again.", "error");
+      }
+    }, START_RECORDING_WATCHDOG_MS);
+
     const checkSilence = () => {
-      if (!captureActive || globalRecorder.state === 'inactive') return;
+      if (!captureActive || !globalRecorder || globalRecorder.state === 'inactive') return;
 
       analyser.getByteFrequencyData(dataArray);
       let sum = 0; for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
@@ -766,24 +848,45 @@ async function startRecording(pageLanguage, sessionId) {
 
       silenceCheckTimer = setTimeout(checkSilence, 120);
     };
-    silenceCheckTimer = setTimeout(checkSilence, 120);
 
+    // Install data handler before start
     globalRecorder.ondataavailable = event => globalChunks.push(event.data);
 
     globalRecorder.onstop = async () => {
       clearSilenceTimer();
+      clearStartRecordingWatchdog();
+
       try {
         const duration = Date.now() - recordingStartTime;
 
+        // Only send RECORDING_STOP if we truly started (avoids confusing background state)
         try {
-          browser.runtime.sendMessage({
-            type: 'RECORDING_STOP',
-            sessionId,
-            hostname: location.hostname,
-            canceled: skipTranscribe,
-            pageInstanceId: PAGE_INSTANCE_ID
-          });
+          if (started) {
+            browser.runtime.sendMessage({
+              type: 'RECORDING_STOP',
+              sessionId,
+              hostname: location.hostname,
+              canceled: skipTranscribe,
+              pageInstanceId: PAGE_INSTANCE_ID
+            });
+          }
         } catch (_) { }
+
+        dbg('mediarecorder_onstop', {
+          sessionId,
+          started,
+          durationMs: duration,
+          canceled: skipTranscribe,
+          chunks: globalChunks?.length || 0
+        });
+
+        if (!started) {
+          // If we never started, nothing to transcribe; ensure state is clean.
+          captureActive = false;
+          clearLockedInsertionTarget();
+          clearPendingPageAck();
+          return;
+        }
 
         if (skipTranscribe) { captureActive = false; clearLockedInsertionTarget(); clearPendingPageAck(); return; }
         if (duration < 300) { captureActive = false; clearLockedInsertionTarget(); clearPendingPageAck(); return; }
@@ -800,6 +903,8 @@ async function startRecording(pageLanguage, sessionId) {
         armProcessingWatchdog(sessionId);
 
         try {
+          dbg('sending_audio_to_background', { sessionId, bytes: arrayBuffer?.byteLength || 0, realType });
+
           browser.runtime.sendMessage({
             type: 'TRANSCRIBE_AUDIO',
             sessionId,
@@ -820,7 +925,13 @@ async function startRecording(pageLanguage, sessionId) {
       }
     };
 
+    // Start recorder after handlers installed
     globalRecorder.start();
+    dbg('mediarecorder_start_called', { sessionId, state: globalRecorder?.state, mimeType: globalRecorder?.mimeType });
+
+    // Only start silence timer once we're actually recording;
+    // but it's okay to arm early since it checks captureActive.
+    silenceCheckTimer = setTimeout(checkSilence, 120);
 
     if (!disableHardCap) {
       setTimeout(() => {
@@ -829,10 +940,15 @@ async function startRecording(pageLanguage, sessionId) {
     }
   } catch (err) {
     clearSilenceTimer();
+    clearStartRecordingWatchdog();
     captureActive = false;
     clearLockedInsertionTarget();
     clearPendingPageAck();
+
+    dbg('startRecording_error', { sessionId, error: err?.message || String(err) });
+
     try {
+      // Best-effort background sync
       browser.runtime.sendMessage({
         type: 'RECORDING_STOP',
         sessionId,
@@ -841,12 +957,15 @@ async function startRecording(pageLanguage, sessionId) {
         pageInstanceId: PAGE_INSTANCE_ID
       });
     } catch (_) { }
-    showNotification("Error: " + err.message, "error");
+
+    showNotification("Error: " + (err?.message || err), "error");
+    try { stopRecording(true); } catch (_) { }
   }
 }
 
 function stopRecording(cancel = false) {
   clearSilenceTimer();
+  clearStartRecordingWatchdog();
   skipTranscribe = cancel;
 
   if (globalStream) { globalStream.getTracks().forEach(track => track.stop()); globalStream = null; }
@@ -913,6 +1032,7 @@ browser.runtime.onMessage.addListener((message) => {
     processingSessionId = null;
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    clearStartRecordingWatchdog();
 
     if (message.reason !== 'silence') showNotification("No speech detected", "info");
     else { const n = document.getElementById("whisper-pill"); if (n) n.style.opacity = "0"; }
@@ -922,6 +1042,7 @@ browser.runtime.onMessage.addListener((message) => {
     processingSessionId = null;
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    clearStartRecordingWatchdog();
     showNotification("Didn't catch that", "error");
   }
   else if (message.type === 'WHISPER_ERROR') {
@@ -929,6 +1050,7 @@ browser.runtime.onMessage.addListener((message) => {
     processingSessionId = null;
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    clearStartRecordingWatchdog();
     showNotification(message.error || "Transcription error", "error");
   }
   else if (message.type === 'WHISPER_DISABLED') {
@@ -936,6 +1058,7 @@ browser.runtime.onMessage.addListener((message) => {
     processingSessionId = null;
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    clearStartRecordingWatchdog();
     showNotification("Whisper is disabled on this site.", "info");
   }
 });

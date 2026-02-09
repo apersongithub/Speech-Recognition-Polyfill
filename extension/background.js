@@ -882,22 +882,22 @@ browser.runtime.onMessage.addListener((message, sender) => {
   // Fire-and-forget; we don't await because onMessage can't be async here.
   onMessageMaybeResetEpoch(tabId, frameId, message?.pageInstanceId, message?.hostname).catch(() => { });
 
-if (message?.type === 'ASR_BACKEND_PING') {
-  return (async () => {
-    try {
-      const res = await callAsrWorker('PING', {}, 3000);
-      return {
-        ok: true,
-        backend: res.activeBackend || res.backend || 'unknown',
-        preferredBackend: res.preferredBackend || 'unknown',
-        hasModelLoaded: !!res.hasModelLoaded,
-        webgpu: res.webgpu || null
-      };
-    } catch (_) {
-      return { ok: false, backend: 'unknown', preferredBackend: 'unknown', hasModelLoaded: false, webgpu: null };
-    }
-  })();
-}
+  if (message?.type === 'ASR_BACKEND_PING') {
+    return (async () => {
+      try {
+        const res = await callAsrWorker('PING', {}, 3000);
+        return {
+          ok: true,
+          backend: res.activeBackend || res.backend || 'unknown',
+          preferredBackend: res.preferredBackend || 'unknown',
+          hasModelLoaded: !!res.hasModelLoaded,
+          webgpu: res.webgpu || null
+        };
+      } catch (_) {
+        return { ok: false, backend: 'unknown', preferredBackend: 'unknown', hasModelLoaded: false, webgpu: null };
+      }
+    })();
+  }
 
   if (message?.type === 'CONFIG_CHANGED') {
     (async () => {
@@ -923,17 +923,52 @@ if (message?.type === 'ASR_BACKEND_PING') {
     return;
   }
 
+  // ---------------- Recording UI state ----------------
+  // NOTE: with the content.js fix, RECORDING_START is now only sent once MediaRecorder actually started.
   if (message?.type === 'RECORDING_START') {
     const ts = getTabState(tabId);
+
+    // Don't override processing if a transcription is already running
     if (ts.state !== 'processing') setTabState(tabId, 'recording', null).catch(() => { });
-    dbgToTab(tabId, frameId, 'recording_start', { sessionId: message.sessionId, hostname: message.hostname, pageInstanceId: message.pageInstanceId });
+
+    // Background-side debug + forwarded debug
+    dbg('recording_start', {
+      tabId,
+      frameId,
+      sessionId: message.sessionId,
+      hostname: message.hostname,
+      pageInstanceId: message.pageInstanceId
+    });
+    dbgToTab(tabId, frameId, 'recording_start', {
+      tabId,
+      frameId,
+      sessionId: message.sessionId,
+      hostname: message.hostname,
+      pageInstanceId: message.pageInstanceId
+    });
     return;
   }
 
   if (message?.type === 'RECORDING_STOP') {
     const ts = getTabState(tabId);
     if (ts.state === 'recording') setTabState(tabId, 'idle', null).catch(() => { });
-    dbgToTab(tabId, frameId, 'recording_stop', { sessionId: message.sessionId, canceled: !!message.canceled, pageInstanceId: message.pageInstanceId });
+
+    dbg('recording_stop', {
+      tabId,
+      frameId,
+      sessionId: message.sessionId,
+      hostname: message.hostname,
+      canceled: !!message.canceled,
+      pageInstanceId: message.pageInstanceId
+    });
+    dbgToTab(tabId, frameId, 'recording_stop', {
+      tabId,
+      frameId,
+      sessionId: message.sessionId,
+      hostname: message.hostname,
+      canceled: !!message.canceled,
+      pageInstanceId: message.pageInstanceId
+    });
     return;
   }
 
@@ -950,7 +985,10 @@ if (message?.type === 'ASR_BACKEND_PING') {
     }
 
     showBadgeForTab(tabId, { type: 'cancel', color: ICON_COLORS().cancel }, BADGE_MS.cancel);
+
+    dbg('cancel_session', { tabId, frameId, sessionId, pageInstanceId: message.pageInstanceId });
     dbgToTab(tabId, frameId, 'cancel_session', { sessionId, pageInstanceId: message.pageInstanceId });
+
     scheduleModelGc();
     return;
   }
@@ -1071,8 +1109,8 @@ if (message?.type === 'ASR_BACKEND_PING') {
 
       const send = () => {
         if (isCanceled(tabId, sessionId)) return;
-        sendTerminal(tabId, frameId, { type: 'WHISPER_RESULT_TO_PAGE_BRIDGE', text });
-        dbgToTab(tabId, frameId, 'result_sent', { chars: text.length });
+        sendTerminal(tabId, frameId, { type: 'WHISPER_RESULT_TO_PAGE_BRIDGE', text, sessionId });
+        dbgToTab(tabId, frameId, 'result_sent', { chars: text.length, sessionId });
       };
       if (graceEnabled) setTimeout(send, graceMs);
       else send();
@@ -1103,7 +1141,7 @@ browser.runtime.onInstalled.addListener((details) => {
   refreshRuntimeFlagsFromStorage().then(() => prefetchDefaultModelIfEnabled());
 
   if (details?.reason === 'install') {
-    try { browser.runtime.openOptionsPage(); } catch (_) {}
+    try { browser.runtime.openOptionsPage(); } catch (_) { }
   }
 });
 
