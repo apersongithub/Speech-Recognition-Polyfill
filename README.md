@@ -37,6 +37,7 @@
 | Can I disable it on certain sites? | Yes. You can disable the extension per-site from the popup (Extension Status) or via a Site Override. |
 | Where are the prebuilt overrides? | You can find them linked here [HERE](https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides). For Duolingo, just choose the language you are learning, then download and import the override. |
 | How does offline functionality work? | There is technically none, you can try the "Cache default model" option and it will work offline until you switch the model (manually or through a site override) or close the browser. |
+| Why is it typing "Thanks for watching"? | This only happens on the local models if you mumble a bit with no other intelligble audio being spoken. It is likely because the Whisper Model is trained on YouTube videos (unfortunately). |
 
 | Engine          | Model ID                       | Notes                                |
 |-----------------|--------------------------------|--------------------------------------|
