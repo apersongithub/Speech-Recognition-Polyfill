@@ -1,15 +1,11 @@
 {
   "ext_name": { "message": "Speech Recognition Polyfill" },
-  "ext_desc": {
-    "message": "Speech recognition polyfill with local Whisper and optional cloud transcription (AssemblyAI)."
-  },
+  "ext_desc": { "message": "Speech recognition polyfill with local Whisper and optional cloud transcription (AssemblyAI)." },
   "browser_action_title": { "message": "Speech Recognition" },
 
   "options_page_title": { "message": "Speech Recognition Settings" },
   "options_heading": { "message": "Speech Recognition Settings" },
-  "banner_text": {
-    "message": "⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine. Some settings may require a page refresh to take effect. Any additional information is listed <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HERE!</strong></a>"
-  },
+  "banner_text": { "message": "⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the extension icon (pin it to your menu bar). If you want the best performance, use the cloud based engine. Some settings may require a page refresh to take effect. Any additional information is listed <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>HERE!</strong></a>" },
 
   "section_engine": { "message": "Engine" },
   "engine_note": { "message": "Whisper runs locally; AssemblyAI sends audio to the cloud (requires API key)." },
@@ -35,9 +31,7 @@
   "model_base_multi": { "message": "Base Multilingual (~290MB)" },
   "model_small_multi": { "message": "Small Multilingual (~1GB)" },
 
-  "size_warning": {
-    "message": "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny."
-  },
+  "size_warning": { "message": "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny." },
 
   "language_label": { "message": "Language" },
   "lang_auto": { "message": "Auto-Detect" },
@@ -56,44 +50,28 @@
   "silence_note": { "message": "Time to wait after you stop speaking before sending." },
 
   "grace_window_label": { "message": "Grace window (ms)" },
-  "grace_window_note": {
-    "message": "Prevents late results after cancel/stop when grace is enabled."
-  },
+  "grace_window_note": { "message": "Prevents late results after cancel/stop when grace is enabled." },
 
   "section_cloud_title": { "message": "Cloud (AssemblyAI)" },
   "pill_cloud": { "message": "Cloud" },
-  "cloud_key_note": {
-    "message": "Provide your AssemblyAI key to enable cloud transcription."
-  },
+  "cloud_key_note": { "message": "Provide your AssemblyAI key to enable cloud transcription." },
   "assemblyai_key_label": { "message": "AssemblyAI API Key" },
-  "assemblyai_key_placeholder": {
-    "message": "Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d"
-  },
-  "assemblyai_key_note": {
-    "message": "Stored locally; used only when the cloud engine is selected. It is free but requires an account since speech data is sent to AssemblyAI for processing."
-  },
+  "assemblyai_key_placeholder": { "message": "Ex: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
+  "assemblyai_key_note": { "message": "Stored locally; used only when the cloud engine is selected. It is free but requires an account since speech data is sent to AssemblyAI for processing." },
   "assemblyai_get_key_btn": { "message": "Get an AssemblyAI API Key" },
 
   "section_shortcuts": { "message": "Speech Shortcuts" },
-  "shortcuts_note": {
-    "message": "Configure the speech hotkey and insertion behavior."
-  },
+  "shortcuts_note": { "message": "Configure the speech hotkey and insertion behavior." },
   "shortcut_enable": { "message": "Enable speech shortcut" },
   "shortcut_enable_note": { "message": "Pretty self explanatory..." },
   "shortcut_hotkey_label": { "message": "Keyboard shortcut" },
   "shortcut_hotkey_placeholder": { "message": "Click and press keys (Alt+A)" },
-  "shortcut_hotkey_note": {
-    "message": "Click, press the combo you want. Backspace/Delete to clear. Esc to disable shortcut. Empty disables."
-  },
+  "shortcut_hotkey_note": { "message": "Click, press the combo you want. Backspace/Delete to clear. Esc to disable shortcut. Empty disables." },
   "send_enter_after_label": { "message": "Send Enter after inserting text" },
-  "send_enter_after_note": {
-    "message": "Automatically presses 'Enter' on the focused field right after text is inserted."
-  },
+  "send_enter_after_note": { "message": "Automatically presses 'Enter' on the focused field right after text is inserted." },
 
   "section_overrides": { "message": "Site Overrides" },
-  "overrides_note": {
-    "message": "Override model, language, or engine per site."
-  },
+  "overrides_note": { "message": "Override model, language, or engine per site." },
 
   "hostname": { "message": "Hostname" },
   "hostname_placeholder": { "message": "example.com" },
@@ -122,46 +100,28 @@
   "table_lang": { "message": "Lang" },
   "table_timeout": { "message": "Timeout" },
   "table_engine": { "message": "Provider" },
+  "table_remove": { "message": "Remove" },
 
   "section_developer": { "message": "Developer Settings" },
-  "developer_note": {
-    "message": "Advanced toggles for debugging and experimental behavior. Sorted by understandability."
-  },
+  "developer_note": { "message": "Advanced toggles for debugging and experimental behavior. Sorted by understandability." },
+
   "debug_banners": { "message": "Enable Debug Mode" },
   "debug_note": { "message": "Enables toast banners and console debug logs." },
 
   "boost_mic_label": { "message": "Boost microphone gain" },
-  "boost_mic_note": {
-    "message": "Amplifies mic input before recording to help detect quieter speech (fixed boost)."
-  },
+  "boost_mic_note": { "message": "Amplifies mic input before recording to help detect quieter speech (fixed boost)." },
 
-  "strip_trailing_period_label": {
-    "message": "Disable trailing period removal"
-  },
-  "strip_trailing_period_note": {
-    "message": "Removes a final “.” from recognized text."
-  },
+  "strip_trailing_period_label": { "message": "Disable trailing period removal" },
+  "strip_trailing_period_note": { "message": "Removes a final “.” from recognized text." },
 
-  "disable_favicons_label": {
-    "message": "Disable favicons in overrides table"
-  },
-  "disable_favicons_note": {
-    "message": "Favicons are shown by default. Enable to hide favicons."
-  },
+  "disable_favicons_label": { "message": "Disable favicons in overrides table" },
+  "disable_favicons_note": { "message": "Favicons are shown by default. Enable to hide favicons." },
 
-  "show_engine_sections_label": {
-    "message": "Show engine-specific sections"
-  },
-  "show_engine_sections_note": {
-    "message": "Sections auto-hide based on engine."
-  },
+  "show_engine_sections_label": { "message": "Show engine-specific sections" },
+  "show_engine_sections_note": { "message": "Sections auto-hide based on engine." },
 
-  "cache_default_model_label": {
-    "message": "Cache default model (prefetch on startup)"
-  },
-  "cache_default_model_note": {
-    "message": "Prefetches your default on-device Whisper model so first use is faster (This will take up some RAM). Only applies when using the local engine."
-  },
+  "cache_default_model_label": { "message": "Cache default model (prefetch on startup)" },
+  "cache_default_model_note": { "message": "Prefetches your default on-device Whisper model so first use is faster (This will take up some RAM). Only applies when using the local engine." },
 
   "enable_hardcap_label": { "message": "Enable 5s hard cap" },
   "enable_hardcap_note": { "message": "Voice Recordings have a fixed 5s limit." },
@@ -170,9 +130,7 @@
   "disable_grace_note": { "message": "Grace is enabled; set grace ms above." },
 
   "section_save_reset": { "message": "Data" },
-  "data_note": {
-    "message": "Export/import settings as JSON or reset to defaults. Prebuilt Overrides are also included <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>HERE!</strong></a>"
-  },
+  "data_note": { "message": "Export/import settings as JSON or reset to defaults. Prebuilt Overrides are also included <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>HERE!</strong></a>" },
   "export_settings": { "message": "Export" },
   "import_settings": { "message": "Import" },
   "factory_reset": { "message": "Factory Reset" },
@@ -202,7 +160,8 @@
   "title_recording": { "message": "Whisper: Listening" },
   "title_processing": { "message": "Whisper: Processing" },
   "title_error": { "message": "Whisper: Error" },
-    "backend_indicator_label": { "message": "Local Whisper backend:" },
+
+  "backend_indicator_label": { "message": "Local Whisper backend:" },
   "backend_indicator_value_active": { "message": "Active" },
   "backend_indicator_value_unknown": { "message": "Unknown" },
 
@@ -210,34 +169,14 @@
   "backend_chip_wasm": { "message": "WASM" },
   "backend_chip_unknown": { "message": "Unknown" },
 
-  "backend_hint_default": {
-    "message": "Runs on WebGPU when available; falls back to WASM if not supported."
-  },
-  "backend_hint_webgpu": {
-    "message": "GPU accelerated (best performance when supported)."
-  },
-  "backend_hint_wasm": {
-    "message": "CPU fallback (WebGPU unsupported or failed to initialize)."
-  },
-  "backend_hint_unknown": {
-    "message": "Backend will be detected after the first local transcription/model load."
-  },
-  "backend_hint_webgpu_enabled_supported": {
-    "message": "WebGPU is enabled and supported. It will activate after the next local model load/transcription."
-  },
-  "backend_hint_preferred_wasm": {
-    "message": "WASM is selected as the preferred backend."
-  },
-  "backend_hint_webgpu_init_failed_prefix": {
-    "message": "WebGPU API exists, but adapter/device init failed:"
-  },
-  "backend_hint_webgpu_unavailable": {
-    "message": "WebGPU is not available in this context; using WASM."
-  },
-  "backend_hint_using_wasm": {
-    "message": "Using WASM."
-  },
-  "backend_unknown_error": {
-    "message": "unknown error"
-  }
+  "backend_hint_default": { "message": "Runs on WebGPU when available; falls back to WASM if not supported." },
+  "backend_hint_webgpu": { "message": "GPU accelerated (best performance when supported)." },
+  "backend_hint_wasm": { "message": "CPU fallback (WebGPU unsupported or failed to initialize)." },
+  "backend_hint_unknown": { "message": "Backend will be detected after the first local transcription/model load." },
+  "backend_hint_webgpu_enabled_supported": { "message": "WebGPU is enabled and supported. It will activate after the next local model load/transcription." },
+  "backend_hint_preferred_wasm": { "message": "WASM is selected as the preferred backend." },
+  "backend_hint_webgpu_init_failed_prefix": { "message": "WebGPU API exists, but adapter/device init failed:" },
+  "backend_hint_webgpu_unavailable": { "message": "WebGPU is not available in this context; using WASM." },
+  "backend_hint_using_wasm": { "message": "Using WASM." },
+  "backend_unknown_error": { "message": "unknown error" }
 }

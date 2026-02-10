@@ -10,6 +10,14 @@ const ALLOWED_MODELS = [
 ];
 const ALLOWED_PROVIDERS = ['local-whisper', 'assemblyai'];
 
+const MIC_GAIN_MIN = 1.0;
+const MIC_GAIN_MAX = 3.0;
+const MIC_GAIN_DEFAULT = 1.0;
+
+const SILENCE_SENSITIVITY_MIN = 6;
+const SILENCE_SENSITIVITY_MAX = 20;
+const SILENCE_SENSITIVITY_DEFAULT = 12;
+
 let isRestoring = false;
 let capturingHotkey = false;
 let lastHotkeyValue = 'Alt+A';
@@ -74,10 +82,26 @@ document.getElementById('enable-hardcap')?.addEventListener('change', () => { if
 document.getElementById('disable-grace-window')?.addEventListener('change', () => { if (!isRestoring) saveGraceSetting(['dev']); });
 document.getElementById('cache-default-model')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
 document.getElementById('strip-trailing-period')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
-document.getElementById('boost-mic-gain')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
 
 document.getElementById('enable-shortcut')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
 document.getElementById('send-enter-after')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
+
+document.getElementById('toast-notifications')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['dev']);
+});
+document.getElementById('hide-warning-banner')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['dev']);
+    applyBannerVisibility(document.getElementById('hide-warning-banner')?.checked === true);
+});
+
+document.getElementById('mic-gain')?.addEventListener('input', () => {
+    updateMicGainDisplay();
+    if (!isRestoring) saveDefaults(['dev']);
+});
+document.getElementById('silence-sensitivity')?.addEventListener('input', () => {
+    updateSilenceSensitivityDisplay();
+    if (!isRestoring) saveDefaults(['dev']);
+});
 
 // import/export
 document.getElementById('export-settings')?.addEventListener('click', exportSettingsToFile);
@@ -193,6 +217,47 @@ function checkModelSize() {
     }
 }
 function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
+
+function clampMicGain(val) {
+    const n = parseFloat(val);
+    if (Number.isNaN(n)) return MIC_GAIN_DEFAULT;
+    return Math.max(MIC_GAIN_MIN, Math.min(MIC_GAIN_MAX, n));
+}
+
+function clampSilenceSensitivity(val) {
+    const n = parseInt(val, 10);
+    if (Number.isNaN(n)) return SILENCE_SENSITIVITY_DEFAULT;
+    return Math.max(SILENCE_SENSITIVITY_MIN, Math.min(SILENCE_SENSITIVITY_MAX, n));
+}
+
+function updateMicGainDisplay() {
+    const el = document.getElementById('mic-gain');
+    const out = document.getElementById('mic-gain-value');
+    if (!el || !out) return;
+    const value = clampMicGain(el.value);
+    out.textContent = `${value.toFixed(1)}x`;
+
+    const isDanger = value > 1.8;
+    el.classList.toggle('range-danger', isDanger);
+    out.classList.toggle('range-value-danger', isDanger);
+
+    const root = document.documentElement;
+    const dangerColor = getComputedStyle(root).getPropertyValue('--danger').trim() || '#ef4444';
+    el.style.accentColor = isDanger ? dangerColor : '';
+}
+
+function updateSilenceSensitivityDisplay() {
+    const el = document.getElementById('silence-sensitivity');
+    const out = document.getElementById('silence-sensitivity-value');
+    if (!el || !out) return;
+    out.textContent = String(clampSilenceSensitivity(el.value));
+}
+
+function applyBannerVisibility(hidden) {
+    const banner = document.getElementById('top-warning-banner');
+    if (!banner) return;
+    banner.style.display = hidden ? 'none' : '';
+}
 
 function applyVisibility() {
     const showToggle = document.getElementById('show-model-sections-toggle')?.checked === true;
@@ -361,6 +426,9 @@ async function saveDefaults(statusKeys = []) {
     const assemblyaiApiKey = (document.getElementById('assemblyai-key')?.value || '').trim();
     const disableFavicons = document.getElementById('disable-favicons')?.checked === true;
 
+    const micGain = clampMicGain(document.getElementById('mic-gain')?.value);
+    const silenceSensitivity = clampSilenceSensitivity(document.getElementById('silence-sensitivity')?.value);
+
     const showModelSections = document.getElementById('show-model-sections-toggle')?.checked === true;
     const hideModelSections = !showModelSections;
 
@@ -372,10 +440,12 @@ async function saveDefaults(statusKeys = []) {
 
     // Keep your existing semantics (checkbox label might be inverted, but preserve behavior)
     const stripTrailingPeriod = document.getElementById('strip-trailing-period')?.checked !== true;
-    const boostMicGain = document.getElementById('boost-mic-gain')?.checked === true;
 
     const enableShortcut = document.getElementById('enable-shortcut')?.checked === true;
     const sendEnterAfter = document.getElementById('send-enter-after')?.checked === true;
+
+    const toastNotificationsEnabled = document.getElementById('toast-notifications')?.checked === true;
+    const hideWarningBanner = document.getElementById('hide-warning-banner')?.checked === true;
 
     let hotkey = (document.getElementById('hotkey')?.value || '').trim();
     if (!hotkey) {
@@ -386,7 +456,14 @@ async function saveDefaults(statusKeys = []) {
 
     const stored = await browser.storage.local.get('settings');
     const settings = stored.settings || {};
-    settings.defaults = { model, language, silenceTimeoutMs: silenceTimeout, provider };
+    settings.defaults = {
+        model,
+        language,
+        silenceTimeoutMs: silenceTimeout,
+        provider,
+        micGain,
+        silenceSensitivity
+    };
 
     if (typeof settings.graceEnabled === 'undefined') settings.graceEnabled = true;
     if (typeof settings.graceMs === 'undefined') settings.graceMs = 450;
@@ -399,13 +476,15 @@ async function saveDefaults(statusKeys = []) {
     settings.disableHardCap = disableHardCap;
     settings.cacheDefaultModel = cacheDefaultModel;
     settings.stripTrailingPeriod = stripTrailingPeriod;
-    settings.boostMicGain = boostMicGain;
 
     // speech flags
     settings.shortcutEnabled = enableShortcut;
     settings.hotkey = hotkey;
     settings.sendEnterAfterResult = sendEnterAfter;
     lastHotkeyValue = hotkey;
+
+    settings.toastNotificationsEnabled = toastNotificationsEnabled;
+    settings.hideWarningBanner = hideWarningBanner;
 
     await browser.storage.local.set({ settings });
     await broadcastConfigChanged();
@@ -595,7 +674,25 @@ async function restoreOptions() {
     document.getElementById('provider-select').value = normalizeProvider(d.provider || 'local-whisper');
     document.getElementById('assemblyai-key').value = settings.assemblyaiApiKey || '';
 
+    const micGain = clampMicGain(
+        d.micGain ?? (settings.boostMicGain === true ? 1.8 : MIC_GAIN_DEFAULT)
+    );
+    document.getElementById('mic-gain').value = micGain;
+
+    const silenceSensitivity = clampSilenceSensitivity(d.silenceSensitivity ?? SILENCE_SENSITIVITY_DEFAULT);
+    document.getElementById('silence-sensitivity').value = silenceSensitivity;
+
+    updateMicGainDisplay();
+    updateSilenceSensitivityDisplay();
+
     document.getElementById('debug-mode').checked = settings.debugMode === true;
+
+    const toastToggle = document.getElementById('toast-notifications');
+    if (toastToggle) toastToggle.checked = settings.toastNotificationsEnabled === true;
+
+    const hideBannerToggle = document.getElementById('hide-warning-banner');
+    if (hideBannerToggle) hideBannerToggle.checked = settings.hideWarningBanner === true;
+    applyBannerVisibility(settings.hideWarningBanner === true);
 
     const graceMs = typeof settings.graceMs === 'number' ? settings.graceMs : 450;
     document.getElementById('grace-ms').value = graceMs;
@@ -621,10 +718,6 @@ async function restoreOptions() {
     const stripTrailing = settings.stripTrailingPeriod !== false;
     const stripToggle = document.getElementById('strip-trailing-period');
     if (stripToggle) stripToggle.checked = !stripTrailing;
-
-    const boostMicGain = settings.boostMicGain === true;
-    const boostToggle = document.getElementById('boost-mic-gain');
-    if (boostToggle) boostToggle.checked = boostMicGain;
 
     const enableShortcut = settings.shortcutEnabled !== false;
     const sendEnterAfter = settings.sendEnterAfterResult === true;
@@ -813,9 +906,6 @@ function installLiveSettingsListener() {
                 const stripToggle = document.getElementById('strip-trailing-period');
                 if (stripToggle) stripToggle.checked = next.stripTrailingPeriod === false;
 
-                const boostToggle = document.getElementById('boost-mic-gain');
-                if (boostToggle) boostToggle.checked = next.boostMicGain === true;
-
                 const d = next.defaults || {};
                 const modelEl = document.getElementById('model-select');
                 const langEl = document.getElementById('language-select');
@@ -826,8 +916,27 @@ function installLiveSettingsListener() {
                     silenceEl.value = d.silenceTimeoutMs;
                 }
 
+                const micGainEl = document.getElementById('mic-gain');
+                const nextMicGain = clampMicGain(
+                    next?.defaults?.micGain ?? (next?.boostMicGain === true ? 1.8 : MIC_GAIN_DEFAULT)
+                );
+                if (micGainEl && Number(micGainEl.value) !== nextMicGain) micGainEl.value = nextMicGain;
+                updateMicGainDisplay();
+
+                const sensEl = document.getElementById('silence-sensitivity');
+                const nextSens = clampSilenceSensitivity(next?.defaults?.silenceSensitivity ?? SILENCE_SENSITIVITY_DEFAULT);
+                if (sensEl && Number(sensEl.value) !== nextSens) sensEl.value = nextSens;
+                updateSilenceSensitivityDisplay();
+
                 const debugEl = document.getElementById('debug-mode');
                 if (debugEl) debugEl.checked = next.debugMode === true;
+
+                const toastEl = document.getElementById('toast-notifications');
+                if (toastEl) toastEl.checked = next.toastNotificationsEnabled === true;
+
+                const hideBannerEl = document.getElementById('hide-warning-banner');
+                if (hideBannerEl) hideBannerEl.checked = next.hideWarningBanner === true;
+                applyBannerVisibility(next.hideWarningBanner === true);
 
                 // IMPORTANT: default should NOT be checked
                 const enableHardcapEl = document.getElementById('enable-hardcap');

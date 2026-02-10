@@ -25,10 +25,17 @@ if (!IS_TOP_FRAME) {
   // Just don't initialize Whisper in iframes.
 }
 
-const MIC_GAIN_MULTIPLIER = 1.8;
+const MIC_GAIN_MIN = 1.0;
+const MIC_GAIN_MAX = 3.0;
+const MIC_GAIN_DEFAULT = 1.0;
+
+const SILENCE_SENSITIVITY_MIN = 6;
+const SILENCE_SENSITIVITY_MAX = 20;
+const SILENCE_SENSITIVITY_DEFAULT = 12;
 
 let silenceTimeoutMs = 1000;
 let shouldShowNotifications = false;
+let debugLogsEnabled = false;
 let captureActive = false;
 let currentSessionId = 0;
 let activeSessionId = 0;
@@ -56,7 +63,8 @@ let extensionEnabledForSite = true;
 
 // dev options
 let stripTrailingPeriod = false;
-let boostMicGain = false;
+let micGain = MIC_GAIN_DEFAULT;
+let silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
 
 // watchdog
 let processingWatchdog = null;
@@ -120,6 +128,64 @@ function isGoogleDocsOrSlidesHost() {
   return h === 'docs.google.com' || h === 'slides.google.com';
 }
 
+// NEW: docs.google.com-only workaround.
+// When the user presses the extension hotkey on docs.google.com, also dispatch Ctrl/⌘+Shift+S
+// via synthetic KeyboardEvent (based on your testing, this triggers "Start voice typing").
+//
+// Note: We ONLY do this on docs.google.com (not slides).
+function isDocsHost() {
+  return (location.hostname || '').toLowerCase() === 'docs.google.com';
+}
+
+function isMacOS() {
+  return /\bMac\b/i.test(navigator.platform || '') || /\bMacintosh\b/i.test(navigator.userAgent || '');
+}
+
+function dispatchSyntheticKeySequence(target, init) {
+  try {
+    for (const type of ['keydown', 'keypress', 'keyup']) {
+      const ev = new KeyboardEvent(type, { bubbles: true, cancelable: true, composed: true, ...init });
+      target.dispatchEvent(ev);
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function docsDispatchCtrlMetaShiftS() {
+  const mac = isMacOS();
+  const init = {
+    key: 'S',
+    code: 'KeyS',
+    keyCode: 83,
+    which: 83,
+    shiftKey: true,
+    ctrlKey: !mac,
+    metaKey: mac,
+    altKey: false,
+    bubbles: true,
+    cancelable: true
+  };
+
+  const payload = JSON.stringify(init);
+
+  const script = document.createElement('script');
+  script.textContent = `
+    (function() {
+      const init = ${payload};
+      document.body.dispatchEvent(new KeyboardEvent('keydown', init));
+      document.body.dispatchEvent(new KeyboardEvent('keypress', init));
+      document.body.dispatchEvent(new KeyboardEvent('keyup', init));
+    })();
+  `;
+  (document.head || document.documentElement).appendChild(script);
+  script.remove();
+
+  dbg('docs_ctrl_meta_shift_s_dispatched', { injected: true, mac });
+  return true;
+}
+
 function tryExecCommandInsert(text) {
   try {
     // returns false if the command is unsupported/blocked
@@ -129,8 +195,21 @@ function tryExecCommandInsert(text) {
   }
 }
 
+function clampMicGain(val) {
+  const n = parseFloat(val);
+  if (Number.isNaN(n)) return MIC_GAIN_DEFAULT;
+  return Math.max(MIC_GAIN_MIN, Math.min(MIC_GAIN_MAX, n));
+}
+
+function clampSilenceSensitivity(val) {
+  const n = parseInt(val, 10);
+  if (Number.isNaN(n)) return SILENCE_SENSITIVITY_DEFAULT;
+  return Math.max(SILENCE_SENSITIVITY_MIN, Math.min(SILENCE_SENSITIVITY_MAX, n));
+}
+
 function dbg(...args) {
-  if (shouldShowNotifications) console.log('[Whisper DEBUG]', ...args);
+  if (!debugLogsEnabled) return;
+  console.log('[Whisper DEBUG]', ...args);
 }
 
 function dbgSite(tag, data) {
@@ -276,8 +355,10 @@ async function resolveEffectiveSettings() {
   try {
     const hostname = normalizeHost(location.hostname);
     const { settings } = await browser.storage.local.get('settings');
-    shouldShowNotifications = settings?.debugMode === true;
-    debugLogToSiteConsole = settings?.debugMode === true;
+
+    debugLogsEnabled = settings?.debugMode === true;
+    shouldShowNotifications = settings?.toastNotificationsEnabled === true;
+    debugLogToSiteConsole = debugLogsEnabled;
 
     const defaults = settings?.defaults || { silenceTimeoutMs: 1000 };
     const overrides = settings?.overrides || {};
@@ -293,7 +374,20 @@ async function resolveEffectiveSettings() {
     normalizedHotkey = shortcutEnabled ? normalizeHotkey(hotkey) : null;
 
     stripTrailingPeriod = settings?.stripTrailingPeriod === true;
-    boostMicGain = settings?.boostMicGain === true;
+
+    const rawMicGain = (typeof site.micGain === 'number')
+      ? site.micGain
+      : (typeof defaults.micGain === 'number'
+        ? defaults.micGain
+        : (settings?.boostMicGain === true ? 1.8 : MIC_GAIN_DEFAULT));
+    micGain = clampMicGain(rawMicGain);
+
+    const rawSensitivity = (typeof site.silenceSensitivity === 'number')
+      ? site.silenceSensitivity
+      : (typeof defaults.silenceSensitivity === 'number'
+        ? defaults.silenceSensitivity
+        : SILENCE_SENSITIVITY_DEFAULT);
+    silenceSensitivity = clampSilenceSensitivity(rawSensitivity);
 
     extensionEnabledForSite = true;
 
@@ -309,6 +403,7 @@ async function resolveEffectiveSettings() {
   } catch (_) {
     silenceTimeoutMs = 1000;
     shouldShowNotifications = false;
+    debugLogsEnabled = false;
     debugLogToSiteConsole = false;
     disableHardCap = false;
     hotkey = 'Alt+A';
@@ -317,7 +412,8 @@ async function resolveEffectiveSettings() {
     normalizedHotkey = normalizeHotkey(hotkey);
     extensionEnabledForSite = true;
     stripTrailingPeriod = false;
-    boostMicGain = false;
+    micGain = MIC_GAIN_DEFAULT;
+    silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
   }
 
   // If the site just got disabled while running, stop immediately (no reload needed)
@@ -343,6 +439,13 @@ async function resolveEffectiveSettings() {
   }
 }
 resolveEffectiveSettings();
+
+// NEW: ensure all frames react to settings changes
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (!changes.settings) return;
+  resolveEffectiveSettings();
+});
 
 // per-page instance id so background can reset stale session state on reload/navigation.
 const PAGE_INSTANCE_ID = (() => {
@@ -372,27 +475,78 @@ browser.runtime.onMessage.addListener((message) => {
   }
 });
 
-// hotkey start/stop
-document.addEventListener('keydown', (e) => {
-  if (!IS_TOP_FRAME) return;
+function cancelProcessing(reason = 'user_restart') {
+  if (processingSessionId == null) return false;
+
+  try {
+    browser.runtime.sendMessage({
+      type: 'CANCEL_SESSION',
+      sessionId: processingSessionId,
+      hostname: location.hostname,
+      pageInstanceId: PAGE_INSTANCE_ID
+    });
+  } catch (_) { }
+
+  clearProcessingWatchdog();
+  processingSessionId = null;
+  clearLockedInsertionTarget();
+  clearPendingPageAck();
+  showNotification("Canceled", "info");
+  dbg('processing_canceled', { reason });
+  return true;
+}
+
+function handleHotkeyTrigger(e) {
   if (!extensionEnabledForSite) return;
   if (!shortcutEnabled || !normalizedHotkey) return;
-  if (!isHotkeyEvent(e)) return;
 
-  e.preventDefault();
+  if (!captureActive && processingSessionId != null) {
+    cancelProcessing('hotkey_restart');
+  }
 
-  // Lock target at the moment user hits the hotkey (best-effort).
-  // This restores "full functionality": insert back into the intended textarea/contenteditable.
-  lockInsertionTargetFromEvent(e);
+  if (isDocsHost()) {
+    docsDispatchCtrlMetaShiftS();
+  }
+
+  if (e) {
+    e.preventDefault();
+    lockInsertionTargetFromEvent(e);
+  } else {
+    clearLockedInsertionTarget();
+  }
 
   const langGuess = (navigator.language || 'en').split('-')[0] || 'en';
   if (captureActive) {
     window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
   } else {
-    if (processingSessionId !== null) return;
     window.postMessage({ type: 'WHISPER_START_RECORDING', language: langGuess }, "*");
   }
+}
+
+// hotkey start/stop (top frame)
+document.addEventListener('keydown', (e) => {
+  if (!IS_TOP_FRAME) return;
+  if (!isHotkeyEvent(e)) return;
+  handleHotkeyTrigger(e);
 }, true);
+
+// NEW: forward hotkey from Docs iframe -> top frame
+if (!IS_TOP_FRAME && isDocsHost()) {
+  document.addEventListener('keydown', (e) => {
+    if (!isHotkeyEvent(e)) return;
+    e.preventDefault();
+    window.top.postMessage({ type: 'WHISPER_DOCS_HOTKEY' }, "*");
+  }, true);
+}
+
+// NEW: receive forwarded hotkey in top frame
+if (IS_TOP_FRAME) {
+  window.addEventListener('message', (e) => {
+    if (e?.data?.type !== 'WHISPER_DOCS_HOTKEY') return;
+    if (!isDocsHost()) return;
+    handleHotkeyTrigger();
+  });
+}
 
 // polyfill injection (only when enabled + top frame)
 if (IS_TOP_FRAME) {
@@ -660,7 +814,9 @@ window.addEventListener("message", async (event) => {
   if (!event.data) return;
 
   if (event.data.type === 'WHISPER_START_RECORDING') {
-    if (processingSessionId !== null) return;
+    if (processingSessionId !== null && !captureActive) {
+      cancelProcessing('ui_restart');
+    }
     if (captureActive) return;
 
     // IMPORTANT: do NOT set captureActive=true yet.
@@ -744,7 +900,7 @@ async function startRecording(pageLanguage, sessionId) {
     const source = globalContext.createMediaStreamSource(globalStream);
 
     const gainNode = globalContext.createGain();
-    gainNode.gain.value = boostMicGain ? MIC_GAIN_MULTIPLIER : 1;
+    gainNode.gain.value = micGain;
 
     const analyser = globalContext.createAnalyser();
     analyser.fftSize = 256;
@@ -832,8 +988,8 @@ async function startRecording(pageLanguage, sessionId) {
       const avg = sum / dataArray.length;
 
       noiseFloor = Math.min(35, noiseFloor * 0.97 + avg * 0.03);
-      const speechThreshold = noiseFloor + 12;
-      const silenceThreshold = noiseFloor + 4;
+      const speechThreshold = noiseFloor + silenceSensitivity;
+      const silenceThreshold = noiseFloor + Math.max(2, Math.round(silenceSensitivity / 3));
 
       const now = Date.now();
       if (avg > speechThreshold) {

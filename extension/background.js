@@ -49,6 +49,9 @@ const tabStateById = new Map();
 const iconCache = new Map();
 const ICON_CACHE_MAX = 48;
 
+// Per-tab badge timers
+const badgeTimerByTab = new Map();
+
 const RESULT_GRACE_MS_DEFAULT = 450;
 
 const PROCESSING_TIMEOUT_MS = 20000;
@@ -72,6 +75,10 @@ let debugMode = false;
 
 // Forward debug to the site's console (via content script). Still only when debugMode=true.
 let forwardDebugToPageConsole = true;
+
+// NEW: hard-cancel support for AssemblyAI
+const assemblyAbortBySession = new Map(); // key: `${tabId}:${sessionId}`
+const sessionKey = (tabId, sessionId) => `${tabId}:${sessionId}`;
 
 function dbg(tag, data = {}) {
   if (!debugMode) return;
@@ -268,8 +275,7 @@ function applyDisabledBadge(tabId, isDisabled) {
   const ts = getTabState(tabId);
 
   if (isDisabled) {
-    // Only show when idle so we don't override recording/processing states.
-    if (ts.state !== 'idle') return;
+    // Show immediately, even during recording/processing.
     showBadgeForTab(
       tabId,
       { type: 'disabled', color: ICON_COLORS().disabled },
@@ -442,7 +448,10 @@ async function applyIconForTab(tabId) {
   const now = Date.now();
 
   let effectiveState = ts.state;
-  if (ts.errorHoldUntil > now && effectiveState !== 'error') effectiveState = 'error';
+  const isActive = effectiveState === 'recording' || effectiveState === 'processing';
+  if (!isActive && ts.errorHoldUntil > now && effectiveState !== 'error') {
+    effectiveState = 'error';
+  }
 
   const color = computeColor(effectiveState);
   const title = computeTitle(effectiveState);
@@ -455,7 +464,12 @@ async function applyIconForTab(tabId) {
 async function setTabState(tabId, state, badge = null) {
   const ts = getTabState(tabId);
   const now = Date.now();
-  if (ts.errorHoldUntil > now && state !== 'error') return;
+
+  if (state === 'recording' || state === 'processing') {
+    ts.errorHoldUntil = 0;
+  } else if (ts.errorHoldUntil > now && state !== 'error') {
+    return;
+  }
 
   ts.state = state;
   ts.badge = badge;
@@ -465,6 +479,13 @@ async function setTabState(tabId, state, badge = null) {
 async function clearBadge(tabId) {
   const ts = tabStateById.get(tabId);
   if (!ts) return;
+
+  const timer = badgeTimerByTab.get(tabId);
+  if (timer) {
+    clearTimeout(timer);
+    badgeTimerByTab.delete(tabId);
+  }
+
   if (ts.badge) {
     ts.badge = null;
     await applyIconForTab(tabId);
@@ -494,15 +515,24 @@ function showBadgeForTab(tabId, badge, ms) {
   const ts = getTabState(tabId);
   ts.badge = badge;
   applyIconForTab(tabId).catch(() => { });
+
+  const prevTimer = badgeTimerByTab.get(tabId);
+  if (prevTimer) {
+    clearTimeout(prevTimer);
+    badgeTimerByTab.delete(tabId);
+  }
+
   if (ms > 0) {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       const t2 = tabStateById.get(tabId);
       if (!t2) return;
       if (t2.badge && t2.badge.type === badge.type) {
         t2.badge = null;
         applyIconForTab(tabId).catch(() => { });
       }
+      badgeTimerByTab.delete(tabId);
     }, ms);
+    badgeTimerByTab.set(tabId, timer);
   }
 }
 
@@ -669,7 +699,11 @@ function collapseRepeats(text) {
   }
   let collapsed = out.join(' ');
   collapsed = collapsed.replace(/(\b[\w\.\-]{1,8}\b)(\s+\1){4,}/gi, '$1 $1 $1');
-  if (collapsed.length > 400) collapsed = collapsed.slice(0, 400) + '…';
+
+  // FIX (remove 400-char truncation):
+  // Previously:
+  // if (collapsed.length > 400) collapsed = collapsed.slice(0, 400) + '…';
+
   return collapsed.trim();
 }
 
@@ -784,15 +818,15 @@ async function getEffectiveSettings(hostname) {
   };
 }
 
-async function transcribeWithAssemblyAI(audioBlob, language, apiKey) {
+async function transcribeWithAssemblyAI(audioBlob, language, apiKey, controller) {
   const headers = { Authorization: apiKey };
-  const controller = new AbortController();
+  const signal = controller?.signal;
 
   const uploadResp = await fetch('https://api.assemblyai.com/v2/upload', {
     method: 'POST',
     headers,
     body: audioBlob,
-    signal: controller.signal
+    signal
   });
   if (!uploadResp.ok) {
     const txt = await uploadResp.text().catch(() => '');
@@ -812,7 +846,7 @@ async function transcribeWithAssemblyAI(audioBlob, language, apiKey) {
       format_text: true,
       auto_highlights: false
     }),
-    signal: controller.signal
+    signal
   });
   if (!transcriptResp.ok) {
     const txt = await transcriptResp.text().catch(() => '');
@@ -825,11 +859,11 @@ async function transcribeWithAssemblyAI(audioBlob, language, apiKey) {
   const start = Date.now();
   while (true) {
     if (Date.now() - start > PROCESSING_TIMEOUT_MS) {
-      controller.abort();
+      controller?.abort();
       throw new Error('AssemblyAI timed out');
     }
     await new Promise(r => setTimeout(r, 1000));
-    const pollResp = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, { headers, signal: controller.signal });
+    const pollResp = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, { headers, signal });
     if (!pollResp.ok) {
       const txt = await pollResp.text().catch(() => '');
       throw new Error(`AssemblyAI poll failed (${pollResp.status}): ${txt.slice(0, 200)}`);
@@ -846,6 +880,13 @@ async function cancelAllSessions(reason = 'config_changed') {
 
   for (const [tabId, inflight] of inflightByTab.entries()) {
     if (inflight?.sessionId) markCanceled(tabId, inflight.sessionId);
+
+    const key = sessionKey(tabId, inflight.sessionId || 0);
+    const controller = assemblyAbortBySession.get(key);
+    if (controller) {
+      controller.abort();
+      assemblyAbortBySession.delete(key);
+    }
 
     inflightByTab.delete(tabId);
     clearProcessingTimeout(tabId);
@@ -978,11 +1019,28 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
     const inflight = inflightByTab.get(tabId);
     if (inflight && inflight.sessionId === sessionId) {
+      const key = sessionKey(tabId, sessionId);
+      const controller = assemblyAbortBySession.get(key);
+      if (controller) {
+        controller.abort();
+        assemblyAbortBySession.delete(key);
+      }
+
+      if (inflight.provider === PROVIDERS.LOCAL) {
+        terminateAsrWorker().catch(() => { });
+        disposeCurrentModel().catch(() => { });
+      }
+
       inflightByTab.delete(tabId);
       clearProcessingTimeout(tabId);
       clearBadge(tabId).catch(() => { });
       setTabState(tabId, 'idle', null).catch(() => { });
     }
+
+    // NEW: clear error hold so it can't override the cancel badge
+    const ts = getTabState(tabId);
+    ts.errorHoldUntil = 0;
+    ts.state = 'idle';
 
     showBadgeForTab(tabId, { type: 'cancel', color: ICON_COLORS().cancel }, BADGE_MS.cancel);
 
@@ -1042,6 +1100,9 @@ browser.runtime.onMessage.addListener((message, sender) => {
       const settings = await getEffectiveSettings(hostname);
       const { enabled, model, language, graceEnabled, graceMs, provider, assemblyaiApiKey } = settings;
 
+      const inflight = inflightByTab.get(tabId);
+      if (inflight) inflight.provider = provider;
+
       dbgToTab(tabId, frameId, 'effective_settings', { enabled, provider, model, language, graceEnabled, graceMs });
 
       if (!enabled) {
@@ -1073,7 +1134,16 @@ browser.runtime.onMessage.addListener((message, sender) => {
       if (provider === PROVIDERS.ASSEMBLY) {
         if (!assemblyaiApiKey) throw new Error('AssemblyAI API key missing. Set it in the options page.');
         const langToUse = (language && language !== 'auto') ? language : null;
-        text = await transcribeWithAssemblyAI(audioBlob, langToUse, assemblyaiApiKey);
+
+        const cancelKey = sessionKey(tabId, sessionId);
+        const controller = new AbortController();
+        assemblyAbortBySession.set(cancelKey, controller);
+
+        try {
+          text = await transcribeWithAssemblyAI(audioBlob, langToUse, assemblyaiApiKey, controller);
+        } finally {
+          assemblyAbortBySession.delete(cancelKey);
+        }
       } else {
         await ensureModelForTab(tabId, model);
 
@@ -1118,6 +1188,11 @@ browser.runtime.onMessage.addListener((message, sender) => {
       await setTabState(tabId, 'idle', null);
       showBadgeForTab(tabId, { type: 'done', color: ICON_COLORS().done }, BADGE_MS.done);
     } catch (err) {
+      if (isCanceled(tabId, sessionId)) {
+        await clearBadge(tabId);
+        await setTabState(tabId, 'idle', null);
+        return;
+      }
       await clearBadge(tabId);
       sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: err?.message || String(err) });
       await setTabErrorHold(tabId, ERROR_HOLD_MS);

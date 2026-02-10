@@ -584,14 +584,68 @@
                 mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='15' height='10' rx='2'/%3E%3Cpath d='M18 9h3v6h-3'/%3E%3Cpath d='M6 17v3'/%3E%3Cpath d='M10 17v3'/%3E%3Cpath d='M14 17v3'/%3E%3Cpath d='M7 10h7'/%3E%3Cpath d='M7 14h7'/%3E%3C/svg%3E");
                 -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='15' height='10' rx='2'/%3E%3Cpath d='M18 9h3v6h-3'/%3E%3Cpath d='M6 17v3'/%3E%3Cpath d='M10 17v3'/%3E%3Cpath d='M14 17v3'/%3E%3Cpath d='M7 10h7'/%3E%3Cpath d='M7 14h7'/%3E%3C/svg%3E");
             }
+
+            .range-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-top: 4px;
+            }
+
+            .range-row input[type="range"] {
+                flex: 1;
+                background: transparent;
+            }
+
+            /* Default (blue) fill for range */
+            .range-row input[type="range"]::-moz-range-progress {
+                background: var(--primary);
+            }
+
+            .range-row input[type="range"]::-webkit-slider-runnable-track {
+                background: var(--primary);
+            }
+
+            .range-danger {
+                accent-color: var(--danger);
+            }
+
+            .range-danger::-moz-range-progress {
+                background: var(--danger);
+            }
+
+            .range-danger::-webkit-slider-runnable-track {
+                background: var(--danger);
+            }
+
+            .range-value {
+                font-size: 12.5px;
+                font-weight: 700;
+                color: var(--muted);
+                min-width: 42px;
+                text-align: right;
+            }
+
+            .range-value-danger {
+                color: var(--danger);
+            }
+
+
+            /* Limit override list height before scrolling */
+            #overrides-list-body {
+                max-height: 260px;
+                overflow-y: auto;
+                border-radius: 10px;
+            }
         </style>
     </head>
 
 <body>
     <div class="container">
         <h3 data-i18n="options_heading">Speech Recognition Settings</h3>
-        <div class="banner" data-i18n="banner_text">
-            ⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the extension icon (pin it to your menu bar). If
+        <div class="banner" id="top-warning-banner" data-i18n="banner_text">
+            ⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the
+            extension icon (pin it to your menu bar). If
             you want the best performance, use the cloud based engine. Some settings may require a page refresh to take
             effect. Any additional information is listed <a
                 href="https://github.com/apersongithub/Speech-Recognition-Polyfill"
@@ -827,7 +881,7 @@
                             <th data-i18n="table_lang">Lang</th>
                             <th data-i18n="table_timeout">Timeout</th>
                             <th data-i18n="table_engine">Provider</th>
-                            <th aria-label="Remove"></th>
+                            <th data-i18n="table_remove" aria-label="Remove"></th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -845,40 +899,65 @@
             <div class="note" data-i18n="developer_note">Advanced toggles for debugging and experimental behavior.
                 Sorted by understandability.</div>
 
-            <!-- NEW: Backend indicator (WebGPU vs WASM) -->
-<div id="backend-indicator" class="backend-indicator warn" aria-live="polite">
-  <div class="left">
-    <span class="icon icon-gpu" aria-hidden="true"></span>
-    <div style="min-width:0;">
-      <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
-        <span class="label" data-i18n="backend_indicator_label">Local Whisper backend:</span>
-        <span class="value" id="backend-value" data-i18n="backend_indicator_value_unknown">Unknown</span>
-      </div>
-      <div class="hint" id="backend-hint" data-i18n="backend_hint_default">
-        Runs on WebGPU when available; falls back to WASM if not supported.
-      </div>
-    </div>
-  </div>
-  <span class="backend-chip" id="backend-chip" style="color: var(--backend-warn-text);">
-    <span class="dot" aria-hidden="true"></span>
-    <span id="backend-chip-text" data-i18n="backend_chip_unknown">Unknown</span>
-  </span>
-</div>
+            <div id="backend-indicator" class="backend-indicator warn" aria-live="polite">
+                <div class="left">
+                    <span class="icon icon-gpu" aria-hidden="true"></span>
+                    <div style="min-width:0;">
+                        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+                            <span class="label" data-i18n="backend_indicator_label">Local Whisper backend:</span>
+                            <span class="value" id="backend-value"
+                                data-i18n="backend_indicator_value_unknown">Unknown</span>
+                        </div>
+                        <div class="hint" id="backend-hint" data-i18n="backend_hint_default">
+                            Runs on WebGPU when available; falls back to WASM if not supported.
+                        </div>
+                    </div>
+                </div>
+                <span class="backend-chip" id="backend-chip" style="color: var(--backend-warn-text);">
+                    <span class="dot" aria-hidden="true"></span>
+                    <span id="backend-chip-text" data-i18n="backend_chip_unknown">Unknown</span>
+                </span>
+            </div>
+
+            <label data-i18n="mic_gain_label">Mic gain</label>
+            <div class="range-row">
+                <input id="mic-gain" type="range" min="1" max="3" step="0.1" value="1.0" />
+                <span class="range-value" id="mic-gain-value">1.0x</span>
+            </div>
+            <div class="note" data-i18n="mic_gain_note">Boosts mic input level for quieter microphones.</div>
+
+            <label data-i18n="silence_sensitivity_label">Silence sensitivity</label>
+            <div class="range-row">
+                <input id="silence-sensitivity" type="range" min="6" max="18" step="1" value="12" />
+                <span class="range-value" id="silence-sensitivity-value">12</span>
+            </div>
+            <div class="note" data-i18n="silence_sensitivity_note">Higher values require louder speech to keep
+                recording.</div>
 
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="debug-mode" />
-                <label for="debug-mode" class="checkbox-label" data-i18n="debug_banners">Enable Debug Mode</label>
+                <label for="debug-mode" class="checkbox-label" data-i18n="debug_logs">Enable debug logs</label>
             </div>
-            <div class="note" data-i18n="debug_note">
-                Enables toast banners and console debug logs.
+            <div class="note" data-i18n="debug_logs_note">
+                Logs detailed background/content script messages to the console.
             </div>
+
             <div class="checkbox-wrapper">
-                <input type="checkbox" id="boost-mic-gain" />
-                <label for="boost-mic-gain" class="checkbox-label" data-i18n="boost_mic_label">Boost microphone
-                    gain</label>
+                <input type="checkbox" id="toast-notifications" />
+                <label for="toast-notifications" class="checkbox-label" data-i18n="toast_toggle">Enable toast
+                    notifications</label>
             </div>
-            <div class="note" data-i18n="boost_mic_note">Amplifies mic input before recording to help detect quieter
-                speech (fixed boost).</div>
+            <div class="note" data-i18n="toast_toggle_note">
+                Show on-page status toasts (recording/processing/errors).
+            </div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="hide-warning-banner" />
+                <label for="hide-warning-banner" class="checkbox-label" data-i18n="hide_banner">Hide top warning
+                    banner</label>
+            </div>
+            <div class="note" data-i18n="hide_banner_note">Removes the alert banner at the top of this page.</div>
+
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="strip-trailing-period" />
                 <label for="strip-trailing-period" class="checkbox-label"

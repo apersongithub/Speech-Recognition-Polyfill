@@ -5,9 +5,7 @@
 
   "options_page_title": { "message": "Ajustes de reconocimiento de voz" },
   "options_heading": { "message": "Ajustes de reconocimiento de voz" },
-  "banner_text": {
-    "message": "⚠️ Alerta: Esto no es un parche para la API WebSpeech. Puedes ver el estado del reconocimiento de voz mediante el icono de la extensión (anclándolo a tu barra). Para obtener el mejor rendimiento, usa el motor en la nube. Algunos ajustes pueden requerir recargar la página para surtir efecto. Más información <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>AQUÍ</strong></a>"
-  },
+  "banner_text": { "message": "⚠️ Aviso: Esto no es un arreglo temporal de la API WebSpeech. Puedes ver el estado de reconocimiento de voz desde el icono de la extensión (fíjalo en la barra). Para el mejor rendimiento usa el motor en la nube. Algunos ajustes requieren recargar la página. Más información <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>AQUÍ</strong></a>" },
 
   "section_engine": { "message": "Motor" },
   "engine_note": { "message": "Whisper se ejecuta localmente; AssemblyAI envía audio a la nube (requiere clave API)." },
@@ -19,24 +17,24 @@
 
   "section_local_title": { "message": "Whisper en el dispositivo" },
   "pill_local": { "message": "Local" },
-  "local_config_note": { "message": "Configura el modelo local, el idioma y el tiempo de silencio." },
+  "local_config_note": { "message": "Configura el modelo local, idioma y tiempo de silencio." },
 
   "ai_model": { "message": "Modelo de IA" },
   "group_en_fast": { "message": "Solo inglés" },
-  "group_multi": { "message": "Multilingüe (uso general)" },
+  "group_multi": { "message": "Multilingüe (general)" },
 
-  "model_tiny_en": { "message": "Tiny inglés (~75MB)" },
-  "model_base_en": { "message": "Base inglés (~150MB)" },
-  "model_distil_en": { "message": "Distil‑Medium inglés (~600MB)" },
-  "model_small_en": { "message": "Small inglés (~500MB)" },
-  "model_tiny_multi": { "message": "Tiny multilingüe (~150MB)" },
-  "model_base_multi": { "message": "Base multilingüe (~290MB)" },
-  "model_small_multi": { "message": "Small multilingüe (~1GB)" },
+  "model_tiny_en": { "message": "Tiny inglés (~75 MB)" },
+  "model_base_en": { "message": "Base inglés (~150 MB)" },
+  "model_distil_en": { "message": "Distil-Medium inglés (~600 MB)" },
+  "model_small_en": { "message": "Small inglés (~500 MB)" },
+  "model_tiny_multi": { "message": "Tiny multilingüe (~150 MB)" },
+  "model_base_multi": { "message": "Base multilingüe (~290 MB)" },
+  "model_small_multi": { "message": "Small multilingüe (~1 GB)" },
 
-  "size_warning": { "message": "⚠️ Modelo pesado: La primera ejecución será lenta. Si se bloquea, usa Base o Tiny." },
+  "size_warning": { "message": "⚠️ Modelo pesado: el primer uso será lento. Si falla, usa Base o Tiny." },
 
   "language_label": { "message": "Idioma" },
-  "lang_auto": { "message": "Detectar automáticamente" },
+  "lang_auto": { "message": "Detección automática" },
   "lang_en": { "message": "Inglés" },
   "lang_es": { "message": "Español" },
   "lang_fr": { "message": "Francés" },
@@ -49,18 +47,18 @@
   "lang_note": { "message": "El idioma que el traductor intentará descifrar." },
 
   "silence_timeout": { "message": "Tiempo de silencio (ms)" },
-  "silence_note": { "message": "Tiempo de espera tras dejar de hablar antes de enviar." },
+  "silence_note": { "message": "Tiempo de espera después de hablar antes de enviar." },
 
   "grace_window_label": { "message": "Ventana de gracia (ms)" },
-  "grace_window_note": { "message": "Evita resultados tardíos tras cancelar/detener cuando la gracia está activada." },
+  "grace_window_note": { "message": "Evita resultados tardíos tras cancelar/detener cuando la gracia está activa." },
 
   "section_cloud_title": { "message": "Nube (AssemblyAI)" },
   "pill_cloud": { "message": "Nube" },
   "cloud_key_note": { "message": "Introduce tu clave de AssemblyAI para habilitar la transcripción en la nube." },
   "assemblyai_key_label": { "message": "Clave API de AssemblyAI" },
   "assemblyai_key_placeholder": { "message": "Ej.: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
-  "assemblyai_key_note": { "message": "Se guarda localmente; solo se usa cuando se selecciona el motor en la nube. Es gratis, pero requiere cuenta porque el audio se envía a AssemblyAI para procesarlo." },
-  "assemblyai_get_key_btn": { "message": "Obtener una clave API de AssemblyAI" },
+  "assemblyai_key_note": { "message": "Se guarda localmente; se usa solo con el motor en la nube. Es gratis pero requiere cuenta porque el audio se envía a AssemblyAI." },
+  "assemblyai_get_key_btn": { "message": "Obtener clave API de AssemblyAI" },
 
   "section_shortcuts": { "message": "Atajos de voz" },
   "shortcuts_note": { "message": "Configura el atajo de voz y el comportamiento de inserción." },
@@ -68,31 +66,31 @@
   "shortcut_enable_note": { "message": "Bastante autoexplicativo..." },
   "shortcut_hotkey_label": { "message": "Atajo de teclado" },
   "shortcut_hotkey_placeholder": { "message": "Haz clic y pulsa teclas (Alt+A)" },
-  "shortcut_hotkey_note": { "message": "Haz clic y pulsa la combinación. Backspace/Delete para borrar. Esc para desactivar el atajo. Vacío lo desactiva." },
-  "send_enter_after_label": { "message": "Enviar Enter después de insertar texto" },
-  "send_enter_after_note": { "message": "Pulsa automáticamente 'Enter' en el campo enfocado justo después de insertar el texto." },
+  "shortcut_hotkey_note": { "message": "Haz clic y pulsa la combinación. Retroceso/Supr para borrar. Esc para desactivar. Vacío desactiva." },
+  "send_enter_after_label": { "message": "Enviar Enter tras insertar texto" },
+  "send_enter_after_note": { "message": "Pulsa automáticamente 'Enter' en el campo enfocado después de insertar texto." },
 
-  "section_overrides": { "message": "Sobrescrituras por sitio" },
-  "overrides_note": { "message": "Sobrescribe modelo, idioma o motor por sitio." },
+  "section_overrides": { "message": "Anulaciones por sitio" },
+  "overrides_note": { "message": "Anula modelo, idioma o motor por sitio." },
 
-  "hostname": { "message": "Nombre de host" },
-  "hostname_placeholder": { "message": "example.com" },
+  "hostname": { "message": "Host" },
+  "hostname_placeholder": { "message": "ejemplo.com" },
 
   "model_label": { "message": "Modelo" },
   "override_default_option": { "message": "(Predeterminado)" },
 
-  "timeout_label": { "message": "Tiempo de espera" },
+  "timeout_label": { "message": "Tiempo" },
   "override_timeout_placeholder": { "message": "(Predeterminado)" },
 
   "override_status_label": { "message": "Estado de la extensión" },
-  "override_status_default": { "message": "(Predeterminado: habilitada)" },
-  "override_status_disabled": { "message": "Deshabilitada" },
+  "override_status_default": { "message": "(Predeterminado: habilitado)" },
+  "override_status_disabled": { "message": "Deshabilitado" },
 
   "add_rule": { "message": "Añadir reglas" },
   "clear_inputs": { "message": "Limpiar entradas" },
   "remove_rule": { "message": "Eliminar todas las reglas" },
 
-  "overrides_list_title": { "message": "Sobrescrituras guardadas" },
+  "overrides_list_title": { "message": "Anulaciones guardadas" },
   "show": { "message": "Mostrar" },
   "hide": { "message": "Ocultar" },
 
@@ -102,35 +100,37 @@
   "table_lang": { "message": "Idioma" },
   "table_timeout": { "message": "Tiempo" },
   "table_engine": { "message": "Proveedor" },
+  "table_remove": { "message": "Eliminar" },
 
   "section_developer": { "message": "Ajustes de desarrollador" },
-  "developer_note": { "message": "Opciones avanzadas para depuración y comportamiento experimental. Ordenadas por claridad." },
-  "debug_banners": { "message": "Habilitar modo de depuración" },
-  "debug_note": { "message": "Habilita notificaciones tipo toast y logs de depuración en consola." },
+  "developer_note": { "message": "Alternas avanzadas para depuración y comportamiento experimental. Ordenado por claridad." },
+
+  "debug_banners": { "message": "Habilitar modo depuración" },
+  "debug_note": { "message": "Activa banners tipo toast y registros de consola." },
 
   "boost_mic_label": { "message": "Aumentar ganancia del micrófono" },
-  "boost_mic_note": { "message": "Amplifica el micrófono antes de grabar para detectar mejor voz baja (aumento fijo)." },
+  "boost_mic_note": { "message": "Amplifica la entrada del micrófono antes de grabar (ganancia fija)." },
 
   "strip_trailing_period_label": { "message": "Desactivar eliminación del punto final" },
   "strip_trailing_period_note": { "message": "Elimina un “.” final del texto reconocido." },
 
-  "disable_favicons_label": { "message": "Desactivar favicons en la tabla de sobrescrituras" },
-  "disable_favicons_note": { "message": "Los favicons se muestran por defecto. Actívalo para ocultarlos." },
+  "disable_favicons_label": { "message": "Desactivar favicons en la tabla de anulaciones" },
+  "disable_favicons_note": { "message": "Los favicons se muestran por defecto. Activa para ocultarlos." },
 
   "show_engine_sections_label": { "message": "Mostrar secciones específicas del motor" },
-  "show_engine_sections_note": { "message": "Las secciones se ocultan automáticamente según el motor." },
+  "show_engine_sections_note": { "message": "Las secciones se ocultan/mostrar según el motor." },
 
-  "cache_default_model_label": { "message": "Cachear el modelo predeterminado (prefetch al iniciar)" },
-  "cache_default_model_note": { "message": "Precarga tu modelo Whisper local para que el primer uso sea más rápido (usa RAM). Solo aplica al motor local." },
+  "cache_default_model_label": { "message": "Cachear modelo predeterminado (precarga al iniciar)" },
+  "cache_default_model_note": { "message": "Precarga el modelo Whisper predeterminado para acelerar el primer uso (usa RAM). Solo motor local." },
 
-  "enable_hardcap_label": { "message": "Habilitar límite duro de 5 s" },
-  "enable_hardcap_note": { "message": "Las grabaciones de voz tienen un límite fijo de 5 segundos." },
+  "enable_hardcap_label": { "message": "Activar límite fijo de 5 s" },
+  "enable_hardcap_note": { "message": "Las grabaciones de voz tienen un límite fijo de 5 s." },
 
   "disable_grace_label": { "message": "Desactivar ventana de gracia" },
   "disable_grace_note": { "message": "La gracia está activada; ajusta los ms arriba." },
 
   "section_save_reset": { "message": "Datos" },
-  "data_note": { "message": "Exporta/importa ajustes como JSON o restablece a valores predeterminados. También se incluyen sobrescrituras predefinidas <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>AQUÍ</strong></a>" },
+  "data_note": { "message": "Exporta/importa ajustes como JSON o restablece a valores predeterminados. También hay anulaciones predefinidas <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>AQUÍ</strong></a>" },
   "export_settings": { "message": "Exportar" },
   "import_settings": { "message": "Importar" },
   "factory_reset": { "message": "Restablecer de fábrica" },
@@ -138,15 +138,15 @@
   "popup_page_title": { "message": "Reconocimiento de voz" },
   "popup_site_label": { "message": "Sitio: (cargando…)" },
   "popup_status_section": { "message": "Estado de la extensión" },
-  "popup_status_default": { "message": "Habilitada (predeterminado)" },
-  "popup_status_disabled": { "message": "Deshabilitada en este sitio" },
+  "popup_status_default": { "message": "Habilitado (predeterminado)" },
+  "popup_status_disabled": { "message": "Deshabilitado en este sitio" },
 
   "override_use_default": { "message": "Usar predeterminado" },
 
   "popup_timeout_label": { "message": "Tiempo de silencio (ms)" },
   "popup_timeout_placeholder": { "message": "Usar predeterminado" },
 
-  "popup_remove": { "message": "Eliminar sobrescritura" },
+  "popup_remove": { "message": "Eliminar anulación" },
   "popup_open_options": { "message": "Abrir opciones completas" },
   "popup_status_saved": { "message": "Guardado" },
 
@@ -164,16 +164,18 @@
   "backend_indicator_label": { "message": "Backend local de Whisper:" },
   "backend_indicator_value_active": { "message": "Activo" },
   "backend_indicator_value_unknown": { "message": "Desconocido" },
+
   "backend_chip_webgpu": { "message": "WebGPU" },
   "backend_chip_wasm": { "message": "WASM" },
   "backend_chip_unknown": { "message": "Desconocido" },
-  "backend_hint_default": { "message": "Se ejecuta en WebGPU cuando está disponible; usa WASM si no se admite." },
-  "backend_hint_webgpu": { "message": "Acelerado por GPU (mejor rendimiento cuando es compatible)." },
-  "backend_hint_wasm": { "message": "Alternativa por CPU (WebGPU no compatible o falló la inicialización)." },
-  "backend_hint_unknown": { "message": "El backend se detectará después de la primera transcripción local/carga del modelo." },
-  "backend_hint_webgpu_enabled_supported": { "message": "WebGPU está habilitado y es compatible. Se activará tras la próxima carga del modelo/transcripción local." },
+
+  "backend_hint_default": { "message": "Se ejecuta con WebGPU cuando está disponible; recurre a WASM si no es compatible." },
+  "backend_hint_webgpu": { "message": "Acelerado por GPU (mejor rendimiento cuando se admite)." },
+  "backend_hint_wasm": { "message": "Reserva en CPU (WebGPU no compatible o fallo de inicialización)." },
+  "backend_hint_unknown": { "message": "El backend se detectará después de la primera transcripción/carga local." },
+  "backend_hint_webgpu_enabled_supported": { "message": "WebGPU está habilitado y soportado. Se activará tras la próxima carga/transcripción local." },
   "backend_hint_preferred_wasm": { "message": "WASM está seleccionado como backend preferido." },
-  "backend_hint_webgpu_init_failed_prefix": { "message": "La API de WebGPU existe, pero falló la inicialización del adaptador/dispositivo:" },
+  "backend_hint_webgpu_init_failed_prefix": { "message": "La API WebGPU existe, pero falló la inicialización del adaptador/dispositivo:" },
   "backend_hint_webgpu_unavailable": { "message": "WebGPU no está disponible en este contexto; usando WASM." },
   "backend_hint_using_wasm": { "message": "Usando WASM." },
   "backend_unknown_error": { "message": "error desconocido" }
