@@ -29,6 +29,7 @@
 | Q | A |
 |---|---|
 | How do I make an [API Key](https://www.assemblyai.com/dashboard/api-keys)? | Click the link, create an account, and you’ll get a key right after signing up. |
+| Where are the rest of the languages? | You can add them yourself by manually editing your config and using their respected international abbreviations. Look in the local overrides folder for an example. |
 | Is the cloud model paid? | AssemblyAI provides a free tier (IIRC, 300–500 hours/month). Beyond that, you have to pay or switch to the local model. |
 | Does audio leave my device? | Local (Default): **No** audio stays on-device (after the model downloads). Cloud (AssemblyAI): **Yes**, audio is uploaded for transcription. |
 | Can you explain the icon indicators? | Color reflects recording/processing/error; badges show downloading/cached/done/cancel. A red/error icon often means canceled, missing API key, or unintelligible speech...Not necessarily a bad mic. Pin the icon to monitor state. |
