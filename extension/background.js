@@ -19,8 +19,44 @@ const ALLOWED_MODELS = new Set([
 
 const PROVIDERS = {
   LOCAL: 'local-whisper',
-  ASSEMBLY: 'assemblyai'
+  ASSEMBLY: 'assemblyai',
+  VOSK: 'vosk'
 };
+
+const VOSK_MODELS = new Map([
+  ['vosk-model-malayalam-bigram', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-malayalam-bigram.tar.gz'],
+  ['vosk-model-small-ca-0.4', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-ca-0.4.tar.gz'],
+  ['vosk-model-small-cn-0.3', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-cn-0.3.tar.gz'],
+  ['vosk-model-small-de-0.15', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-de-0.15.tar.gz'],
+  ['vosk-model-small-en-in-0.4', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-in-0.4.tar.gz'],
+  ['vosk-model-small-en-us-0.15', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-us-0.15.tar.gz'],
+  ['vosk-model-small-es-0.3', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-es-0.3.tar.gz'],
+  ['vosk-model-small-fa-0.4', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-fa-0.4.tar.gz'],
+  ['vosk-model-small-fr-pguyot-0.3', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-fr-pguyot-0.3.tar.gz'],
+  ['vosk-model-small-it-0.4', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-it-0.4.tar.gz'],
+  ['vosk-model-small-pt-0.3', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-pt-0.3.tar.gz'],
+  ['vosk-model-small-ru-0.4', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-ru-0.4.tar.gz'],
+  ['vosk-model-small-tr-0.3', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-tr-0.3.tar.gz'],
+  ['vosk-model-small-vn-0.3', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-vn-0.3.tar.gz'],
+  ['vosk-model-en-us-0.22', 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-en-us-0.22.tar.gz']
+]);
+
+const DEFAULT_VOSK_MODEL = 'vosk-model-small-en-us-0.15';
+
+const VOSK_MODEL_TIMEOUT_MS = 120000;
+const VOSK_STOP_TIMEOUT_MS = 8000;
+
+const VOSK_LRU_MAX = 2;
+
+function normalizeVoskModel(id) {
+  return VOSK_MODELS.has(id) ? id : DEFAULT_VOSK_MODEL;
+}
+
+const ASSEMBLYAI_STREAM_SAMPLE_RATE = 16000;
+const ASSEMBLYAI_BEGIN_TIMEOUT_MS = 6000;
+const ASSEMBLYAI_PENDING_CHUNKS_MAX = 20;
+
+const ASSEMBLYAI_MULTILINGUAL_LANGS = new Set(['en', 'es', 'fr', 'de', 'it', 'pt']);
 
 // Default model: base multilingual
 let currentModel = 'Xenova/whisper-base';
@@ -31,6 +67,9 @@ let modelLoadPromise = null;
 // Cache-default-model residency control:
 let keepModelResident = false;
 let residentModelId = null;
+
+let keepVoskResident = false;
+let residentVoskModelId = null;
 
 // Track defaults so we can cancel sessions when model/provider changes
 let lastDefaultsFingerprint = null;
@@ -57,6 +96,8 @@ const RESULT_GRACE_MS_DEFAULT = 450;
 const PROCESSING_TIMEOUT_MS = 20000;
 const ERROR_HOLD_MS = 2500;
 
+const assemblyStopRequestedBySession = new Set();
+
 const BADGE_MS = {
   cached: 900,
   downloading: 0,
@@ -80,6 +121,212 @@ let forwardDebugToPageConsole = true;
 const assemblyAbortBySession = new Map(); // key: `${tabId}:${sessionId}`
 const sessionKey = (tabId, sessionId) => `${tabId}:${sessionId}`;
 
+const assemblyStreamingBySession = new Map();
+const voskStreamInitPromise = new Map();
+const voskPendingChunks = new Map();
+const voskStreamReady = new Set();
+
+const voskModels = new Map(); // modelId -> { model, lastUsed }
+const voskModelLoadPromises = new Map();
+const voskRecognizers = new Map(); // sessionId -> { recognizer, tabId, frameId, modelId }
+
+// NEW: keep-alive flag while Vosk models download
+let voskDownloadsInProgress = 0;
+
+// NEW: disable processing timeouts
+let disableProcessingTimeouts = false;
+
+function getActiveVoskModelIds() {
+  const active = new Set();
+  for (const entry of voskRecognizers.values()) {
+    if (entry?.modelId) active.add(entry.modelId);
+  }
+  return active;
+}
+
+function touchVoskModel(modelId) {
+  const entry = voskModels.get(modelId);
+  if (entry) entry.lastUsed = Date.now();
+}
+
+async function disposeVoskModel(modelId, reason = 'gc') {
+  const entry = voskModels.get(modelId);
+  if (!entry) return;
+
+  try { entry.model?.terminate?.(); } catch (_) { }
+  try { entry.model?.dispose?.(); } catch (_) { }
+
+  voskModels.delete(modelId);
+  dbg('vosk_model_disposed', { modelId, reason });
+}
+
+function trimVoskModelCache({ forceIdle = false } = {}) {
+  const active = getActiveVoskModelIds();
+
+  if (forceIdle) {
+    for (const modelId of [...voskModels.keys()]) {
+      if (keepVoskResident && modelId === residentVoskModelId) continue;
+      if (active.has(modelId)) continue;
+      disposeVoskModel(modelId, 'idle_gc');
+    }
+    return;
+  }
+
+  if (voskModels.size <= VOSK_LRU_MAX) return;
+
+  const entries = [...voskModels.entries()]
+    .sort((a, b) => (a[1]?.lastUsed || 0) - (b[1]?.lastUsed || 0));
+
+  for (const [modelId] of entries) {
+    if (voskModels.size <= VOSK_LRU_MAX) break;
+    if (active.has(modelId)) continue;
+    if (keepVoskResident && modelId === residentVoskModelId) continue;
+    disposeVoskModel(modelId, 'lru');
+  }
+}
+
+async function ensureVoskModel(modelId) {
+  const safeId = normalizeVoskModel(modelId);
+  const existing = voskModels.get(safeId);
+
+  if (existing?.model?.ready) {
+    touchVoskModel(safeId);
+    return { modelId: safeId, model: existing.model, cached: true };
+  }
+
+  const inflight = voskModelLoadPromises.get(safeId);
+  if (inflight) {
+    await inflight;
+    const ready = voskModels.get(safeId);
+    if (ready?.model?.ready) {
+      touchVoskModel(safeId);
+      return { modelId: safeId, model: ready.model, cached: false };
+    }
+  }
+
+  const url = VOSK_MODELS.get(safeId);
+  if (!url) throw new Error(`Unknown Vosk model: ${safeId}`);
+
+  const loadPromise = (async () => {
+    voskDownloadsInProgress += 1;
+    try {
+      const model = await Vosk.createModel(url);
+      return model;
+    } finally {
+      voskDownloadsInProgress = Math.max(0, voskDownloadsInProgress - 1);
+    }
+  })();
+
+  voskModelLoadPromises.set(safeId, loadPromise);
+
+  try {
+    const model = await loadPromise;
+    voskModels.set(safeId, { model, lastUsed: Date.now() });
+    trimVoskModelCache();
+    return { modelId: safeId, model, cached: false };
+  } finally {
+    voskModelLoadPromises.delete(safeId);
+  }
+}
+
+function startVoskStream(sessionId, tabId, frameId, sampleRate = 16000, graceEnabled = false, graceMs = 0, modelId = null, model = null) {
+  const modelInstance = model || voskModels.get(modelId)?.model;
+  if (!modelInstance || !modelInstance.ready) {
+    throw new Error('Vosk model not ready');
+  }
+
+  console.log('[Vosk Direct] Creating recognizer for session:', sessionId);
+
+  const KaldiRecognizer = modelInstance.KaldiRecognizer;
+  const recognizer = new KaldiRecognizer(sampleRate);
+
+  recognizer.on('result', (message) => {
+    const text = message?.result?.text || '';
+    console.log('[Vosk Direct] Result:', text);
+    if (text) {
+      const send = () => {
+        sendTerminal(tabId, frameId, {
+          type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+          text: text.trim(),
+          sessionId,
+          isFinal: true
+        });
+      };
+      if (graceEnabled) setTimeout(send, graceMs);
+      else send();
+    }
+  });
+
+  recognizer.on('partialresult', (message) => {
+    const text = message?.result?.partial || '';
+    console.log('[Vosk Direct] Partial:', text);
+    if (text) {
+      sendTerminal(tabId, frameId, {
+        type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+        text: text.trim(),
+        sessionId,
+        isFinal: false
+      });
+    }
+  });
+
+  voskRecognizers.set(sessionId, { recognizer, tabId, frameId, modelId });
+  touchVoskModel(modelId);
+  console.log('[Vosk Direct] Recognizer created and stored');
+  return recognizer;
+}
+
+function sendVoskChunk(sessionId, audioData) {
+  const entry = voskRecognizers.get(sessionId);
+  if (!entry) {
+    console.warn('[Vosk Direct] No recognizer for session:', sessionId);
+    return;
+  }
+
+  const { recognizer } = entry;
+
+  // Convert ArrayBuffer to Float32Array if needed
+  let float32;
+  if (audioData instanceof ArrayBuffer) {
+    float32 = new Float32Array(audioData);
+  } else if (audioData instanceof Float32Array) {
+    float32 = audioData;
+  } else {
+    console.error('[Vosk Direct] Invalid audio data type');
+    return;
+  }
+
+  // vosk-browser's acceptWaveformFloat expects Float32Array and sample rate
+  recognizer.acceptWaveformFloat(float32, 16000);
+}
+
+function stopVoskStream(sessionId) {
+  const entry = voskRecognizers.get(sessionId);
+  if (!entry) {
+    console.log('[Vosk Direct] No recognizer to stop for session:', sessionId);
+    return;
+  }
+
+  const { recognizer, modelId } = entry;
+
+  try {
+    recognizer.retrieveFinalResult();
+  } catch (err) {
+    console.warn('[Vosk Direct] Error getting final result:', err);
+  }
+
+  try {
+    recognizer.remove();
+  } catch (err) {
+    console.warn('[Vosk Direct] Error removing recognizer:', err);
+  }
+
+  voskRecognizers.delete(sessionId);
+  if (modelId) touchVoskModel(modelId);
+  trimVoskModelCache();
+  console.log('[Vosk Direct] Stream stopped for session:', sessionId);
+}
+
 function dbg(tag, data = {}) {
   if (!debugMode) return;
   try { console.debug('[Whisper BG]', tag, data); } catch (_) { }
@@ -96,7 +343,6 @@ function dbgToTab(tabId, frameId, tag, data = {}) {
 }
 
 function tabFrameKey(tabId, frameId) {
-  // Normalize missing frameId to 0 (top frame) so keys are stable.
   const fid = (typeof frameId === 'number') ? frameId : 0;
   return `${tabId}:${fid}`;
 }
@@ -106,19 +352,15 @@ async function onMessageMaybeResetEpoch(tabId, frameId, pageInstanceId, hostname
 
   const key = tabFrameKey(tabId, frameId);
   if (!pageInstanceId) {
-    // If page doesn't send it (older content.js), do nothing.
     return;
   }
 
   const prev = pageInstanceByTabFrame.get(key);
   if (prev && prev !== pageInstanceId) {
-    // Content script instance changed (reload/navigation). Reset per-tab ordering state.
     dbg('page_instance_changed_reset', { tabId, frameId, hostname, prev, next: pageInstanceId });
 
-    // Reset monotonic session tracking for this tab.
     lastSessionByTab.delete(tabId);
 
-    // Cancel inflight work for this tab (best-effort).
     const inflight = inflightByTab.get(tabId);
     if (inflight?.sessionId) markCanceled(tabId, inflight.sessionId);
     inflightByTab.delete(tabId);
@@ -198,31 +440,143 @@ async function terminateAsrWorker() {
   }
 }
 
+// ---------------- Vosk Worker (Streaming) ----------------
+let voskWorker = null;
+let voskSeq = 1;
+const voskInflight = new Map();
+const voskStreamingBySession = new Map();
+
+function ensureVoskWorker() {
+  if (voskWorker) return;
+
+  voskWorker = new Worker(browser.runtime.getURL('vosk-worker.js'));
+
+  voskWorker.onmessage = (ev) => {
+    const msg = ev.data || {};
+    if (typeof msg.id === 'number') {
+      const h = voskInflight.get(msg.id);
+      if (!h) return;
+      voskInflight.delete(msg.id);
+      if (h.timeout) clearTimeout(h.timeout);
+      if (msg.ok) h.resolve(msg);
+      else h.reject(new Error(msg.error || 'Vosk worker error'));
+      return;
+    }
+
+    if (msg.type === 'VOSK_PARTIAL' || msg.type === 'VOSK_RESULT') {
+      let session = null;
+
+      if (msg.tabId != null) {
+        session = voskStreamingBySession.get(sessionKey(msg.tabId, msg.sessionId));
+      }
+
+      if (!session) {
+        for (const s of voskStreamingBySession.values()) {
+          if (s.sessionId === msg.sessionId) { session = s; break; }
+        }
+      }
+
+      if (!session) return;
+
+      sendTerminal(session.tabId, session.frameId, {
+        type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+        text: msg.text || '',
+        sessionId: msg.sessionId,
+        isFinal: msg.type === 'VOSK_RESULT'
+      });
+    }
+  };
+
+  voskWorker.onerror = (e) => {
+    dbg('vosk_worker_error', { message: e?.message || String(e) });
+    for (const [id, h] of voskInflight.entries()) {
+      voskInflight.delete(id);
+      if (h.timeout) clearTimeout(h.timeout);
+      h.reject(new Error('Vosk worker crashed'));
+    }
+    try { voskWorker.terminate(); } catch (_) { }
+    voskWorker = null;
+  };
+}
+
+function callVoskWorker(type, payload = {}, timeoutMs = PROCESSING_TIMEOUT_MS) {
+  ensureVoskWorker();
+  const id = voskSeq++;
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      voskInflight.delete(id);
+      reject(new Error('Vosk worker call timed out'));
+    }, timeoutMs);
+
+    voskInflight.set(id, { resolve, reject, timeout });
+    try {
+      voskWorker.postMessage({ id, type, ...payload });
+    } catch (e) {
+      clearTimeout(timeout);
+      voskInflight.delete(id);
+      reject(e);
+    }
+  });
+}
+
+function postVoskWorker(type, payload = {}) {
+  ensureVoskWorker();
+  try {
+    voskWorker.postMessage({ type, ...payload });
+  } catch (e) {
+    dbg('vosk_post_error', { message: e?.message || String(e) });
+  }
+}
+
+async function terminateVoskWorker() {
+  if (!voskWorker) return;
+  try { voskWorker.terminate(); } catch (_) { }
+  voskWorker = null;
+
+  for (const [id, h] of voskInflight.entries()) {
+    voskInflight.delete(id);
+    if (h.timeout) clearTimeout(h.timeout);
+    h.reject(new Error('Vosk worker terminated'));
+  }
+}
+
 // ---------------- Runtime flags ----------------
 async function refreshRuntimeFlagsFromStorage() {
   try {
     const { settings } = await browser.storage.local.get('settings');
     debugMode = settings?.debugMode === true;
+    disableProcessingTimeouts = settings?.disableProcessingTimeouts === true;
 
     const cacheDefaultModel = settings?.cacheDefaultModel === true;
     const defaults = settings?.defaults || {};
-    const provider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
+    const provider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY
+      : (defaults.provider === PROVIDERS.VOSK ? PROVIDERS.VOSK : PROVIDERS.LOCAL);
 
     const model = (defaults.model && ALLOWED_MODELS.has(defaults.model))
       ? defaults.model
       : 'Xenova/whisper-base';
 
+    const voskModel = normalizeVoskModel(defaults.voskModel || DEFAULT_VOSK_MODEL);
+
     keepModelResident = !!(cacheDefaultModel && provider === PROVIDERS.LOCAL && ALLOWED_MODELS.has(model));
     residentModelId = keepModelResident ? model : null;
 
-    dbg('runtime_flags', { debugMode, keepModelResident, residentModelId, provider, model });
+    keepVoskResident = !!(cacheDefaultModel && provider === PROVIDERS.VOSK);
+    residentVoskModelId = keepVoskResident ? voskModel : null;
+
+    dbg('runtime_flags', { debugMode, keepModelResident, residentModelId, keepVoskResident, residentVoskModelId, provider, model, voskModel });
   } catch (_) {
     debugMode = false;
+    disableProcessingTimeouts = false;
     keepModelResident = false;
     residentModelId = null;
+    keepVoskResident = false;
+    residentVoskModelId = null;
   }
 
-  if (!keepModelResident) scheduleModelGc();
+  if (voskStreamInitPromise.size === 0 && voskStreamingBySession.size === 0) {
+    if (!keepModelResident && !keepVoskResident) scheduleModelGc();
+  }
 }
 
 // Theme-aware colors
@@ -275,11 +629,10 @@ function applyDisabledBadge(tabId, isDisabled) {
   const ts = getTabState(tabId);
 
   if (isDisabled) {
-    // Show immediately, even during recording/processing.
     showBadgeForTab(
       tabId,
       { type: 'disabled', color: ICON_COLORS().disabled },
-      0 // persistent
+      0
     );
     return;
   }
@@ -519,7 +872,7 @@ function showBadgeForTab(tabId, badge, ms) {
   const prevTimer = badgeTimerByTab.get(tabId);
   if (prevTimer) {
     clearTimeout(prevTimer);
-    badgeTimerByTab.delete(tabId);
+    badgeTimerByTab.delete(prevTimer);
   }
 
   if (ms > 0) {
@@ -562,6 +915,8 @@ function clearProcessingTimeout(tabId) {
 
 function armProcessingTimeout(tabId, sessionId, frameId) {
   clearProcessingTimeout(tabId);
+  if (disableProcessingTimeouts) return;
+
   const timer = setTimeout(async () => {
     const inflight = inflightByTab.get(tabId);
     if (!inflight || inflight.sessionId !== sessionId) return;
@@ -590,7 +945,12 @@ function coerceAudioData(audioData) {
 }
 
 function sendTerminal(tabId, frameId, payload) {
-  try { browser.tabs.sendMessage(tabId, payload, { frameId }); } catch (_) { }
+  try {
+    const p = browser.tabs.sendMessage(tabId, payload, { frameId });
+    if (p && typeof p.catch === 'function') {
+      p.catch(() => {});
+    }
+  } catch (_) { }
 }
 
 // ---------- Model / GC / Prefetch (worker-based) ----------
@@ -600,22 +960,90 @@ async function disposeCurrentModel() {
 }
 
 function scheduleModelGc() {
+  // Don't GC if keeping resident model
   if (keepModelResident && residentModelId) {
     if (modelGcTimer) { clearTimeout(modelGcTimer); modelGcTimer = null; }
     dbg('gc_skip_resident_default', { residentModelId });
     return;
   }
+  if (keepVoskResident && residentVoskModelId) {
+    if (modelGcTimer) { clearTimeout(modelGcTimer); modelGcTimer = null; }
+    dbg('gc_skip_resident_vosk', { residentVoskModelId });
+    return;
+  }
+
+  if (voskDownloadsInProgress > 0) {
+    dbg('gc_skip_vosk_download', { count: voskDownloadsInProgress });
+    return;
+  }
 
   if (modelGcTimer) clearTimeout(modelGcTimer);
   modelGcTimer = setTimeout(async () => {
+    // Don't GC if there's active processing
     if (inflightByTab.size > 0) return;
     if (modelLoadPromise) return;
     if (keepModelResident && residentModelId) return;
+    if (keepVoskResident && residentVoskModelId) return;
+    if (voskDownloadsInProgress > 0) return;
+
+    // NEW: Don't GC if Vosk streams are initializing or active
+    if (voskStreamInitPromise.size > 0) {
+      dbg('gc_skip_vosk_initializing', { count: voskStreamInitPromise.size });
+      return;
+    }
+    if (voskStreamingBySession.size > 0) {
+      dbg('gc_skip_vosk_active', { count: voskStreamingBySession.size });
+      return;
+    }
+    if (voskModelLoadPromises.size > 0) return;
 
     await disposeCurrentModel();
     await terminateAsrWorker();
+    await terminateVoskWorker();
+
+    trimVoskModelCache({ forceIdle: true });
+
     dbg('worker_terminated_idle', { afterMs: MODEL_IDLE_UNLOAD_MS });
   }, MODEL_IDLE_UNLOAD_MS);
+}
+
+async function getEffectiveSettings(hostname) {
+  const { settings } = await browser.storage.local.get('settings');
+  const defaults = settings?.defaults || { model: 'Xenova/whisper-base', language: 'auto', provider: PROVIDERS.VOSK };
+  const graceEnabled = settings?.graceEnabled !== false;
+  const graceMs = typeof settings?.graceMs === 'number' ? settings.graceMs : RESULT_GRACE_MS_DEFAULT;
+  const assemblyaiApiKey = settings?.assemblyaiApiKey || null;
+
+  const baseProvider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY
+    : (defaults.provider === PROVIDERS.LOCAL ? PROVIDERS.LOCAL : PROVIDERS.VOSK);
+
+  const overrides = settings?.overrides || {};
+  const host = normalizeHost(hostname);
+  const site = host ? (overrides[host] || {}) : {};
+  const provider = (site.provider ?? baseProvider) === PROVIDERS.ASSEMBLY
+    ? PROVIDERS.ASSEMBLY
+    : ((site.provider ?? baseProvider) === PROVIDERS.VOSK ? PROVIDERS.VOSK : PROVIDERS.LOCAL);
+
+  const disabled = isHostDisabled(settings, host);
+  const siteGraceMs = typeof site.graceMs === 'number' ? site.graceMs : null;
+
+  const whisperModel = (site.model && ALLOWED_MODELS.has(site.model))
+    ? site.model
+    : (ALLOWED_MODELS.has(defaults.model) ? defaults.model : 'Xenova/whisper-base');
+
+  const voskModel = normalizeVoskModel(site.model || defaults.voskModel || DEFAULT_VOSK_MODEL);
+
+  return {
+    enabled: !disabled,
+    model: provider === PROVIDERS.VOSK ? voskModel : whisperModel,
+    language: site.language ?? defaults.language ?? 'auto',
+    graceEnabled,
+    graceMs: (siteGraceMs ?? graceMs),
+    provider,
+    assemblyaiApiKey,
+    assemblyaiStreamingEnabled: settings?.assemblyaiStreamingEnabled !== false,
+    assemblyaiStreamingMultilingualEnabled: settings?.assemblyaiStreamingMultilingualEnabled !== false
+  };
 }
 
 async function ensureModelSilently(modelID) {
@@ -644,7 +1072,6 @@ async function ensureModelForTab(tabId, modelID) {
       showBadgeForTab(tabId, { type: 'download', color: colors.downloaded }, BADGE_MS.downloaded);
     }
 
-    // NEW: expose backend in debug logs so you can confirm webgpu vs wasm
     dbgToTab(tabId, 0, 'model_backend', { backend: res.backend || 'unknown' });
   } catch (e) {
     showBadgeForTab(tabId, { type: 'download', color: colors.download_error }, BADGE_MS.download_error);
@@ -655,14 +1082,24 @@ async function ensureModelForTab(tabId, modelID) {
 }
 
 async function prefetchDefaultModelIfEnabled() {
-  if (!keepModelResident || !residentModelId) return;
+  if (keepModelResident && residentModelId) {
+    try {
+      dbg('prefetch_start', { model: residentModelId });
+      await ensureModelSilently(residentModelId);
+      dbg('prefetch_done', { model: residentModelId });
+    } catch (e) {
+      dbg('prefetch_failed', { error: String(e) });
+    }
+  }
 
-  try {
-    dbg('prefetch_start', { model: residentModelId });
-    await ensureModelSilently(residentModelId);
-    dbg('prefetch_done', { model: residentModelId });
-  } catch (e) {
-    dbg('prefetch_failed', { error: String(e) });
+  if (keepVoskResident && residentVoskModelId) {
+    try {
+      dbg('prefetch_vosk_start', { model: residentVoskModelId });
+      await ensureVoskModel(residentVoskModelId);
+      dbg('prefetch_vosk_done', { model: residentVoskModelId });
+    } catch (e) {
+      dbg('prefetch_vosk_failed', { error: String(e) });
+    }
   }
 }
 
@@ -699,15 +1136,9 @@ function collapseRepeats(text) {
   }
   let collapsed = out.join(' ');
   collapsed = collapsed.replace(/(\b[\w\.\-]{1,8}\b)(\s+\1){4,}/gi, '$1 $1 $1');
-
-  // FIX (remove 400-char truncation):
-  // Previously:
-  // if (collapsed.length > 400) collapsed = collapsed.slice(0, 400) + '…';
-
   return collapsed.trim();
 }
 
-// ---------------- quality guard helpers ----------------
 function isPathological(text) {
   if (!text) return true;
   const tokens = text.split(/\s+/);
@@ -715,13 +1146,11 @@ function isPathological(text) {
   return (text.length > 80 && unique.size <= 3) || tokens.length === 0;
 }
 
-// NEW: robust spam detector (run-length + dominance + entropy)
 function isSpammyRepetition(text) {
   if (!text) return true;
   const s = text.trim();
   if (s.length < 8) return false;
 
-  // 1) Run-length (e.g., "FFFFFFFFFFFF")
   let maxRun = 1;
   let currentRun = 1;
   for (let i = 1; i < s.length; i++) {
@@ -734,14 +1163,12 @@ function isSpammyRepetition(text) {
   }
   if (maxRun >= 12) return true;
 
-  // 2) Dominance ratio (one char dominates the string)
   const counts = new Map();
   for (const ch of s) counts.set(ch, (counts.get(ch) || 0) + 1);
   const maxCount = Math.max(...counts.values());
   const dominance = maxCount / s.length;
   if (s.length >= 20 && dominance >= 0.72) return true;
 
-  // 3) Low entropy (very low diversity at longer lengths)
   const uniqueCount = counts.size;
   if (s.length >= 30 && uniqueCount <= 2) return true;
 
@@ -753,10 +1180,7 @@ function isExcessiveRepeat(words) {
   const normalized = words.map(w => w.toLowerCase());
   const unique = new Set(normalized);
 
-  // Same word repeated 4+ times is likely a glitch
   if (unique.size === 1 && normalized.length >= 4) return true;
-
-  // Two-word loop repeated many times can also be a glitch
   if (unique.size <= 2 && normalized.length >= 8) return true;
 
   return false;
@@ -790,34 +1214,7 @@ function isHostDisabled(settings, hostname) {
   return false;
 }
 
-async function getEffectiveSettings(hostname) {
-  const { settings } = await browser.storage.local.get('settings');
-  const defaults = settings?.defaults || { model: 'Xenova/whisper-base', language: 'auto', provider: PROVIDERS.LOCAL };
-  const graceEnabled = settings?.graceEnabled !== false;
-  const graceMs = typeof settings?.graceMs === 'number' ? settings.graceMs : RESULT_GRACE_MS_DEFAULT;
-  const assemblyaiApiKey = settings?.assemblyaiApiKey || null;
-
-  const baseProvider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
-  const overrides = settings?.overrides || {};
-  const host = normalizeHost(hostname);
-  const site = host ? (overrides[host] || {}) : {};
-  const provider = (site.provider ?? baseProvider) === PROVIDERS.ASSEMBLY ? PROVIDERS.ASSEMBLY : PROVIDERS.LOCAL;
-
-  const disabled = isHostDisabled(settings, host);
-
-  return {
-    enabled: !disabled,
-    model: (site.model && ALLOWED_MODELS.has(site.model))
-      ? site.model
-      : (ALLOWED_MODELS.has(defaults.model) ? defaults.model : 'Xenova/whisper-base'),
-    language: site.language ?? defaults.language ?? 'auto',
-    graceEnabled,
-    graceMs,
-    provider,
-    assemblyaiApiKey
-  };
-}
-
+// ---------------- AssemblyAI Non-Streaming ----------------
 async function transcribeWithAssemblyAI(audioBlob, language, apiKey, controller) {
   const headers = { Authorization: apiKey };
   const signal = controller?.signal;
@@ -858,7 +1255,7 @@ async function transcribeWithAssemblyAI(audioBlob, language, apiKey, controller)
 
   const start = Date.now();
   while (true) {
-    if (Date.now() - start > PROCESSING_TIMEOUT_MS) {
+    if (!disableProcessingTimeouts && Date.now() - start > PROCESSING_TIMEOUT_MS) {
       controller?.abort();
       throw new Error('AssemblyAI timed out');
     }
@@ -874,7 +1271,145 @@ async function transcribeWithAssemblyAI(audioBlob, language, apiKey, controller)
   }
 }
 
-// ---------------- Cancel all sessions (used on model change / config change) ----------------
+// ---------------- AssemblyAI Streaming ----------------
+function clearAssemblyBeginTimer(session) {
+  if (!session?.beginTimer) return;
+  try { clearTimeout(session.beginTimer); } catch (_) { }
+  session.beginTimer = null;
+}
+
+function armAssemblyBeginTimer(session) {
+  clearAssemblyBeginTimer(session);
+  session.beginTimer = setTimeout(() => {
+    if (!session || session.ready) return;
+    dbg('assembly_begin_timeout', { tabId: session.tabId, sessionId: session.sessionId });
+    try { session.ws?.close(); } catch (_) { }
+  }, ASSEMBLYAI_BEGIN_TIMEOUT_MS);
+}
+
+function closeAssemblyStreaming(key) {
+  const session = assemblyStreamingBySession.get(key);
+  if (!session) return;
+
+  clearAssemblyBeginTimer(session);
+
+  try {
+    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ terminate_session: true }));
+    }
+  } catch (_) { }
+  try { session.ws?.close(); } catch (_) { }
+  assemblyStreamingBySession.delete(key);
+}
+
+async function getAssemblyStreamingToken(apiKey) {
+  const params = new URLSearchParams({
+    expires_in_seconds: '600'
+  });
+
+  const resp = await fetch(`https://streaming.assemblyai.com/v3/token?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Authorization: apiKey
+    }
+  });
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => '');
+    throw new Error(`AssemblyAI token error (${resp.status}): ${txt.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  if (!data?.token) throw new Error('AssemblyAI token missing in response');
+  return data.token;
+}
+
+function resolveAssemblyStreamingLanguage(settings) {
+  const lang = (settings.language && settings.language !== 'auto')
+    ? settings.language
+    : null;
+
+  if (!lang) return null;
+
+  if (settings.assemblyaiStreamingMultilingualEnabled === true &&
+      !ASSEMBLYAI_MULTILINGUAL_LANGS.has(lang)) {
+    return null;
+  }
+
+  return lang;
+}
+
+function buildAssemblyStreamingUrl(token, opts = {}) {
+  const params = new URLSearchParams({
+    sample_rate: String(ASSEMBLYAI_STREAM_SAMPLE_RATE),
+    encoding: 'pcm_s16le',
+    format_turns: 'true',
+    token
+  });
+
+  const language = (opts.language && opts.language !== 'auto') ? opts.language : null;
+
+  if (opts.multilingual) {
+    params.set('speech_model', 'universal-streaming-multilingual');
+    params.set('language_detection', language ? 'false' : 'true');
+  }
+
+  if (language) {
+    params.set('language_code', language);
+  }
+
+  return `wss://streaming.assemblyai.com/v3/ws?${params.toString()}`;
+}
+
+function openAssemblyStreamingSocket(token, opts = {}) {
+  const url = buildAssemblyStreamingUrl(token, opts);
+  return new WebSocket(url);
+}
+
+function handleStreamingMessage(session, payload) {
+  const { tabId, frameId, sessionId, graceEnabled, graceMs } = session;
+  const msgType = payload?.type;
+
+  if (msgType === 'Begin') {
+    session.ready = true;
+    clearAssemblyBeginTimer(session);
+    if (session.pendingChunks?.length) {
+      for (const chunk of session.pendingChunks) {
+        try { session.ws.send(chunk); } catch (_) { }
+      }
+      session.pendingChunks = [];
+    }
+    return;
+  }
+
+  if (msgType === 'Turn') {
+    const text = (payload.transcript || '').trim();
+    if (!text) return;
+
+    const isFinal = payload.end_of_turn === true;
+
+    const send = () => {
+      sendTerminal(tabId, frameId, {
+        type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+        text,
+        sessionId,
+        isFinal
+      });
+    };
+
+    if (isFinal && graceEnabled) setTimeout(send, graceMs);
+    else send();
+
+    return;
+  }
+
+  if (msgType === 'Termination') {
+    const key = sessionKey(tabId, sessionId);
+    closeAssemblyStreaming(key);
+  }
+}
+
+// ---------------- Cancel all sessions ----------------
 async function cancelAllSessions(reason = 'config_changed') {
   dbg('cancel_all_sessions', { reason, inflightTabs: inflightByTab.size });
 
@@ -899,6 +1434,14 @@ async function cancelAllSessions(reason = 'config_changed') {
     } catch (_) { }
   }
 
+  for (const [key] of assemblyStreamingBySession.entries()) {
+    closeAssemblyStreaming(key);
+  }
+
+  for (const [key] of voskStreamingBySession.entries()) {
+    voskStreamingBySession.delete(key);
+  }
+
   for (const tabId of tabStateById.keys()) {
     try { await clearBadge(tabId); } catch (_) { }
     try { await setTabState(tabId, 'idle', null); } catch (_) { }
@@ -909,19 +1452,148 @@ async function cancelAllSessions(reason = 'config_changed') {
 
   await disposeCurrentModel();
   await terminateAsrWorker();
+  await terminateVoskWorker();
+  trimVoskModelCache({ forceIdle: true });
 }
 
 // ---------------- Main message handling ----------------
 browser.runtime.onMessage.addListener((message, sender) => {
+  
   const tabId = sender?.tab?.id;
   const frameId = sender?.frameId;
   if (tabId == null) return;
 
-  ensureTabIconInitialized(tabId).catch(() => { });
+  // inside browser.runtime.onMessage.addListener(...) near the top
+console.log('[Whisper BG] onMessage', message?.type, {
+  tabId,
+  frameId,
+  sessionId: message?.sessionId,
+  hostname: message?.hostname
+});
 
-  // NEW: reset epoch/order state if this is a new content-script instance.
-  // Fire-and-forget; we don't await because onMessage can't be async here.
   onMessageMaybeResetEpoch(tabId, frameId, message?.pageInstanceId, message?.hostname).catch(() => { });
+
+// ============================================================
+// VOSK_STREAM_START handler
+// ============================================================
+if (message?.type === 'VOSK_STREAM_START') {
+  const hostname = message.hostname || '';
+  const sessionId = message.sessionId || 0;
+  const key = sessionKey(tabId, sessionId);
+
+  console.log('[BG] VOSK_STREAM_START received', { tabId, sessionId, hostname });
+
+  voskPendingChunks.set(key, []);
+
+  const initPromise = (async () => {
+    try {
+      const settings = await getEffectiveSettings(hostname);
+      console.log('[BG] Settings:', { enabled: settings.enabled, provider: settings.provider });
+      
+      if (!settings.enabled || settings.provider !== PROVIDERS.VOSK) {
+        return { ok: false, reason: 'disabled' };
+      }
+
+      const modelId = normalizeVoskModel(settings.model);
+      const sampleRate = message.sampleRate || 16000;
+
+      const colors = ICON_COLORS();
+      showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
+
+      console.log('[BG] Loading Vosk model directly...', { modelId });
+      const res = await ensureVoskModel(modelId);
+      console.log('[BG] Model loaded, starting stream...');
+
+      if (res.cached) {
+        showBadgeForTab(tabId, { type: 'cached', color: colors.cached }, BADGE_MS.cached);
+      } else {
+        showBadgeForTab(tabId, { type: 'download', color: colors.downloaded }, BADGE_MS.downloaded);
+      }
+
+      startVoskStream(sessionId, tabId, frameId, sampleRate, settings.graceEnabled, settings.graceMs, res.modelId, res.model);
+      console.log('[BG] Stream started');
+
+      voskStreamingBySession.set(key, { tabId, frameId, sessionId, hostname });
+      voskStreamReady.add(key);
+
+      // Flush buffered chunks
+      const pending = voskPendingChunks.get(key) || [];
+      console.log('[BG] Flushing buffered chunks:', pending.length);
+      
+      for (const chunk of pending) {
+        sendVoskChunk(sessionId, chunk);
+      }
+      voskPendingChunks.delete(key);
+
+      return { ok: true };
+    } catch (err) {
+      console.error('[BG] VOSK init error:', err);
+      voskPendingChunks.delete(key);
+      voskStreamReady.delete(key);
+      showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
+      sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: err?.message || String(err) });
+      return { ok: false, error: err?.message };
+    }
+  })();
+
+  voskStreamInitPromise.set(key, initPromise);
+  return;
+}
+
+// ============================================================
+// VOSK_STREAM_CHUNK handler
+// ============================================================
+if (message?.type === 'VOSK_STREAM_CHUNK') {
+  const sessionId = message.sessionId || 0;
+  const key = sessionKey(tabId, sessionId);
+  const audioData = message.audioData;
+  
+  if (!audioData) return;
+
+  if (voskStreamReady.has(key)) {
+    // Stream ready, send directly
+    sendVoskChunk(sessionId, audioData);
+  } else {
+    // Still initializing, buffer the chunk
+    const pending = voskPendingChunks.get(key);
+    if (pending && pending.length < 500) {
+      pending.push(audioData);
+    }
+  }
+  return;
+}
+
+// ============================================================
+// VOSK_STREAM_STOP handler
+// ============================================================
+if (message?.type === 'VOSK_STREAM_STOP') {
+  const sessionId = message.sessionId || 0;
+  const key = sessionKey(tabId, sessionId);
+
+  console.log('[BG] VOSK_STREAM_STOP received', { tabId, sessionId });
+
+  (async () => {
+    const initPromise = voskStreamInitPromise.get(key);
+    
+    if (initPromise) {
+      console.log('[BG] Waiting for init promise...');
+      await initPromise;
+      console.log('[BG] Init complete, stopping stream...');
+    }
+
+    // Cleanup
+    voskStreamInitPromise.delete(key);
+    voskPendingChunks.delete(key);
+    voskStreamReady.delete(key);
+    voskStreamingBySession.delete(key);
+
+    // Stop the recognizer
+    stopVoskStream(sessionId);
+    console.log('[BG] Stream stopped');
+  })();
+
+  return;
+}
 
   if (message?.type === 'ASR_BACKEND_PING') {
     return (async () => {
@@ -948,7 +1620,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
         const d = settings?.defaults || {};
         nextFp = JSON.stringify({
           provider: d.provider || PROVIDERS.LOCAL,
-          model: d.model || 'Xenova/whisper-base'
+          model: d.model || 'Xenova/whisper-base',
+          voskModel: d.voskModel || DEFAULT_VOSK_MODEL
         });
 
         if (lastDefaultsFingerprint && nextFp && nextFp !== lastDefaultsFingerprint) {
@@ -964,15 +1637,157 @@ browser.runtime.onMessage.addListener((message, sender) => {
     return;
   }
 
+  if (message?.type === 'ASSEMBLYAI_STREAM_START') {
+    (async () => {
+      const hostname = message.hostname || '';
+      const sessionId = message.sessionId || 0;
+      const key = sessionKey(tabId, sessionId);
+
+      closeAssemblyStreaming(key);
+
+      const settings = await getEffectiveSettings(hostname);
+      if (!settings.enabled || settings.provider !== PROVIDERS.ASSEMBLY || !settings.assemblyaiStreamingEnabled) {
+        return;
+      }
+
+      const rawKey = (settings.assemblyaiApiKey || '').trim();
+      if (!rawKey) {
+        sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'AssemblyAI API key missing. Set it in options.' });
+        return;
+      }
+
+      let token;
+      try {
+        token = await getAssemblyStreamingToken(rawKey);
+      } catch (err) {
+        sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: err?.message || String(err) });
+        return;
+      }
+
+      const language = resolveAssemblyStreamingLanguage(settings);
+
+      const ws = openAssemblyStreamingSocket(token, {
+        multilingual: settings.assemblyaiStreamingMultilingualEnabled === true,
+        language
+      });
+
+      const session = {
+        ws,
+        tabId,
+        frameId,
+        sessionId,
+        hostname,
+        graceEnabled: settings.graceEnabled,
+        graceMs: settings.graceMs,
+        ready: false,
+        socketOpen: false,
+        pendingChunks: []
+      };
+      assemblyStreamingBySession.set(key, session);
+
+      armAssemblyBeginTimer(session);
+
+      ws.onopen = () => {
+        session.socketOpen = true;
+        armAssemblyBeginTimer(session);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data || '{}');
+          handleStreamingMessage(session, payload);
+        } catch (_) { }
+      };
+
+      ws.onerror = () => {
+        sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'AssemblyAI streaming error' });
+        closeAssemblyStreaming(key);
+      };
+
+      ws.onclose = (event) => {
+        const key = sessionKey(tabId, sessionId);
+
+        if (assemblyStopRequestedBySession.has(key)) {
+          assemblyStopRequestedBySession.delete(key);
+          closeAssemblyStreaming(key);
+          return;
+        }
+
+        if (!session.retried) {
+          session.retried = true;
+          clearAssemblyBeginTimer(session);
+          session.pendingChunks = [];
+          closeAssemblyStreaming(key);
+
+          (async () => {
+            try {
+              const freshToken = await getAssemblyStreamingToken(rawKey);
+              const retryWs = openAssemblyStreamingSocket(freshToken, {
+                multilingual: settings.assemblyaiStreamingMultilingualEnabled === true,
+                language
+              });
+
+              session.ws = retryWs;
+              session.ready = false;
+              session.socketOpen = false;
+
+              retryWs.onopen = ws.onopen;
+              retryWs.onmessage = ws.onmessage;
+              retryWs.onerror = ws.onerror;
+              retryWs.onclose = ws.onclose;
+
+              armAssemblyBeginTimer(session);
+            } catch (_) {
+              closeAssemblyStreaming(key);
+            }
+          })();
+
+          return;
+        }
+
+        if (event?.code === 4001) {
+          sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'AssemblyAI unauthorized (check API key).' });
+        }
+        closeAssemblyStreaming(key);
+      };
+    })();
+    return;
+  }
+
+  if (message?.type === 'ASSEMBLYAI_STREAM_CHUNK') {
+    const sessionId = message.sessionId || 0;
+    const key = sessionKey(tabId, sessionId);
+    const session = assemblyStreamingBySession.get(key);
+    if (!session?.ws) return;
+
+    if (session.ws.readyState === WebSocket.OPEN) {
+      try {
+        session.ws.send(message.audioData);
+      } catch (_) { }
+      return;
+    }
+
+    session.pendingChunks.push(message.audioData);
+    if (session.pendingChunks.length > ASSEMBLYAI_PENDING_CHUNKS_MAX) {
+      session.pendingChunks.shift();
+    }
+    return;
+  }
+
+  if (message?.type === 'ASSEMBLYAI_STREAM_STOP') {
+    const sessionId = message.sessionId || 0;
+    const key = sessionKey(tabId, sessionId);
+    assemblyStopRequestedBySession.add(key);
+    closeAssemblyStreaming(key);
+    return;
+  }
+
   // ---------------- Recording UI state ----------------
-  // NOTE: with the content.js fix, RECORDING_START is now only sent once MediaRecorder actually started.
   if (message?.type === 'RECORDING_START') {
     const ts = getTabState(tabId);
 
-    // Don't override processing if a transcription is already running
     if (ts.state !== 'processing') setTabState(tabId, 'recording', null).catch(() => { });
 
-    // Background-side debug + forwarded debug
     dbg('recording_start', {
       tabId,
       frameId,
@@ -1037,7 +1852,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
       setTabState(tabId, 'idle', null).catch(() => { });
     }
 
-    // NEW: clear error hold so it can't override the cancel badge
+    closeAssemblyStreaming(sessionKey(tabId, sessionId));
+
     const ts = getTabState(tabId);
     ts.errorHoldUntil = 0;
     ts.state = 'idle';
@@ -1179,7 +1995,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
       const send = () => {
         if (isCanceled(tabId, sessionId)) return;
-        sendTerminal(tabId, frameId, { type: 'WHISPER_RESULT_TO_PAGE_BRIDGE', text, sessionId });
+        sendTerminal(tabId, frameId, { type: 'WHISPER_RESULT_TO_PAGE_BRIDGE', text, sessionId, isFinal: true });
         dbgToTab(tabId, frameId, 'result_sent', { chars: text.length, sessionId });
       };
       if (graceEnabled) setTimeout(send, graceMs);
@@ -1212,11 +2028,20 @@ browser.runtime.onMessage.addListener((message, sender) => {
 browser.runtime.onStartup?.addListener(() => {
   refreshRuntimeFlagsFromStorage().then(() => prefetchDefaultModelIfEnabled());
 });
+
 browser.runtime.onInstalled.addListener((details) => {
+  // Always refresh flags first
   refreshRuntimeFlagsFromStorage().then(() => prefetchDefaultModelIfEnabled());
 
-  if (details?.reason === 'install') {
-    try { browser.runtime.openOptionsPage(); } catch (_) { }
+  // Open options on fresh install OR when re-added after removal
+  if (details?.reason === 'install' || details?.reason === 'update') {
+    // Optional: you could add version comparison if you want to avoid opening on every update
+    // e.g. if (!details.previousVersion) { ... } for true first install only
+    try {
+      browser.runtime.openOptionsPage();
+    } catch (err) {
+      console.error("Failed to open options page:", err);
+    }
   }
 });
 
@@ -1228,9 +2053,20 @@ function clearTabTracking(tabId) {
   clearProcessingTimeout(tabId);
   tabStateById.delete(tabId);
 
-  // NEW: drop any epoch mapping for this tab (all frames)
   for (const k of pageInstanceByTabFrame.keys()) {
     if (k.startsWith(`${tabId}:`)) pageInstanceByTabFrame.delete(k);
+  }
+
+  for (const [key, session] of assemblyStreamingBySession.entries()) {
+    if (session.tabId === tabId) {
+      closeAssemblyStreaming(key);
+    }
+  }
+
+  for (const [key, session] of voskStreamingBySession.entries()) {
+    if (session.tabId === tabId) {
+      voskStreamingBySession.delete(key);
+    }
   }
 }
 

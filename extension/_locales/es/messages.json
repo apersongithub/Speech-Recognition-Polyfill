@@ -1,182 +1,611 @@
 {
-  "ext_name": { "message": "Polyfill de reconocimiento de voz" },
-  "ext_desc": { "message": "Polyfill de reconocimiento de voz con Whisper local y transcripción en la nube opcional (AssemblyAI)." },
-  "browser_action_title": { "message": "Reconocimiento de voz" },
-
-  "options_page_title": { "message": "Ajustes de reconocimiento de voz" },
-  "options_heading": { "message": "Ajustes de reconocimiento de voz" },
-  "banner_text": { "message": "⚠️ Aviso: Esto no es un arreglo temporal de la API WebSpeech. Puedes ver el estado de reconocimiento de voz desde el icono de la extensión (fíjalo en la barra). Para el mejor rendimiento usa el motor en la nube. Algunos ajustes requieren recargar la página. Más información <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>AQUÍ</strong></a>" },
-
-  "section_engine": { "message": "Motor" },
-  "engine_note": { "message": "Whisper se ejecuta localmente; AssemblyAI envía audio a la nube (requiere clave API)." },
-  "engine_label": { "message": "Proveedor" },
-  "engine_local": { "message": "Whisper en el dispositivo (OpenAI)" },
-  "engine_assemblyai": { "message": "Nube (AssemblyAI)" },
-
-  "status_saved": { "message": "Guardado" },
-
-  "section_local_title": { "message": "Whisper en el dispositivo" },
-  "pill_local": { "message": "Local" },
-  "local_config_note": { "message": "Configura el modelo local, idioma y tiempo de silencio." },
-
-  "ai_model": { "message": "Modelo de IA" },
-  "group_en_fast": { "message": "Solo inglés" },
-  "group_multi": { "message": "Multilingüe (general)" },
-
-  "model_tiny_en": { "message": "Tiny inglés (~75 MB)" },
-  "model_base_en": { "message": "Base inglés (~150 MB)" },
-  "model_distil_en": { "message": "Distil-Medium inglés (~600 MB)" },
-  "model_small_en": { "message": "Small inglés (~500 MB)" },
-  "model_tiny_multi": { "message": "Tiny multilingüe (~150 MB)" },
-  "model_base_multi": { "message": "Base multilingüe (~290 MB)" },
-  "model_small_multi": { "message": "Small multilingüe (~1 GB)" },
-
-  "size_warning": { "message": "⚠️ Modelo pesado: el primer uso será lento. Si falla, usa Base o Tiny." },
-
-  "language_label": { "message": "Idioma" },
-  "lang_auto": { "message": "Detección automática" },
-  "lang_en": { "message": "Inglés" },
-  "lang_es": { "message": "Español" },
-  "lang_fr": { "message": "Francés" },
-  "lang_de": { "message": "Alemán" },
-  "lang_it": { "message": "Italiano" },
-  "lang_pt": { "message": "Portugués" },
-  "lang_ja": { "message": "Japonés" },
-  "lang_zh": { "message": "Chino" },
-  "lang_ru": { "message": "Ruso" },
-  "lang_note": { "message": "El idioma que el traductor intentará descifrar." },
-
-  "silence_timeout": { "message": "Tiempo de silencio (ms)" },
-  "silence_note": { "message": "Tiempo de espera después de hablar antes de enviar." },
-
-  "grace_window_label": { "message": "Ventana de gracia (ms)" },
-  "grace_window_note": { "message": "Evita resultados tardíos tras cancelar/detener cuando la gracia está activa." },
-
-  "section_cloud_title": { "message": "Nube (AssemblyAI)" },
-  "pill_cloud": { "message": "Nube" },
-  "cloud_key_note": { "message": "Introduce tu clave de AssemblyAI para habilitar la transcripción en la nube." },
-  "assemblyai_key_label": { "message": "Clave API de AssemblyAI" },
-  "assemblyai_key_placeholder": { "message": "Ej.: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
-  "assemblyai_key_note": { "message": "Se guarda localmente; se usa solo con el motor en la nube. Es gratis pero requiere cuenta porque el audio se envía a AssemblyAI." },
-  "assemblyai_get_key_btn": { "message": "Obtener clave API de AssemblyAI" },
-
-  "section_shortcuts": { "message": "Atajos de voz" },
-  "shortcuts_note": { "message": "Configura el atajo de voz y el comportamiento de inserción." },
-  "shortcut_enable": { "message": "Habilitar atajo de voz" },
-  "shortcut_enable_note": { "message": "Bastante autoexplicativo..." },
-  "shortcut_hotkey_label": { "message": "Atajo de teclado" },
-  "shortcut_hotkey_placeholder": { "message": "Haz clic y pulsa teclas (Alt+A)" },
-  "shortcut_hotkey_note": { "message": "Haz clic y pulsa la combinación. Retroceso/Supr para borrar. Esc para desactivar. Vacío desactiva." },
-  "send_enter_after_label": { "message": "Enviar Enter tras insertar texto" },
-  "send_enter_after_note": { "message": "Pulsa automáticamente 'Enter' en el campo enfocado después de insertar texto." },
-
-  "section_overrides": { "message": "Anulaciones por sitio" },
-  "overrides_note": { "message": "Anula modelo, idioma o motor por sitio." },
-
-  "hostname": { "message": "Host" },
-  "hostname_placeholder": { "message": "ejemplo.com" },
-
-  "model_label": { "message": "Modelo" },
-  "override_default_option": { "message": "(Predeterminado)" },
-
-  "timeout_label": { "message": "Tiempo" },
-  "override_timeout_placeholder": { "message": "(Predeterminado)" },
-
-  "override_status_label": { "message": "Estado de la extensión" },
-  "override_status_default": { "message": "(Predeterminado: habilitado)" },
-  "override_status_disabled": { "message": "Deshabilitado" },
-
-  "add_rule": { "message": "Añadir reglas" },
-  "clear_inputs": { "message": "Limpiar entradas" },
-  "remove_rule": { "message": "Eliminar todas las reglas" },
-
-  "overrides_list_title": { "message": "Anulaciones guardadas" },
-  "show": { "message": "Mostrar" },
-  "hide": { "message": "Ocultar" },
-
-  "table_host": { "message": "Host" },
-  "table_enabled": { "message": "Habilitado" },
-  "table_model": { "message": "Modelo" },
-  "table_lang": { "message": "Idioma" },
-  "table_timeout": { "message": "Tiempo" },
-  "table_engine": { "message": "Proveedor" },
-  "table_remove": { "message": "Eliminar" },
-
-  "section_developer": { "message": "Ajustes de desarrollador" },
-  "developer_note": { "message": "Alternas avanzadas para depuración y comportamiento experimental. Ordenado por claridad." },
-
-  "debug_banners": { "message": "Habilitar modo depuración" },
-  "debug_note": { "message": "Activa banners tipo toast y registros de consola." },
-
-  "boost_mic_label": { "message": "Aumentar ganancia del micrófono" },
-  "boost_mic_note": { "message": "Amplifica la entrada del micrófono antes de grabar (ganancia fija)." },
-
-  "strip_trailing_period_label": { "message": "Desactivar eliminación del punto final" },
-  "strip_trailing_period_note": { "message": "Elimina un “.” final del texto reconocido." },
-
-  "disable_favicons_label": { "message": "Desactivar favicons en la tabla de anulaciones" },
-  "disable_favicons_note": { "message": "Los favicons se muestran por defecto. Activa para ocultarlos." },
-
-  "show_engine_sections_label": { "message": "Mostrar secciones específicas del motor" },
-  "show_engine_sections_note": { "message": "Las secciones se ocultan/mostrar según el motor." },
-
-  "cache_default_model_label": { "message": "Cachear modelo predeterminado (precarga al iniciar)" },
-  "cache_default_model_note": { "message": "Precarga el modelo Whisper predeterminado para acelerar el primer uso (usa RAM). Solo motor local." },
-
-  "enable_hardcap_label": { "message": "Activar límite fijo de 5 s" },
-  "enable_hardcap_note": { "message": "Las grabaciones de voz tienen un límite fijo de 5 s." },
-
-  "disable_grace_label": { "message": "Desactivar ventana de gracia" },
-  "disable_grace_note": { "message": "La gracia está activada; ajusta los ms arriba." },
-
-  "section_save_reset": { "message": "Datos" },
-  "data_note": { "message": "Exporta/importa ajustes como JSON o restablece a valores predeterminados. También hay anulaciones predefinidas <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>AQUÍ</strong></a>" },
-  "export_settings": { "message": "Exportar" },
-  "import_settings": { "message": "Importar" },
-  "factory_reset": { "message": "Restablecer de fábrica" },
-
-  "popup_page_title": { "message": "Reconocimiento de voz" },
-  "popup_site_label": { "message": "Sitio: (cargando…)" },
-  "popup_status_section": { "message": "Estado de la extensión" },
-  "popup_status_default": { "message": "Habilitado (predeterminado)" },
-  "popup_status_disabled": { "message": "Deshabilitado en este sitio" },
-
-  "override_use_default": { "message": "Usar predeterminado" },
-
-  "popup_timeout_label": { "message": "Tiempo de silencio (ms)" },
-  "popup_timeout_placeholder": { "message": "Usar predeterminado" },
-
-  "popup_remove": { "message": "Eliminar anulación" },
-  "popup_open_options": { "message": "Abrir opciones completas" },
-  "popup_status_saved": { "message": "Guardado" },
-
-  "popup_site_prefix": { "message": "Sitio" },
-  "popup_site_unknown": { "message": "Sitio: (desconocido)" },
-  "popup_removed": { "message": "Eliminado" },
-
-  "model_not_allowed": { "message": "Modelo no permitido." },
-
-  "title_idle": { "message": "Whisper: Inactivo" },
-  "title_recording": { "message": "Whisper: Escuchando" },
-  "title_processing": { "message": "Whisper: Procesando" },
-  "title_error": { "message": "Whisper: Error" },
-
-  "backend_indicator_label": { "message": "Backend local de Whisper:" },
-  "backend_indicator_value_active": { "message": "Activo" },
-  "backend_indicator_value_unknown": { "message": "Desconocido" },
-
-  "backend_chip_webgpu": { "message": "WebGPU" },
-  "backend_chip_wasm": { "message": "WASM" },
-  "backend_chip_unknown": { "message": "Desconocido" },
-
-  "backend_hint_default": { "message": "Se ejecuta con WebGPU cuando está disponible; recurre a WASM si no es compatible." },
-  "backend_hint_webgpu": { "message": "Acelerado por GPU (mejor rendimiento cuando se admite)." },
-  "backend_hint_wasm": { "message": "Reserva en CPU (WebGPU no compatible o fallo de inicialización)." },
-  "backend_hint_unknown": { "message": "El backend se detectará después de la primera transcripción/carga local." },
-  "backend_hint_webgpu_enabled_supported": { "message": "WebGPU está habilitado y soportado. Se activará tras la próxima carga/transcripción local." },
-  "backend_hint_preferred_wasm": { "message": "WASM está seleccionado como backend preferido." },
-  "backend_hint_webgpu_init_failed_prefix": { "message": "La API WebGPU existe, pero falló la inicialización del adaptador/dispositivo:" },
-  "backend_hint_webgpu_unavailable": { "message": "WebGPU no está disponible en este contexto; usando WASM." },
-  "backend_hint_using_wasm": { "message": "Usando WASM." },
-  "backend_unknown_error": { "message": "error desconocido" }
+  "ext_name": {
+    "message": "Speech Recognition Polyfill"
+  },
+  "ext_desc": {
+    "message": "Polyfill de reconocimiento de voz con Whisper y Vosk locales y transcripción en la nube opcional (AssemblyAI)."
+  },
+  "browser_action_title": {
+    "message": "Reconocimiento de voz"
+  },
+  "options_page_title": {
+    "message": "Ajustes de reconocimiento de voz"
+  },
+  "options_heading": {
+    "message": "Ajustes de reconocimiento de voz"
+  },
+  "banner_text": {
+    "message": "⚠️ Aviso: Esto no es una solución temporal para la API WebSpeech. Puede ver el estado del reconocimiento de voz a través del icono de la extensión (fíjelo en la barra de menús). Información adicional está <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>AQUÍ!</strong></a>"
+  },
+  "section_engine": {
+    "message": "Motor"
+  },
+  "engine_note": {
+    "message": "Whisper y Vosk se ejecutan localmente; AssemblyAI envía audio a la nube (requiere clave API)."
+  },
+  "engine_label": {
+    "message": "Proveedor"
+  },
+  "engine_local": {
+    "message": "Whisper"
+  },
+  "engine_vosk": {
+    "message": "Vosk"
+  },
+  "engine_assemblyai": {
+    "message": "AssemblyAI"
+  },
+  "show_engine_sections_label": {
+    "message": "Mostrar secciones específicas del motor"
+  },
+  "show_engine_sections_note": {
+    "message": "Las secciones se ocultan automáticamente según el motor."
+  },
+  "cache_default_model_label": {
+    "message": "Cachear el modelo predeterminado al iniciar"
+  },
+  "cache_default_model_note": {
+    "message": "Prefetch del modelo local predeterminado para que el primer uso sea más rápido (ocupará RAM)."
+  },
+  "status_saved": {
+    "message": "Guardado"
+  },
+  "section_local_title": {
+    "message": "Whisper"
+  },
+  "pill_local": {
+    "message": "Local"
+  },
+  "pill_nostreaming": {
+    "message": "Streaming no soportado"
+  },
+  "local_config_note": {
+    "message": "Configura el modelo local, el idioma y el tiempo de silencio."
+  },
+  "ai_model": {
+    "message": "Modelo de IA"
+  },
+  "group_en_fast": {
+    "message": "Solo inglés"
+  },
+  "model_tiny_en": {
+    "message": "Tiny English (~75MB)"
+  },
+  "model_base_en": {
+    "message": "Base English (~150MB)"
+  },
+  "model_distil_en": {
+    "message": "Distil-Medium English (~600MB)"
+  },
+  "model_small_en": {
+    "message": "Small English (~500MB)"
+  },
+  "group_multi": {
+    "message": "Multilingüe (Uso general)"
+  },
+  "model_tiny_multi": {
+    "message": "Tiny Multilingual (~150MB)"
+  },
+  "model_base_multi": {
+    "message": "Base Multilingual (~290MB)"
+  },
+  "model_small_multi": {
+    "message": "Small Multilingual (~1GB)"
+  },
+  "language_label": {
+    "message": "Idioma"
+  },
+  "lang_auto": {
+    "message": "Detección automática"
+  },
+  "lang_en": {
+    "message": "Inglés"
+  },
+  "lang_es": {
+    "message": "Español"
+  },
+  "lang_fr": {
+    "message": "Francés"
+  },
+  "lang_de": {
+    "message": "Alemán"
+  },
+  "lang_it": {
+    "message": "Italiano"
+  },
+  "lang_pt": {
+    "message": "Portugués"
+  },
+  "lang_nl": {
+    "message": "Holandés"
+  },
+  "lang_ru": {
+    "message": "Ruso"
+  },
+  "lang_zh": {
+    "message": "Chino"
+  },
+  "lang_ja": {
+    "message": "Japonés"
+  },
+  "lang_pl": {
+    "message": "Polaco"
+  },
+  "lang_tr": {
+    "message": "Turco"
+  },
+  "lang_ar": {
+    "message": "Árabe"
+  },
+  "lang_hi": {
+    "message": "Hindi"
+  },
+  "timeout_label": {
+    "message": "Tiempo de silencio (ms)"
+  },
+  "timeout_placeholder": {
+    "message": "Usar predeterminado"
+  },
+  "popup_page_title": {
+    "message": "Reconocimiento de voz"
+  },
+  "popup_site_label": {
+    "message": "Sitio:"
+  },
+  "popup_status_section": {
+    "message": "Estado de la extensión"
+  },
+  "popup_status_default": {
+    "message": "Habilitado (predeterminado)"
+  },
+  "popup_status_disabled": {
+    "message": "Deshabilitado en este sitio"
+  },
+  "override_use_default": {
+    "message": "Usar predeterminado"
+  },
+  "model_label": {
+    "message": "Modelo"
+  },
+  "popup_timeout_label": {
+    "message": "Tiempo de silencio (ms)"
+  },
+  "popup_timeout_placeholder": {
+    "message": "Usar predeterminado"
+  },
+  "popup_remove": {
+    "message": "Quitar anulación"
+  },
+  "popup_open_options": {
+    "message": "Abrir opciones completas"
+  },
+  "popup_status_saved": {
+    "message": "Guardado"
+  },
+  "popup_removed": {
+    "message": "Eliminado"
+  },
+  "model_not_allowed": {
+    "message": "Modelo no permitido."
+  },
+  "section_speech_logic": {
+    "message": "Lógica de voz"
+  },
+  "speech_logic_note": {
+    "message": "Configura detección de silencio, streaming y otra lógica de voz."
+  },
+  "enable_hardcap_label": {
+    "message": "Habilitar límite máximo de grabación"
+  },
+  "enable_hardcap_note": {
+    "message": "Detiene la grabación después de un tiempo fijo (p. ej., 30s) para prevenir grabaciones largas."
+  },
+  "section_vosk_title": {
+    "message": "Vosk"
+  },
+  "pill_streaming": {
+    "message": "Streaming"
+  },
+  "vosk_config_note": {
+    "message": "Configura modelo Vosk, gramática y streaming."
+  },
+  "vosk_model_label": {
+    "message": "Modelo Vosk"
+  },
+  "vosk_model_placeholder": {
+    "message": "Introduce ID de modelo Vosk (p. ej., vosk-model-small-en-us-0.15)"
+  },
+  "vosk_grammar_label": {
+    "message": "Gramática Vosk (opcional)"
+  },
+  "vosk_grammar_placeholder": {
+    "message": "Palabras/frases separadas por comas"
+  },
+  "vosk_streaming_label": {
+    "message": "Habilitar streaming Vosk"
+  },
+  "vosk_streaming_note": {
+    "message": "Transmite resultados parciales en tiempo real."
+  },
+  "vosk_streaming_partial_label": {
+    "message": "Resultados parciales de Vosk en silencio"
+  },
+  "vosk_streaming_partial_note": {
+    "message": "Enviar resultados parciales durante pausas de silencio."
+  },
+  "section_assemblyai_title": {
+    "message": "AssemblyAI"
+  },
+  "pill_cloud": {
+    "message": "Nube"
+  },
+  "assemblyai_config_note": {
+    "message": "Configura la clave API de AssemblyAI y opciones de streaming."
+  },
+  "assemblyai_key_label": {
+    "message": "Clave API de AssemblyAI"
+  },
+  "assemblyai_key_placeholder": {
+    "message": "Introduce tu clave API de AssemblyAI"
+  },
+  "assemblyai_streaming_label": {
+    "message": "Habilitar streaming de AssemblyAI"
+  },
+  "assemblyai_streaming_note": {
+    "message": "Transmite resultados parciales/finales en tiempo real."
+  },
+  "assemblyai_streaming_multilingual_label": {
+    "message": "Streaming multilingüe de AssemblyAI"
+  },
+  "assemblyai_streaming_multilingual_note": {
+    "message": "Soporta múltiples idiomas en modo streaming."
+  },
+  "assemblyai_streaming_silence_mode_label": {
+    "message": "Modo de silencio en streaming"
+  },
+  "assemblyai_streaming_silence_partial": {
+    "message": "Parcial en silencio"
+  },
+  "assemblyai_streaming_silence_always": {
+    "message": "Siempre en silencio"
+  },
+  "assemblyai_streaming_silence_never": {
+    "message": "Nunca en silencio"
+  },
+  "section_speech_triggers": {
+    "message": "Disparadores de voz"
+  },
+  "speech_triggers_note": {
+    "message": "Configura atajos, ganancia del micrófono y procesamiento de salida."
+  },
+  "strip_trailing_period_label": {
+    "message": "Eliminar punto final"
+  },
+  "strip_trailing_period_note": {
+    "message": "Elimina el punto final de la salida de la transcripción."
+  },
+  "disable_space_normalization_label": {
+    "message": "Desactivar normalización de espacios"
+  },
+  "disable_space_normalization_note": {
+    "message": "Desactiva la inserción automática de espacios entre resultados."
+  },
+  "send_enter_after_label": {
+    "message": "Enviar Enter después del resultado"
+  },
+  "send_enter_after_note": {
+    "message": "Simula pulsar Enter tras insertar texto."
+  },
+  "hotkey_label": {
+    "message": "Atajo"
+  },
+  "hotkey_set_button": {
+    "message": "Establecer atajo"
+  },
+  "enable_shortcut_label": {
+    "message": "Habilitar atajo"
+  },
+  "enable_shortcut_note": {
+    "message": "Habilita el atajo para iniciar/detener la grabación."
+  },
+  "mic_gain_label": {
+    "message": "Ganancia del micrófono"
+  },
+  "mic_gain_note": {
+    "message": "Aumenta el volumen de entrada del micrófono (1.0-3.0)."
+  },
+  "silence_sensitivity_label": {
+    "message": "Sensibilidad al silencio"
+  },
+  "silence_sensitivity_note": {
+    "message": "Ajusta el umbral de detección de silencio (6-20)."
+  },
+  "section_dev": {
+    "message": "Opciones de desarrollador"
+  },
+  "dev_note": {
+    "message": "Opciones avanzadas para depuración y ajustes de la UI."
+  },
+  "debug_logs": {
+    "message": "Habilitar logs de depuración"
+  },
+  "debug_logs_note": {
+    "message": "Registra mensajes detallados del script de fondo/contenido en la consola."
+  },
+  "toast_toggle": {
+    "message": "Habilitar notificaciones toast"
+  },
+  "toast_toggle_note": {
+    "message": "Mostrar toasts en la página (grabando/procesando/errores)."
+  },
+  "hide_banner": {
+    "message": "Ocultar banner superior"
+  },
+  "hide_banner_note": {
+    "message": "Elimina el banner de alerta en la parte superior de esta página."
+  },
+  "disable_favicons_label": {
+    "message": "Deshabilitar favicons en la tabla de overrides"
+  },
+  "disable_favicons_note": {
+    "message": "Los favicons se muestran por defecto. Activar para ocultarlos."
+  },
+  "section_save_reset": {
+    "message": "Datos"
+  },
+  "data_note": {
+    "message": "Exporta/importa ajustes como JSON o restablece a valores predeterminados. ¡Overrides preconstruidos también están AQUÍ!"
+  },
+  "export_settings": {
+    "message": "Exportar"
+  },
+  "import_settings": {
+    "message": "Importar"
+  },
+  "factory_reset": {
+    "message": "Restablecer a valores de fábrica"
+  },
+  "backend_indicator_label": {
+    "message": "Backend Whisper local:"
+  },
+  "backend_indicator_value_unknown": {
+    "message": "Desconocido"
+  },
+  "backend_hint_default": {
+    "message": "Se ejecuta en WebGPU cuando está disponible; vuelve a WASM si no es compatible."
+  },
+  "backend_chip_unknown": {
+    "message": "Desconocido"
+  },
+  "backend_indicator_value_active": {
+    "message": "Activo"
+  },
+  "backend_chip_webgpu": {
+    "message": "WebGPU"
+  },
+  "backend_chip_wasm": {
+    "message": "WASM"
+  },
+  "backend_hint_webgpu": {
+    "message": "Acelerado por GPU (mejor rendimiento cuando está soportado)."
+  },
+  "backend_hint_webgpu_enabled_supported": {
+    "message": "WebGPU está habilitado y soportado. Se activará después de la próxima carga/transcripción del modelo local."
+  },
+  "backend_hint_preferred_wasm": {
+    "message": "WASM está seleccionado como backend preferido."
+  },
+  "backend_hint_webgpu_init_failed_prefix": {
+    "message": "La API WebGPU existe, pero la inicialización de adaptador/dispositivo falló:"
+  },
+  "backend_unknown_error": {
+    "message": "error desconocido"
+  },
+  "backend_hint_webgpu_unavailable": {
+    "message": "WebGPU no está disponible en este contexto; usando WASM."
+  },
+  "backend_hint_using_wasm": {
+    "message": "Usando WASM."
+  },
+  "title_recording": {
+    "message": "Whisper: Escuchando"
+  },
+  "title_processing": {
+    "message": "Whisper: Procesando"
+  },
+  "title_error": {
+    "message": "Whisper: Error"
+  },
+  "title_idle": {
+    "message": "Whisper: Inactivo"
+  },
+  "size_warning": {
+    "message": "⚠️ Modelo pesado: La primera ejecución será lenta. Si falla, use Base o Tiny."
+  },
+  "vosk_size_warning": {
+    "message": "⚠️ Modelo Vosk grande: la primera carga será lenta y exigente en memoria."
+  },
+  "popup_site_prefix": {
+    "message": "Sitio"
+  },
+  "popup_site_unknown": {
+    "message": "Sitio: (desconocido)"
+  },
+  "hide": {
+    "message": "Ocultar"
+  },
+  "show": {
+    "message": "Mostrar"
+  },
+  "backend_chip_unknown_note": {
+    "message": "Estado de backend desconocido"
+  },
+  "add_rule": {
+    "message": "Agregar reglas"
+  },
+  "assemblyai_get_key_btn": {
+    "message": "Obtener una clave API de AssemblyAI"
+  },
+  "assemblyai_key_note": {
+    "message": "Almacenada localmente; solo se usa cuando se selecciona el motor en la nube. Es gratis pero requiere cuenta ya que los datos de voz se envían a AssemblyAI."
+  },
+  "assemblyai_streaming_silence_always_label": {
+    "message": "Aplicar siempre timeout de silencio para streaming"
+  },
+  "assemblyai_streaming_silence_never_label": {
+    "message": "Nunca aplicar timeout de silencio para streaming"
+  },
+  "assemblyai_streaming_silence_partial_label": {
+    "message": "Timeout de silencio solo cuando se inicia desde la UI del sitio, no por atajo (Determinista)"
+  },
+  "clear_inputs": {
+    "message": "Borrar entradas"
+  },
+  "cloud_key_note": {
+    "message": "Proporcione su clave de AssemblyAI para habilitar la transcripción en la nube."
+  },
+  "developer_note": {
+    "message": "Conmutadores avanzados para depuración y comportamiento experimental. Ordenados por comprensibilidad."
+  },
+  "disable_assemblyai_multilingual_label": {
+    "message": "Deshabilitar modelo multilingüe de AssemblyAI"
+  },
+  "disable_assemblyai_streaming_label": {
+    "message": "Deshabilitar streaming en tiempo real de AssemblyAI"
+  },
+  "disable_grace_label": {
+    "message": "Deshabilitar ventana de gracia"
+  },
+  "disable_grace_note": {
+    "message": "Grace está habilitado; ajuste ms de grace arriba."
+  },
+  "disable_processing_timeouts_label": {
+    "message": "Deshabilitar timeouts de procesamiento"
+  },
+  "disable_processing_timeouts_note": {
+    "message": "Desactiva el watchdog del content-script y los timeouts de procesamiento en segundo plano. Puede volver la extensión poco responsiva, aunque útil para grabaciones largas."
+  },
+  "disable_speech_shortcut_label": {
+    "message": "Deshabilitar atajo de voz"
+  },
+  "grace_window_label": {
+    "message": "Ventana de gracia (ms)"
+  },
+  "grace_window_note": {
+    "message": "Evita resultados tardíos tras cancelar/detener cuando grace está activado."
+  },
+  "group_vosk_quick": {
+    "message": "Vosk (selección rápida)"
+  },
+  "group_whisper": {
+    "message": "Whisper"
+  },
+  "hostname": {
+    "message": "Hostname"
+  },
+  "hostname_placeholder": {
+    "message": "example.com"
+  },
+  "lang_note": {
+    "message": "El idioma que el traductor intentará descifrar."
+  },
+  "link_here": {
+    "message": "AQUÍ!"
+  },
+  "logic_note": {
+    "message": "Configura la entrada de audio, el comportamiento de grabación y las reglas de streaming."
+  },
+  "override_default_option": {
+    "message": "(Predeterminado)"
+  },
+  "override_status_default": {
+    "message": "(Predeterminado: Habilitado)"
+  },
+  "override_status_disabled": {
+    "message": "Deshabilitado"
+  },
+  "override_status_label": {
+    "message": "Estado de la extensión"
+  },
+  "override_timeout_placeholder": {
+    "message": "(Predeterminado)"
+  },
+  "overrides_list_title": {
+    "message": "Overrides guardados"
+  },
+  "overrides_note": {
+    "message": "Anule modelo, idioma o motor por sitio."
+  },
+  "remove_rule": {
+    "message": "Eliminar todas las reglas"
+  },
+  "section_cloud_title": {
+    "message": "AssemblyAI"
+  },
+  "section_developer": {
+    "message": "Ajustes de desarrollador"
+  },
+  "section_logic": {
+    "message": "Lógica de voz"
+  },
+  "section_overrides": {
+    "message": "Overrides por sitio"
+  },
+  "section_triggers": {
+    "message": "Disparadores"
+  },
+  "shortcut_enable_note": {
+    "message": "Bastante autoexplicativo..."
+  },
+  "shortcut_hotkey_label": {
+    "message": "Atajo de teclado"
+  },
+  "shortcut_hotkey_note": {
+    "message": "Haz clic, pulsa la combinación que quieras. Backspace/Delete para borrar. Esc para desactivar atajo. Vacío lo desactiva."
+  },
+  "shortcut_hotkey_placeholder": {
+    "message": "Haz clic y pulsa teclas (Alt+A)"
+  },
+  "silence_note": {
+    "message": "Tiempo a esperar después de dejar de hablar antes de enviar."
+  },
+  "silence_timeout": {
+    "message": "Timeout de silencio (ms)"
+  },
+  "streaming_applies_note": {
+    "message": "Aplica a proveedores de streaming (Vosk + AssemblyAI)."
+  },
+  "streaming_silence_timeout": {
+    "message": "Timeout de silencio en streaming"
+  },
+  "table_enabled": {
+    "message": "Habilitado"
+  },
+  "table_engine": {
+    "message": "Proveedor"
+  },
+  "table_grace": {
+    "message": "Grace"
+  },
+  "table_host": {
+    "message": "Host"
+  },
+  "table_lang": {
+    "message": "Idioma"
+  },
+  "table_model": {
+    "message": "Modelo"
+  },
+  "table_remove": {
+    "message": ""
+  },
+  "table_timeout": {
+    "message": "Timeout"
+  },
+  "triggers_note": {
+    "message": "Configura cómo se captura la voz y cómo se envían los resultados."
+  },
+  "vosk_model_label_short": {
+    "message": "Modelo Vosk (escribe para buscar)"
+  }
 }

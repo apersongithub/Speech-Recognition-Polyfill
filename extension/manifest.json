@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "default_locale": "en",
   "name": "__MSG_ext_name__",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "__MSG_ext_desc__",
   "permissions": [
     "<all_urls>",
@@ -17,7 +17,7 @@
       }
     }
   },
-  "content_security_policy": "script-src 'unsafe-eval' 'self' https://cdn.jsdelivr.net; object-src 'self'",
+    "content_security_policy": "script-src 'unsafe-eval' 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net https://ccoreilly.github.io https://alphacephei.com https://api.assemblyai.com https://streaming.assemblyai.com wss://streaming.assemblyai.com https://huggingface.co https://cdn.huggingface.co https://*.hf.co https://*.s3.amazonaws.com; object-src 'self'",
   "icons": {
     "16": "images/microphone.svg",
     "32": "images/microphone.svg",
@@ -46,6 +46,7 @@
   ],
   "web_accessible_resources": [
     "polyfill.js",
-    "asr-worker.js"
+    "asr-worker.js",
+    "vosk-worker.js"
   ]
 }

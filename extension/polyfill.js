@@ -1,14 +1,6 @@
-// Updated polyfill.js
-// Caveat: WHISPER_PAGE_HANDLED means "I delivered the onresult callback" (not strictly "page inserted").
-// For apps like speechnotes.co, their onresult handler inserts, so this prevents duplicates.
-// If you ever find a site that consumes onresult but does NOT insert (rare), you may want to:
-// - increase the PAGE_ACK_TIMEOUT_MS in content.js, OR
-// - change the ack semantics to only send when you know insertion happened (not possible generically).
-
 (function () {
   console.log(" >>> GTranslate Polyfill: Initializing...");
 
-  // Do NOT spoof UA on Google Docs/Slides (causes intermittent keyboard lockups)
   const isDocsOrSlides = /(^|\.)docs\.google\.com$|(^|\.)slides\.google\.com$/i.test(location.hostname);
 
   try {
@@ -42,35 +34,128 @@
       this.onresult = null;
       this.onend = null;
       this.onstart = null;
+      this.onaudiostart = null;
+      this.onaudioend = null;
+      this.onspeechstart = null;
+      this.onspeechend = null;
+      this.onsoundstart = null;
+      this.onsoundend = null;
       this.isRecording = false;
 
+      this._results = [];
+      this._interimActive = false;
+      this._disableSpaceNormalization = false;
+      this._streamingActive = false;
+
       window.addEventListener("message", (e) => {
+        if (e.data && e.data.type === 'WHISPER_CONFIG') {
+          this._disableSpaceNormalization = !!e.data.disableSpaceNormalization;
+          this._streamingActive = !!e.data.streamingActive;
+        }
+
         if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
           if (!this.onresult) return;
 
-          const resultEvent = new window.webkitSpeechRecognitionEvent('result', {
-            results: [[{ transcript: e.data.text, confidence: 0.98, isFinal: true }]],
-            resultIndex: 0
-          });
-          resultEvent.results[0].isFinal = true;
+          const isFinal = e.data.isFinal !== false;
 
+          const rawText = e.data.text || '';
+          const prevIndex = this._interimActive ? (this._results.length - 2) : (this._results.length - 1);
+          const prev = (prevIndex >= 0 && this._results[prevIndex]) ? this._results[prevIndex].transcript : '';
+          const needsSpace = !this._disableSpaceNormalization && !!prev &&
+            !/[\\s\\(\\[\\{'"“‘]$/.test(prev) &&
+            !/^[\\s\\.,!?;:\\)\\]\\}'"”’]/.test(rawText);
+
+          const text = needsSpace ? (' ' + rawText) : rawText;
+
+          const resultObj = { transcript: text, confidence: 0.98, isFinal };
+
+          if (isFinal) {
+            if (this._interimActive) {
+              this._results[this._results.length - 1] = resultObj;
+            } else {
+              this._results.push(resultObj);
+            }
+            this._interimActive = false;
+          } else {
+            if (this._interimActive) {
+              this._results[this._results.length - 1] = resultObj;
+            } else {
+              this._results.push(resultObj);
+            }
+            this._interimActive = true;
+          }
+
+          const resultsList = this._results.map(r => {
+            const arr = [r];
+            arr.isFinal = r.isFinal;
+            return arr;
+          });
+
+          const resultEvent = new window.webkitSpeechRecognitionEvent('result', {
+            results: resultsList,
+            resultIndex: resultsList.length - 1
+          });
+
+          resultEvent.results[resultEvent.resultIndex].isFinal = isFinal;
           this.onresult?.(resultEvent);
+
+          if (isFinal) {
+            if (!e.data.streaming) {
+              this.onend?.();
+              this.isRecording = false;
+              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+            } else {
+              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+            }
+          }
+        }
+
+        if (e.data && e.data.type === 'WHISPER_AUDIO_START') {
+          this.onaudiostart?.();
+          this.dispatchEvent(new Event('audiostart'));
+          this.onsoundstart?.();
+          this.dispatchEvent(new Event('soundstart'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_AUDIO_END') {
+          this.onaudioend?.();
+          this.dispatchEvent(new Event('audioend'));
+          this.onsoundend?.();
+          this.dispatchEvent(new Event('soundend'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_SPEECH_START') {
+          this.onspeechstart?.();
+          this.dispatchEvent(new Event('speechstart'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_SPEECH_END') {
+          this.onspeechend?.();
+          this.dispatchEvent(new Event('speechend'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_FORCE_END') {
           this.onend?.();
           this.isRecording = false;
-
-          // Ack back to content script:
-          // signals "page bridge delivered the result"
-          window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
         }
       });
     }
 
     start() {
-      if (this.isRecording) return;
+      if (this.isRecording) {
+        if (this._streamingActive) {
+          this.isRecording = false; // allow restart during streaming sessions
+        } else {
+          return;
+        }
+      }
       this.isRecording = true;
       this.onstart?.();
+      this._results = [];
+      this._interimActive = false;
 
       this.dispatchEvent(new Event('audiostart'));
+      this.dispatchEvent(new Event('soundstart'));
 
       let requestedLang = this.lang || 'en';
       if (requestedLang.includes('-')) requestedLang = requestedLang.split('-')[0];
@@ -86,14 +171,15 @@
       this.isRecording = false;
       window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
       this.dispatchEvent(new Event('audioend'));
+      this.dispatchEvent(new Event('soundend'));
       this.onend?.();
     }
 
     abort() {
-      // Always signal cancel, even if isRecording is already false (late aborts from page)
       this.isRecording = false;
       window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
       this.dispatchEvent(new Event('audioend'));
+      this.dispatchEvent(new Event('soundend'));
       this.onend?.();
     }
 
@@ -101,7 +187,6 @@
     addEventListener(type, callback) { this["on" + type] = callback; }
   };
 
-  // Add aliases for modern API (this helps sites that check for SpeechRecognition)
   window.SpeechRecognition = window.webkitSpeechRecognition;
   window.SpeechRecognitionEvent = window.webkitSpeechRecognitionEvent;
 

@@ -4,652 +4,18 @@
 <head>
     <title data-i18n="options_page_title">Speech Recognition Settings</title>
     <link rel="icon" type="image/png" href="images/microphone.png" id="favicon">
-
-    <head>
-        <meta charset="UTF-8" />
-        <style>
-            :root {
-                --bg: #f7f9fb;
-                --card: #ffffff;
-                --primary: #2563eb;
-                --primary-dark: #1d4ed8;
-                --danger: #ef4444;
-                --danger-dark: #dc2626;
-                --text: #1f2933;
-                --muted: #6b7280;
-                --radius: 12px;
-                --shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-                --border: rgba(226, 232, 240, 0.7);
-                --input-bg: #f8fafc;
-                --input-border: #e2e8f0;
-                --pill-bg: #e0f2fe;
-                --pill-border: #bae6fd;
-
-                /* NEW: backend indicator colors */
-                --backend-good-bg: #ecfdf5;
-                --backend-good-border: #a7f3d0;
-                --backend-good-text: #065f46;
-
-                --backend-warn-bg: #fff7ed;
-                --backend-warn-border: #fed7aa;
-                --backend-warn-text: #9a3412;
-
-                --backend-wasm-bg: #f5f3ff;
-                --backend-wasm-border: #c4b5fd;
-                --backend-wasm-text: #6d28d9;
-            }
-
-            @media (prefers-color-scheme: dark) {
-                :root {
-                    --bg: #0f172a;
-                    --card: #111827;
-                    --primary: #3b82f6;
-                    --primary-dark: #2563eb;
-                    --danger: #ef4444;
-                    --danger-dark: #dc2626;
-                    --text: #e5e7eb;
-                    --muted: #94a3b8;
-                    --shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
-                    --border: rgba(255, 255, 255, 0.08);
-                    --input-bg: #111827;
-                    --input-border: #1f2937;
-                    --pill-bg: #0ea5e9;
-                    --pill-border: #0284c7;
-
-                    /* NEW: backend indicator colors (dark) */
-                    --backend-good-bg: rgba(16, 185, 129, 0.12);
-                    --backend-good-border: rgba(16, 185, 129, 0.35);
-                    --backend-good-text: #6ee7b7;
-
-                    --backend-warn-bg: rgba(249, 115, 22, 0.10);
-                    --backend-warn-border: rgba(249, 115, 22, 0.35);
-                    --backend-warn-text: #fdba74;
-
-                    --backend-wasm-bg: rgba(109, 40, 217, 0.14);
-                    --backend-wasm-border: rgba(196, 181, 253, 0.35);
-                    --backend-wasm-text: #c4b5fd;
-                }
-            }
-
-            * {
-                box-sizing: border-box;
-            }
-
-            body {
-                font-family: 'Inter', system-ui, -apple-system, sans-serif;
-                background: var(--bg);
-                padding: 12px;
-                color: var(--text);
-                display: flex;
-                justify-content: center;
-            }
-
-            .container {
-                width: 100%;
-                max-width: 620px;
-            }
-
-            h3 {
-                margin: 0 0 10px 0;
-                font-weight: 700;
-                letter-spacing: -0.01em;
-                color: var(--text);
-                text-align: center;
-            }
-
-            .card {
-                background: var(--card);
-                border-radius: var(--radius);
-                box-shadow: var(--shadow);
-                padding: 14px;
-                margin-bottom: 12px;
-                border: 1px solid var(--border);
-                animation: fadeInUp 160ms ease;
-            }
-
-            label {
-                font-weight: 500;
-                display: block;
-                margin-top: 8px;
-                font-size: 13px;
-                color: var(--text);
-            }
-
-            select,
-            input[type="text"],
-            input[type="number"],
-            input[type="password"] {
-                width: 100%;
-                padding: 8px 10px;
-                margin-top: 4px;
-                border-radius: 8px;
-                border: 1px solid var(--input-border);
-                background: var(--card);
-                transition: all 0.2s ease;
-                font-size: 14px;
-                color: var(--text);
-            }
-
-            @media (prefers-color-scheme: dark) {
-
-                select,
-                input[type="text"],
-                input[type="number"],
-                input[type="password"] {
-                    color: var(--text);
-                }
-            }
-
-            select:focus,
-            input:focus {
-                outline: none;
-                border-color: var(--primary);
-                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-            }
-
-            @media (prefers-color-scheme: dark) {
-
-                select:focus,
-                input:focus {
-                    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-                }
-            }
-
-            .checkbox-wrapper {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                margin-top: 6px;
-                cursor: pointer;
-            }
-
-            input[type="checkbox"] {
-                width: 16px;
-                height: 16px;
-                cursor: pointer;
-                accent-color: var(--primary);
-            }
-
-            .checkbox-label {
-                margin: 0;
-                font-weight: 500;
-                font-size: 13px;
-                color: var(--text);
-                cursor: pointer;
-            }
-
-            button {
-                background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-                color: #fff;
-                border: none;
-                cursor: pointer;
-                font-weight: 600;
-                padding: 9px 14px;
-                border-radius: 8px;
-                margin-top: 11px;
-                width: 100%;
-                transition: transform 0.1s, box-shadow 0.2s;
-            }
-
-            button:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
-            }
-
-            button:active {
-                transform: scale(0.99);
-            }
-
-            .btn-danger {
-                background: linear-gradient(135deg, var(--danger), var(--danger-dark));
-                box-shadow: 0 8px 16px rgba(239, 68, 68, 0.18);
-            }
-
-            .btn-secondary {
-                background: linear-gradient(135deg, #0ea5e9, #0284c7);
-                box-shadow: 0 8px 16px rgba(14, 165, 233, 0.18);
-            }
-
-            .note {
-                font-size: 12px;
-                color: var(--muted);
-                margin-bottom: 14px;
-                margin-top: 4px;
-                line-height: 1.4;
-            }
-
-            .status {
-                text-align: left;
-                font-size: 12px;
-                color: #16a34a;
-                margin-top: 6px;
-                opacity: 0;
-                transform: translateY(4px);
-                transition: opacity 0.25s, transform 0.25s;
-            }
-
-            .status.saved-pulse {
-                animation: savedPulse 260ms ease;
-                transform: translateY(0);
-            }
-
-            @keyframes savedPulse {
-                0% {
-                    transform: translateY(4px) scale(0.98);
-                    opacity: 0;
-                }
-
-                35% {
-                    opacity: 1;
-                }
-
-                60% {
-                    transform: translateY(0) scale(1.04);
-                }
-
-                100% {
-                    transform: translateY(0) scale(1);
-                    opacity: 1;
-                }
-            }
-
-            .banner {
-                background: #fff7ed;
-                border: 1px solid #fed7aa;
-                color: #9a3412;
-                padding: 10px 12px;
-                border-radius: 10px;
-                margin-bottom: 10px;
-                box-shadow: var(--shadow);
-                font-size: 13px;
-                line-height: 1.4;
-            }
-
-            .section-header {
-                margin: 0 0 6px;
-                font-weight: 700;
-                font-size: 15px;
-                color: var(--text);
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }
-
-            .pill {
-                display: inline-block;
-                padding: 3px 8px;
-                border-radius: 999px;
-                font-size: 11px;
-                font-weight: 600;
-                color: #0f172a;
-                background: var(--pill-bg);
-                border: 1px solid var(--pill-border);
-                margin-left: 8px;
-            }
-
-            .icon {
-                width: 16px;
-                height: 16px;
-                display: inline-block;
-                background-color: currentColor;
-                mask-repeat: no-repeat;
-                mask-position: center;
-                mask-size: contain;
-                -webkit-mask-repeat: no-repeat;
-                -webkit-mask-position: center;
-                -webkit-mask-size: contain;
-            }
-
-            .icon-sliders {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cline x1='4' y1='21' x2='4' y2='14'/%3E%3Cline x1='4' y1='10' x2='4' y2='3'/%3E%3Cline x1='12' y1='21' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12' y2='3'/%3E%3Cline x1='20' y1='21' x2='20' y2='16'/%3E%3Cline x1='20' y1='12' x2='20' y2='3'/%3E%3Cline x1='2' y1='14' x2='6' y2='14'/%3E%3Cline x1='10' y1='8' x2='14' y2='8'/%3E%3Cline x1='18' y1='16' x2='22' y2='16'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cline x1='4' y1='21' x2='4' y2='14'/%3E%3Cline x1='4' y1='10' x2='4' y2='3'/%3E%3Cline x1='12' y1='21' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12' y2='3'/%3E%3Cline x1='20' y1='21' x2='20' y2='16'/%3E%3Cline x1='20' y1='12' x2='20' y2='3'/%3E%3Cline x1='2' y1='14' x2='6' y2='14'/%3E%3Cline x1='10' y1='8' x2='14' y2='8'/%3E%3Cline x1='18' y1='16' x2='22' y2='16'/%3E%3C/svg%3E");
-            }
-
-            .icon-cpu {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Crect x='9' y='9' width='6' height='6' rx='1'/%3E%3Cpath d='M9 1v3m6-3v3m0 16v3m-6-3v3M1 9h3m-3 6h3m16-6h3m-3 6h3'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Crect x='9' y='9' width='6' height='6' rx='1'/%3E%3Cpath d='M9 1v3m6-3v3m0 16v3m-6-3v3M1 9h3m-3 6h3m16-6h3m-3 6h3'/%3E%3C/svg%3E");
-            }
-
-            .icon-cloud {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.5A4 4 0 0 0 6 19h11.5Z'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.5A4 4 0 0 0 6 19h11.5Z'/%3E%3C/svg%3E");
-            }
-
-            .icon-terminal {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 8 11 12 7 16'/%3E%3Cline x1='13' y1='16' x2='17' y2='16'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 8 11 12 7 16'/%3E%3Cline x1='13' y1='16' x2='17' y2='16'/%3E%3C/svg%3E");
-            }
-
-            .icon-save {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z'/%3E%3Cpath d='M17 21v-8H7v8'/%3E%3Cpath d='M7 3v5h8'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z'/%3E%3Cpath d='M17 21v-8H7v8'/%3E%3Cpath d='M7 3v5h8'/%3E%3C/svg%3E");
-            }
-
-            .icon-layers {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 3 7 12 12 21 7 12 2'/%3E%3Cpolyline points='3 12 12 17 21 12'/%3E%3Cpolyline points='3 17 12 22 21 17'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 3 7 12 12 21 7 12 2'/%3E%3Cpolyline points='3 12 12 17 21 12'/%3E%3Cpolyline points='3 17 12 22 21 17'/%3E%3C/svg%3E");
-            }
-
-            .icon-mic {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M12 3a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z'/%3E%3Cpath d='M19 10v2a7 7 0 0 1-14 0v-2'/%3E%3Cpath d='M12 19v3'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M12 3a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z'/%3E%3Cpath d='M19 10v2a7 7 0 0 1-14 0v-2'/%3E%3Cpath d='M12 19v3'/%3E%3C/svg%3E");
-            }
-
-            /* NEW: "disabled / site status" icon */
-            .icon-ban {
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M5 5l14 14'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M5 5l14 14'/%3E%3C/svg%3E");
-            }
-
-            .fav-icon {
-                width: 16px;
-                height: 16px;
-                border-radius: 4px;
-                object-fit: contain;
-                border: 1px solid #d1d5db;
-                background: #f8fafc;
-                margin-right: 6px;
-                vertical-align: middle;
-            }
-
-            @media (prefers-color-scheme: dark) {
-                .fav-icon {
-                    background: #0b1220;
-                    border-color: #1f2937;
-                }
-            }
-
-            .host-cell {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }
-
-            .row-delete {
-                background: transparent;
-                border: none;
-                color: var(--danger);
-                cursor: pointer;
-                font-size: 14px;
-                padding: 4px 6px;
-            }
-
-            .row-delete:hover {
-                color: var(--danger-dark);
-            }
-
-            .actions {
-                display: flex;
-                gap: 10px;
-                flex-wrap: wrap;
-                align-items: flex-end;
-            }
-
-            .actions>div {
-                flex: 1;
-                min-width: 180px;
-            }
-
-            .overrides-actions {
-                margin-top: 12px;
-            }
-
-            .overrides-note {
-                margin-bottom: 10px;
-            }
-
-            #override-table {
-                width: 100%;
-                border-collapse: separate;
-                border-spacing: 0;
-            }
-
-            #override-table th,
-            #override-table td {
-                padding: 8px 10px;
-                font-size: 12.5px;
-                color: var(--text);
-                text-align: left;
-            }
-
-            #override-table thead th {
-                font-weight: 700;
-                border-bottom: 1px solid var(--border);
-            }
-
-            #override-table tbody tr:nth-child(even) {
-                background: rgba(15, 23, 42, 0.03);
-            }
-
-            @media (prefers-color-scheme: dark) {
-                #override-table tbody tr:nth-child(even) {
-                    background: rgba(255, 255, 255, 0.03);
-                }
-            }
-
-            #override-table tbody tr {
-                cursor: pointer;
-            }
-
-            #override-table tbody tr:hover {
-                background: rgba(37, 99, 235, 0.08);
-            }
-
-            #override-table tbody tr.selected {
-                background: rgba(37, 99, 235, 0.16);
-            }
-
-            .collapse-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 10px;
-                margin-top: 12px;
-                padding-top: 10px;
-                border-top: 1px solid var(--border);
-            }
-
-            .collapse-title {
-                font-weight: 800;
-                font-size: 13px;
-                color: var(--text);
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-
-            .collapse-btn {
-                width: auto;
-                margin-top: 0;
-                padding: 8px 10px;
-                border-radius: 10px;
-                font-size: 13px;
-                background: rgba(148, 163, 184, 0.18);
-                color: var(--text);
-                border: 1px solid var(--border);
-                box-shadow: none;
-            }
-
-            .collapse-btn:hover {
-                transform: none;
-                box-shadow: none;
-                background: rgba(148, 163, 184, 0.26);
-            }
-
-            .collapse-body {
-                margin-top: 10px;
-                display: none;
-            }
-
-            .collapse-body.open {
-                display: block;
-            }
-
-            .two-btn-row {
-                display: flex;
-                gap: 10px;
-                width: 100%;
-                margin-top: 8px;
-            }
-
-            .two-btn-row button {
-                width: 100%;
-                margin-top: 0;
-            }
-
-            /* NEW: Backend indicator pill */
-            .backend-indicator {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 10px;
-                padding: 10px 12px;
-                border-radius: 10px;
-                border: 1px solid var(--border);
-                background: rgba(148, 163, 184, 0.08);
-                margin-top: 10px;
-                margin-bottom: 18px;
-            }
-
-            .backend-indicator .left {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                min-width: 0;
-            }
-
-            .backend-indicator .label {
-                font-size: 12.5px;
-                font-weight: 700;
-                color: var(--text);
-                white-space: nowrap;
-            }
-
-            .backend-indicator .value {
-                font-size: 12.5px;
-                font-weight: 800;
-                letter-spacing: 0.01em;
-            }
-
-            .backend-indicator .hint {
-                font-size: 12px;
-                color: var(--muted);
-                margin-top: 2px;
-                line-height: 1.35;
-            }
-
-            .backend-indicator.good {
-                background: var(--backend-good-bg);
-                border-color: var(--backend-good-border);
-            }
-
-            .backend-indicator.good .value {
-                color: var(--backend-good-text);
-            }
-
-            .backend-indicator.warn {
-                background: var(--backend-warn-bg);
-                border-color: var(--backend-warn-border);
-            }
-
-            .backend-indicator.warn .value {
-                color: var(--backend-warn-text);
-            }
-
-            /* small chip on the right */
-            .backend-chip {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                padding: 6px 10px;
-                border-radius: 999px;
-                font-size: 12px;
-                font-weight: 800;
-                border: 1px solid currentColor;
-                white-space: nowrap;
-                flex-shrink: 0;
-            }
-
-            .backend-chip .dot {
-                width: 8px;
-                height: 8px;
-                border-radius: 999px;
-                background: currentColor;
-            }
-
-            /* simple GPU icon */
-            .icon-gpu {
-                width: 32px;
-                height: 32px;
-                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='15' height='10' rx='2'/%3E%3Cpath d='M18 9h3v6h-3'/%3E%3Cpath d='M6 17v3'/%3E%3Cpath d='M10 17v3'/%3E%3Cpath d='M14 17v3'/%3E%3Cpath d='M7 10h7'/%3E%3Cpath d='M7 14h7'/%3E%3C/svg%3E");
-                -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='15' height='10' rx='2'/%3E%3Cpath d='M18 9h3v6h-3'/%3E%3Cpath d='M6 17v3'/%3E%3Cpath d='M10 17v3'/%3E%3Cpath d='M14 17v3'/%3E%3Cpath d='M7 10h7'/%3E%3Cpath d='M7 14h7'/%3E%3C/svg%3E");
-            }
-
-            .range-row {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-top: 4px;
-            }
-
-            .range-row input[type="range"] {
-                flex: 1;
-                background: transparent;
-            }
-
-            /* Default (blue) fill for range */
-            .range-row input[type="range"]::-moz-range-progress {
-                background: var(--primary);
-            }
-
-            .range-row input[type="range"]::-webkit-slider-runnable-track {
-                background: var(--primary);
-            }
-
-            .range-danger {
-                accent-color: var(--danger);
-            }
-
-            .range-danger::-moz-range-progress {
-                background: var(--danger);
-            }
-
-            .range-danger::-webkit-slider-runnable-track {
-                background: var(--danger);
-            }
-
-            .range-value {
-                font-size: 12.5px;
-                font-weight: 700;
-                color: var(--muted);
-                min-width: 42px;
-                text-align: right;
-            }
-
-            .range-value-danger {
-                color: var(--danger);
-            }
-
-
-            /* Limit override list height before scrolling */
-            #overrides-list-body {
-                max-height: 260px;
-                overflow-y: auto;
-                border-radius: 10px;
-            }
-        </style>
-    </head>
+    <link rel="stylesheet" href="css/options.css">
+    <meta charset="UTF-8" />
+</head>
 
 <body>
     <div class="container">
         <h3 data-i18n="options_heading">Speech Recognition Settings</h3>
         <div class="banner" id="top-warning-banner" data-i18n="banner_text">
             ⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the
-            extension icon (pin it to your menu bar). If
-            you want the best performance, use the cloud based engine. Some settings may require a page refresh to take
-            effect. Any additional information is listed <a
+            extension icon (pin it to your menu bar). Any additional information is listed <a
                 href="https://github.com/apersongithub/Speech-Recognition-Polyfill"
-                target="_blank"><strong>HERE!</strong></a>
+                target="_blank"><strong data-i18n="link_here">HERE!</strong></a>
         </div>
 
         <div class="card">
@@ -658,21 +24,42 @@
                 <span data-i18n="section_engine">Engine</span>
             </div>
             <div class="note" data-i18n="engine_note">
-                Whisper runs locally; AssemblyAI sends audio to the cloud (requires API key).
+                Whisper and Vosk both run locally; AssemblyAI sends audio to the cloud (requires API key).
             </div>
             <label data-i18n="engine_label">Provider</label>
             <select id="provider-select">
-                <option value="local-whisper" data-i18n="engine_local">On-device Whisper (OpenAI)</option>
-                <option value="assemblyai" data-i18n="engine_assemblyai">Cloud (AssemblyAI)</option>
+                <option value="local-whisper" data-i18n="engine_local">Whisper</option>
+                <option value="vosk" data-i18n="engine_vosk">Vosk</option>
+                <option value="assemblyai" data-i18n="engine_assemblyai">AssemblyAI</option>
             </select>
+            <div class="note" data-i18n="show_engine_sections_note">Choose the provider your want.
+            </div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="show-model-sections-toggle" />
+                <label for="show-model-sections-toggle" class="checkbox-label"
+                    data-i18n="show_engine_sections_label">Show engine-specific sections</label>
+            </div>
+            <div class="note" data-i18n="show_engine_sections_note">Sections auto-hide based on engine.
+            </div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="cache-default-model" />
+                <label for="cache-default-model" class="checkbox-label" data-i18n="cache_default_model_label">Cache
+                    default model on startup</label>
+            </div>
+            <div class="note" data-i18n="cache_default_model_note">Prefetches your default local model so the
+                initial use is faster (This will take up some RAM).</div>
             <div class="status" id="status-engine" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card" id="card-local">
             <div class="section-header">
                 <span class="icon icon-cpu" aria-hidden="true"></span>
-                <span data-i18n="section_local_title">On-device Whisper</span> <span class="pill"
+                <span data-i18n="section_local_title">Whisper</span> <span class="pill"
                     data-i18n="pill_local">Local</span>
+                    <span class="pill" data-i18n="pill_nostreaming" style="background:#fee2e2; border-color:#ef4444; color:#b91c1c;">
+                        Streaming Unsupported
+                    </span>
             </div>
             <div class="note" data-i18n="local_config_note">Configure local model, language, and silence timing.</div>
             <label data-i18n="ai_model">AI Model</label>
@@ -708,23 +95,31 @@
             </select>
             <div class="note" data-i18n="lang_note">The language the translator will attempt to decipher.</div>
 
-            <label data-i18n="silence_timeout">Silence Timeout (ms)</label>
-            <input id="silence-timeout" type="number" min="500" max="5000" step="100" value="1000" />
-            <div class="note" data-i18n="silence_note">Time to wait after you stop speaking before sending.</div>
-
-            <label style="margin-top:6px;" data-i18n="grace_window_label">Grace window (ms)</label>
-            <input id="grace-ms" type="number" min="0" max="2000" step="50" value="450" />
-            <div class="note" data-i18n="grace_window_note">
-                Prevents late results after cancel/stop when grace is enabled.
-            </div>
             <div class="status" id="status-local" data-i18n="status_saved">Saved</div>
+        </div>
+
+        <div class="card" id="card-vosk">
+            <div class="section-header">
+                <span class="icon icon-cpu" aria-hidden="true"></span>
+                <span data-i18n="section_vosk_title">Vosk</span> <span class="pill"
+                    data-i18n="pill_local">Local</span>
+                    <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming Supported</span>
+            </div>
+            <div class="note" data-i18n="vosk_config_note">Streaming local recognition using Vosk models.</div>
+            <label data-i18n="vosk_model_label">Language Model</label>
+            <input id="vosk-model-input" list="vosk-model-list" type="text"
+                placeholder="Search Vosk models (type to filter)"  type="password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true"  />
+            <div id="vosk-size-warning" class="warning"></div>
+            <div class="note" data-i18n="vosk_streaming_note">Choose a LM, vosk streams audio in real-time for partial results.</div>
+            <div class="status" id="status-vosk" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card" id="card-cloud">
             <div class="section-header">
                 <span class="icon icon-cloud" aria-hidden="true"></span>
-                <span data-i18n="section_cloud_title">Cloud (AssemblyAI)</span>
+                <span data-i18n="section_cloud_title">AssemblyAI</span>
                 <span class="pill" style="background:#ecfeff;border-color:#a5f3fc;" data-i18n="pill_cloud">Cloud</span>
+                <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming Supported</span>
             </div>
             <div class="note" data-i18n="cloud_key_note">Provide your AssemblyAI key to enable cloud transcription.
             </div>
@@ -743,24 +138,24 @@
             <div class="status" id="status-cloud" data-i18n="status_saved">Saved</div>
         </div>
 
-        <div class="card">
+                <div class="card">
             <div class="section-header">
                 <span class="icon icon-mic" aria-hidden="true"></span>
-                <span data-i18n="section_shortcuts">Speech Shortcuts</span>
+                <span data-i18n="section_triggers">Speech Triggers</span>
             </div>
-            <div class="note" data-i18n="shortcuts_note">Configure the speech hotkey and insertion behavior.</div>
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="enable-shortcut" checked />
-                <label for="enable-shortcut" class="checkbox-label" data-i18n="shortcut_enable">Enable speech
-                    shortcut</label>
-            </div>
-            <div class="note" data-i18n="shortcut_enable_note">Pretty self explanatory...</div>
+            <div class="note" data-i18n="triggers_note">Configure how speech capture is triggered and how results are submitted.</div>
 
             <label for="hotkey" style="margin-top:8px;" data-i18n="shortcut_hotkey_label">Keyboard shortcut</label>
             <input id="hotkey" type="text" data-i18n-placeholder="shortcut_hotkey_placeholder"
                 placeholder="Click and press keys (Alt+A)" autocomplete="off" />
             <div class="note" data-i18n="shortcut_hotkey_note">Click, press the combo you want. Backspace/Delete to
                 clear. Esc to disable shortcut. Empty disables.</div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="enable-shortcut" />
+                <label for="enable-shortcut" class="checkbox-label" data-i18n="disable_speech_shortcut_label">Disable speech shortcut</label>
+            </div>
+            <div class="note" data-i18n="shortcut_enable_note">Pretty self explanatory...</div>
 
             <div class="checkbox-wrapper" style="margin-top:8px;">
                 <input type="checkbox" id="send-enter-after" />
@@ -770,7 +165,109 @@
             <div class="note" data-i18n="send_enter_after_note">Automatically presses 'Enter' on the focused
                 field right after text is inserted.</div>
 
-            <div class="status" id="status-speech" data-i18n="status_saved">Saved</div>
+                            <div class="checkbox-wrapper">
+                <input type="checkbox" id="strip-trailing-period" />
+                <label for="strip-trailing-period" class="checkbox-label"
+                    data-i18n="strip_trailing_period_label">Disable trailing period removal</label>
+            </div>
+            <div class="note" data-i18n="strip_trailing_period_note">Removes a final “.” from recognized text.</div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="disable-space-normalization" />
+                <label for="disable-space-normalization" class="checkbox-label" data-i18n="disable_space_normalization_label">
+                    Disable space normalization between streaming turns
+                </label>
+            </div>
+            <div class="note" data-i18n="disable_space_normalization_note">Prevents auto-inserting spaces when appending streaming results.</div>
+
+            <div class="status" id="status-speech-triggers" data-i18n="status_saved">Saved</div>
+        </div>
+
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-logic" aria-hidden="true"></span>
+                <span data-i18n="section_logic">Speech Logic</span>
+            </div>
+            <div class="note" data-i18n="logic_note">Configure audio input, recording behavior, and streaming rules.</div>
+
+            <label data-i18n="mic_gain_label">Mic gain</label>
+            <div class="range-row">
+                <input id="mic-gain" type="range" min="1" max="3" step="0.1" value="1.0" />
+                <span class="range-value" id="mic-gain-value">1.0x</span>
+            </div>
+            <div class="note" data-i18n="mic_gain_note">Boosts mic input level for quieter microphones.</div>
+
+            <label data-i18n="silence_sensitivity_label">Silence sensitivity</label>
+            <div class="range-row">
+                <input id="silence-sensitivity" type="range" min="6" max="18" step="1" value="12" />
+                <span class="range-value" id="silence-sensitivity-value">12</span>
+            </div>
+            <div class="note" data-i18n="silence_sensitivity_note">Higher values require louder speech to keep
+                recording.</div>
+
+            <label data-i18n="silence_timeout">Silence Timeout (ms)</label>
+            <input id="silence-timeout" type="number" min="500" max="5000" step="100" value="1000" />
+            <div class="note" data-i18n="silence_note">Time to wait after you stop speaking before sending.</div>
+
+            <label style="margin-top:6px;" data-i18n="grace_window_label">Grace window (ms)</label>
+            <input id="grace-ms" type="number" min="0" max="2000" step="50" value="450" />
+            <div class="note" data-i18n="grace_window_note">
+                Prevents late results after cancel/stop when grace is enabled.
+            </div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="enable-hardcap" />
+                <label for="enable-hardcap" class="checkbox-label" data-i18n="enable_hardcap_label">Enable 5s hard
+                    cap</label>
+            </div>
+            <div class="note" data-i18n="enable_hardcap_note">Voice Recordings have a fixed 5s limit.</div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="disable-grace-window" />
+                <label for="disable-grace-window" class="checkbox-label" data-i18n="disable_grace_label">Disable grace
+                    window</label>
+            </div>
+            <div class="note" data-i18n="disable_grace_note">Grace is enabled; set grace ms above.</div>
+
+                        <div class="checkbox-wrapper">
+                <input type="checkbox" id="assemblyai-streaming" />
+                <label for="assemblyai-streaming" class="checkbox-label" data-i18n="disable_assemblyai_streaming_label">Disable AssemblyAI realtime streaming</label>
+            </div>
+            <div class="note" data-i18n="assemblyai_streaming_note">Streams live audio to AssemblyAI and emits partial results like Chrome.</div>
+
+            <div class="checkbox-wrapper" style="margin-top:6px;">
+                <input type="checkbox" id="assemblyai-streaming-multilingual" />
+                <label for="assemblyai-streaming-multilingual" class="checkbox-label" data-i18n="disable_assemblyai_multilingual_label">
+                    Disable AssemblyAI multilingual streaming model
+                </label>
+            </div>
+            <div class="note" data-i18n="assemblyai_streaming_multilingual_note">Enables universal-streaming-multilingual with language detection.</div>
+
+            <div class="notesep" style="margin-top:14px; font-weight:600; font-style: italic;" data-i18n="streaming_silence_timeout">Streaming silence timeout</div>
+            <div class="note" data-i18n="streaming_applies_note">Applies to streaming providers (Vosk + AssemblyAI).</div>
+
+            <div class="checkbox-wrapper" style="margin-top:10px;">
+                <input type="checkbox" id="assemblyai-streaming-silence-never" />
+                <label for="assemblyai-streaming-silence-never" class="checkbox-label" data-i18n="assemblyai_streaming_silence_never_label">
+                    Never apply silence timeout for streaming
+                </label>
+            </div>
+            <div class="checkbox-wrapper" style="margin-top:6px;">
+                <input type="checkbox" id="assemblyai-streaming-silence-partial" />
+                <label for="assemblyai-streaming-silence-partial" class="checkbox-label" data-i18n="assemblyai_streaming_silence_partial_label">
+                    Silence timeout only when started by site UI but not hotkey (Deterministic)
+                </label>
+            </div>
+            <div class="checkbox-wrapper" style="margin-top:6px;">
+                <input type="checkbox" id="assemblyai-streaming-silence-always" />
+                <label for="assemblyai-streaming-silence-always" class="checkbox-label" data-i18n="assemblyai_streaming_silence_always_label">
+                    Always apply silence timeout for streaming
+                </label>
+            </div>
+
+
+
+
+            <div class="status" id="status-speech-logic" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card">
@@ -791,19 +288,35 @@
                     <label style="margin-top:0" data-i18n="model_label">Model</label>
                     <select id="override-model">
                         <option value="" data-i18n="override_default_option">(Default)</option>
-                        <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)</option>
-                        <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)</option>
-                        <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium
-                            English (~600MB)</option>
-                        <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)
-                        </option>
-                        <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)
-                        </option>
-                        <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)
-                        </option>
-                        <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)
-                        </option>
+                        <optgroup label="Whisper" data-i18n="group_whisper">
+                            <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)
+                            </option>
+                            <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)
+                            </option>
+                            <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium
+                                English (~600MB)</option>
+                            <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)
+                            </option>
+                            <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)
+                            </option>
+                            <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)
+                            </option>
+                            <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)
+                            </option>
+                        </optgroup>
+                        <optgroup label="Vosk (quick picks)" data-i18n="group_vosk_quick">
+                            <option value="vosk-model-small-en-us-0.15">Small English (US) (~50MB)</option>
+                            <option value="vosk-model-en-us-0.22">Large English (US) (~1.8GB)</option>
+                        </optgroup>
                     </select>
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top: 8px;">
+                <div style="flex:1">
+                    <label style="margin-top:0" data-i18n="vosk_model_label_short">Vosk model (type to search)</label>
+                    <input id="override-vosk-model" list="vosk-model-list" type="text"
+                        placeholder="vosk-model-small-en-us-0.15" type="password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true"  />
                 </div>
             </div>
 
@@ -825,9 +338,13 @@
                     </select>
                 </div>
                 <div style="flex:1">
-                    <label style="margin-top:0" data-i18n="timeout_label">Timeout</label>
+                    <label style="margin-top:0" data-i18n="timeout_label">Silence Timeout (ms)</label>
                     <input id="override-timeout" type="number" data-i18n-placeholder="override_timeout_placeholder"
                         placeholder="(Default)" />
+                </div>
+                <div style="flex:1">
+                    <label style="margin-top:0" data-i18n="grace_window_label">Grace window (ms)</label>
+                    <input id="override-grace" type="number" placeholder="(Default)" />
                 </div>
             </div>
 
@@ -836,8 +353,9 @@
                     <label style="margin-top:0" data-i18n="engine_label">Provider</label>
                     <select id="override-provider">
                         <option value="" data-i18n="override_default_option">(Default)</option>
-                        <option value="local-whisper" data-i18n="engine_local">On-device Whisper</option>
-                        <option value="assemblyai" data-i18n="engine_assemblyai">Cloud (AssemblyAI)</option>
+                        <option value="local-whisper" data-i18n="engine_local">Whisper</option>
+                        <option value="vosk" data-i18n="engine_vosk">Vosk (Streaming)</option>
+                        <option value="assemblyai" data-i18n="engine_assemblyai">Server AssemblyAI</option>
                     </select>
                 </div>
             </div>
@@ -880,6 +398,7 @@
                             <th data-i18n="table_model">Model</th>
                             <th data-i18n="table_lang">Lang</th>
                             <th data-i18n="table_timeout">Timeout</th>
+                            <th data-i18n="table_grace">Grace</th>
                             <th data-i18n="table_engine">Provider</th>
                             <th data-i18n="table_remove" aria-label="Remove"></th>
                         </tr>
@@ -919,20 +438,6 @@
                 </span>
             </div>
 
-            <label data-i18n="mic_gain_label">Mic gain</label>
-            <div class="range-row">
-                <input id="mic-gain" type="range" min="1" max="3" step="0.1" value="1.0" />
-                <span class="range-value" id="mic-gain-value">1.0x</span>
-            </div>
-            <div class="note" data-i18n="mic_gain_note">Boosts mic input level for quieter microphones.</div>
-
-            <label data-i18n="silence_sensitivity_label">Silence sensitivity</label>
-            <div class="range-row">
-                <input id="silence-sensitivity" type="range" min="6" max="18" step="1" value="12" />
-                <span class="range-value" id="silence-sensitivity-value">12</span>
-            </div>
-            <div class="note" data-i18n="silence_sensitivity_note">Higher values require louder speech to keep
-                recording.</div>
 
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="debug-mode" />
@@ -942,6 +447,7 @@
                 Logs detailed background/content script messages to the console.
             </div>
 
+ 
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="toast-notifications" />
                 <label for="toast-notifications" class="checkbox-label" data-i18n="toast_toggle">Enable toast
@@ -959,44 +465,23 @@
             <div class="note" data-i18n="hide_banner_note">Removes the alert banner at the top of this page.</div>
 
             <div class="checkbox-wrapper">
-                <input type="checkbox" id="strip-trailing-period" />
-                <label for="strip-trailing-period" class="checkbox-label"
-                    data-i18n="strip_trailing_period_label">Disable trailing period removal</label>
-            </div>
-            <div class="note" data-i18n="strip_trailing_period_note">Removes a final “.” from recognized text.</div>
-            <div class="checkbox-wrapper">
                 <input type="checkbox" id="disable-favicons" />
                 <label for="disable-favicons" class="checkbox-label" data-i18n="disable_favicons_label">Disable favicons
                     in overrides table</label>
             </div>
             <div class="note" data-i18n="disable_favicons_note">Favicons are shown by default. Enable to hide favicons.
             </div>
+
             <div class="checkbox-wrapper">
-                <input type="checkbox" id="show-model-sections-toggle" />
-                <label for="show-model-sections-toggle" class="checkbox-label"
-                    data-i18n="show_engine_sections_label">Show engine-specific sections</label>
-            </div>
-            <div class="note" data-i18n="show_engine_sections_note">Sections auto-hide based on engine.
-            </div>
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="cache-default-model" />
-                <label for="cache-default-model" class="checkbox-label" data-i18n="cache_default_model_label">Cache
-                    default model (prefetch on startup)</label>
-            </div>
-            <div class="note" data-i18n="cache_default_model_note">Prefetches your default on-device Whisper model so
-                first use is faster (This will take up some RAM). Only applies when using the local engine.</div>
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="enable-hardcap" />
-                <label for="enable-hardcap" class="checkbox-label" data-i18n="enable_hardcap_label">Enable 5s hard
-                    cap</label>
-            </div>
-            <div class="note" data-i18n="enable_hardcap_note">Voice Recordings have a fixed 5s limit.</div>
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="disable-grace-window" />
-                <label for="disable-grace-window" class="checkbox-label" data-i18n="disable_grace_label">Disable grace
-                    window</label>
-            </div>
-            <div class="note" data-i18n="disable_grace_note">Grace is enabled; set grace ms above.</div>
+    <input type="checkbox" id="disable-processing-timeouts" />
+    <label for="disable-processing-timeouts" class="checkbox-label" data-i18n="disable_processing_timeouts_label">
+        Disable ultimatum processing timeouts
+    </label>
+</div>
+<div class="note" data-i18n="disable_processing_timeouts_note">
+    Disables the content-script watchdog and background ultimatum processing timeout checks. May make the extension unreponsive, though useful for recording long sessions.
+</div>
+
             <div class="status" id="status-dev" data-i18n="status_saved">Saved</div>
         </div>
 
@@ -1008,7 +493,7 @@
             <div class="note" data-i18n="data_note">Export/import settings as JSON or reset to defaults. Prebuilt
                 Overrides are also included
                 <a href="https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides"
-                    target="_blank"><strong>HERE!</strong></a>
+                    target="_blank"><strong data-i18n="link_here">HERE!</strong></a>
             </div>
 
             <div class="two-btn-row">
@@ -1022,6 +507,9 @@
             <div class="status" id="status-save" data-i18n="status_saved">Saved</div>
         </div>
     </div>
+
+    <datalist id="vosk-model-list"></datalist>
+
     <script src="options.js"></script>
 </body>
 

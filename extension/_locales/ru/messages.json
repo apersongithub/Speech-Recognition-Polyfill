@@ -1,182 +1,611 @@
 {
-  "ext_name": { "message": "Полифилл распознавания речи" },
-  "ext_desc": { "message": "Полифилл распознавания речи с локальным Whisper и опциональной облачной транскрипцией (AssemblyAI)." },
-  "browser_action_title": { "message": "Распознавание речи" },
-
-  "options_page_title": { "message": "Настройки распознавания речи" },
-  "options_heading": { "message": "Настройки распознавания речи" },
-  "banner_text": { "message": "⚠️ Внимание: это не временное исправление WebSpeech API. Статус распознавания можно увидеть по значку расширения (закрепите его). Для лучшей производительности используйте облачный движок. Некоторые настройки требуют обновления страницы. Доп. информация <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>ЗДЕСЬ</strong></a>" },
-
-  "section_engine": { "message": "Движок" },
-  "engine_note": { "message": "Whisper работает локально; AssemblyAI отправляет аудио в облако (нужен API-ключ)." },
-  "engine_label": { "message": "Провайдер" },
-  "engine_local": { "message": "Whisper на устройстве (OpenAI)" },
-  "engine_assemblyai": { "message": "Облако (AssemblyAI)" },
-
-  "status_saved": { "message": "Сохранено" },
-
-  "section_local_title": { "message": "Whisper на устройстве" },
-  "pill_local": { "message": "Локально" },
-  "local_config_note": { "message": "Настройте локальную модель, язык и время тишины." },
-
-  "ai_model": { "message": "Модель ИИ" },
-  "group_en_fast": { "message": "Только английский" },
-  "group_multi": { "message": "Многоязычная (общая)" },
-
-  "model_tiny_en": { "message": "Tiny английский (~75 МБ)" },
-  "model_base_en": { "message": "Base английский (~150 МБ)" },
-  "model_distil_en": { "message": "Distil-Medium английский (~600 МБ)" },
-  "model_small_en": { "message": "Small английский (~500 МБ)" },
-  "model_tiny_multi": { "message": "Tiny многоязычная (~150 МБ)" },
-  "model_base_multi": { "message": "Base многоязычная (~290 МБ)" },
-  "model_small_multi": { "message": "Small многоязычная (~1 ГБ)" },
-
-  "size_warning": { "message": "⚠️ Тяжёлая модель: первый запуск будет медленным. При сбоях используйте Base или Tiny." },
-
-  "language_label": { "message": "Язык" },
-  "lang_auto": { "message": "Автоопределение" },
-  "lang_en": { "message": "Английский" },
-  "lang_es": { "message": "Испанский" },
-  "lang_fr": { "message": "Французский" },
-  "lang_de": { "message": "Немецкий" },
-  "lang_it": { "message": "Итальянский" },
-  "lang_pt": { "message": "Португальский" },
-  "lang_ja": { "message": "Японский" },
-  "lang_zh": { "message": "Китайский" },
-  "lang_ru": { "message": "Русский" },
-  "lang_note": { "message": "Язык, который будет пытаться распознавать переводчик." },
-
-  "silence_timeout": { "message": "Таймаут тишины (мс)" },
-  "silence_note": { "message": "Время ожидания после окончания речи перед отправкой." },
-
-  "grace_window_label": { "message": "Окно льготы (мс)" },
-  "grace_window_note": { "message": "Предотвращает поздние результаты после отмены/остановки." },
-
-  "section_cloud_title": { "message": "Облако (AssemblyAI)" },
-  "pill_cloud": { "message": "Облако" },
-  "cloud_key_note": { "message": "Введите ключ AssemblyAI для облачной транскрипции." },
-  "assemblyai_key_label": { "message": "API-ключ AssemblyAI" },
-  "assemblyai_key_placeholder": { "message": "Напр.: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
-  "assemblyai_key_note": { "message": "Хранится локально; используется только при выборе облачного движка. Бесплатно, но требуется аккаунт, так как аудио отправляется в AssemblyAI." },
-  "assemblyai_get_key_btn": { "message": "Получить ключ API AssemblyAI" },
-
-  "section_shortcuts": { "message": "Горячие клавиши" },
-  "shortcuts_note": { "message": "Настройте хоткей и поведение вставки текста." },
-  "shortcut_enable": { "message": "Включить горячую клавишу" },
-  "shortcut_enable_note": { "message": "Все предельно ясно..." },
-  "shortcut_hotkey_label": { "message": "Горячая клавиша" },
-  "shortcut_hotkey_placeholder": { "message": "Нажмите и введите комбинацию (Alt+A)" },
-  "shortcut_hotkey_note": { "message": "Нажмите и введите комбинацию. Backspace/Delete — очистить. Esc — отключить. Пусто — выключено." },
-  "send_enter_after_label": { "message": "Нажать Enter после вставки" },
-  "send_enter_after_note": { "message": "Автоматически нажимает Enter в активном поле после вставки текста." },
-
-  "section_overrides": { "message": "Переопределения сайтов" },
-  "overrides_note": { "message": "Переопределяйте модель, язык или движок для сайтов." },
-
-  "hostname": { "message": "Хост" },
-  "hostname_placeholder": { "message": "example.com" },
-
-  "model_label": { "message": "Модель" },
-  "override_default_option": { "message": "(По умолчанию)" },
-
-  "timeout_label": { "message": "Таймаут" },
-  "override_timeout_placeholder": { "message": "(По умолчанию)" },
-
-  "override_status_label": { "message": "Статус расширения" },
-  "override_status_default": { "message": "(По умолчанию: включено)" },
-  "override_status_disabled": { "message": "Отключено" },
-
-  "add_rule": { "message": "Добавить правила" },
-  "clear_inputs": { "message": "Очистить поля" },
-  "remove_rule": { "message": "Удалить все правила" },
-
-  "overrides_list_title": { "message": "Сохранённые переопределения" },
-  "show": { "message": "Показать" },
-  "hide": { "message": "Скрыть" },
-
-  "table_host": { "message": "Хост" },
-  "table_enabled": { "message": "Включено" },
-  "table_model": { "message": "Модель" },
-  "table_lang": { "message": "Язык" },
-  "table_timeout": { "message": "Таймаут" },
-  "table_engine": { "message": "Провайдер" },
-  "table_remove": { "message": "Удалить" },
-
-  "section_developer": { "message": "Настройки разработчика" },
-  "developer_note": { "message": "Продвинутые переключатели для отладки и экспериментов." },
-
-  "debug_banners": { "message": "Включить режим отладки" },
-  "debug_note": { "message": "Включает уведомления и логи в консоли." },
-
-  "boost_mic_label": { "message": "Усилить микрофон" },
-  "boost_mic_note": { "message": "Усиливает вход микрофона перед записью (фиксированное усиление)." },
-
-  "strip_trailing_period_label": { "message": "Отключить удаление точки в конце" },
-  "strip_trailing_period_note": { "message": "Удаляет конечную точку из распознанного текста." },
-
-  "disable_favicons_label": { "message": "Отключить фавиконы в таблице" },
-  "disable_favicons_note": { "message": "Фавиконы отображаются по умолчанию. Включите, чтобы скрыть." },
-
-  "show_engine_sections_label": { "message": "Показывать секции по движку" },
-  "show_engine_sections_note": { "message": "Секции автоматически скрываются/показываются по движку." },
-
-  "cache_default_model_label": { "message": "Кэшировать модель по умолчанию (предзагрузка при старте)" },
-  "cache_default_model_note": { "message": "Предзагружает модель Whisper по умолчанию для ускорения первого запуска (использует RAM). Только для локального движка." },
-
-  "enable_hardcap_label": { "message": "Включить жёсткий лимит 5 с" },
-  "enable_hardcap_note": { "message": "Записи речи имеют фиксированный лимит 5 с." },
-
-  "disable_grace_label": { "message": "Отключить окно льготы" },
-  "disable_grace_note": { "message": "Льгота включена; настройте значение мс выше." },
-
-  "section_save_reset": { "message": "Данные" },
-  "data_note": { "message": "Экспорт/импорт настроек в JSON или сброс к умолчанию. Готовые переопределения доступны <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>ЗДЕСЬ</strong></a>" },
-  "export_settings": { "message": "Экспорт" },
-  "import_settings": { "message": "Импорт" },
-  "factory_reset": { "message": "Сброс" },
-
-  "popup_page_title": { "message": "Распознавание речи" },
-  "popup_site_label": { "message": "Сайт: (загрузка…)" },
-  "popup_status_section": { "message": "Статус расширения" },
-  "popup_status_default": { "message": "Включено (по умолчанию)" },
-  "popup_status_disabled": { "message": "Отключено на этом сайте" },
-
-  "override_use_default": { "message": "Использовать по умолчанию" },
-
-  "popup_timeout_label": { "message": "Таймаут тишины (мс)" },
-  "popup_timeout_placeholder": { "message": "По умолчанию" },
-
-  "popup_remove": { "message": "Удалить переопределение" },
-  "popup_open_options": { "message": "Открыть полные настройки" },
-  "popup_status_saved": { "message": "Сохранено" },
-
-  "popup_site_prefix": { "message": "Сайт" },
-  "popup_site_unknown": { "message": "Сайт: (неизвестно)" },
-  "popup_removed": { "message": "Удалено" },
-
-  "model_not_allowed": { "message": "Модель не разрешена." },
-
-  "title_idle": { "message": "Whisper: Ожидание" },
-  "title_recording": { "message": "Whisper: Запись" },
-  "title_processing": { "message": "Whisper: Обработка" },
-  "title_error": { "message": "Whisper: Ошибка" },
-
-  "backend_indicator_label": { "message": "Локальный бэкенд Whisper:" },
-  "backend_indicator_value_active": { "message": "Активен" },
-  "backend_indicator_value_unknown": { "message": "Неизвестно" },
-
-  "backend_chip_webgpu": { "message": "WebGPU" },
-  "backend_chip_wasm": { "message": "WASM" },
-  "backend_chip_unknown": { "message": "Неизвестно" },
-
-  "backend_hint_default": { "message": "Использует WebGPU при наличии; иначе переходит на WASM." },
-  "backend_hint_webgpu": { "message": "Ускорение GPU (лучшее при поддержке)." },
-  "backend_hint_wasm": { "message": "Запасной вариант CPU (WebGPU не поддерживается или не инициализируется)." },
-  "backend_hint_unknown": { "message": "Бэкенд определится после первой локальной транскрипции/загрузки модели." },
-  "backend_hint_webgpu_enabled_supported": { "message": "WebGPU включён и поддерживается. Активируется после следующей локальной загрузки/транскрипции." },
-  "backend_hint_preferred_wasm": { "message": "WASM выбран как предпочтительный бэкенд." },
-  "backend_hint_webgpu_init_failed_prefix": { "message": "API WebGPU доступен, но инициализация адаптера/устройства не удалась:" },
-  "backend_hint_webgpu_unavailable": { "message": "WebGPU недоступен в этом контексте; используется WASM." },
-  "backend_hint_using_wasm": { "message": "Используется WASM." },
-  "backend_unknown_error": { "message": "неизвестная ошибка" }
+  "ext_name": {
+    "message": "Polyfill распознавания речи"
+  },
+  "ext_desc": {
+    "message": "Polyfill распознавания речи с локальными Whisper и Vosk, а также опциональной облачной транскрипцией (AssemblyAI)."
+  },
+  "browser_action_title": {
+    "message": "Распознавание речи"
+  },
+  "options_page_title": {
+    "message": "Настройки распознавания речи"
+  },
+  "options_heading": {
+    "message": "Настройки распознавания речи"
+  },
+  "banner_text": {
+    "message": "⚠️ Внимание: это не временное решение для webspeech API. Вы можете увидеть статус распознавания голоса через значок расширения (закрепите его в панели меню). Дополнительная информация указана <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>ЗДЕСЬ!</strong></a>"
+  },
+  "section_engine": {
+    "message": "Движок"
+  },
+  "engine_note": {
+    "message": "Whisper и Vosk работают локально; AssemblyAI отправляет аудио в облако (требуется API-ключ)."
+  },
+  "engine_label": {
+    "message": "Поставщик"
+  },
+  "engine_local": {
+    "message": "Whisper"
+  },
+  "engine_vosk": {
+    "message": "Vosk"
+  },
+  "engine_assemblyai": {
+    "message": "AssemblyAI"
+  },
+  "show_engine_sections_label": {
+    "message": "Показывать секции, специфичные для движка"
+  },
+  "show_engine_sections_note": {
+    "message": "Секции автоматически скрываются в зависимости от выбранного движка."
+  },
+  "cache_default_model_label": {
+    "message": "Кэшировать модель по умолчанию при запуске"
+  },
+  "cache_default_model_note": {
+    "message": "Заранее загружает ваш локальный модель по умолчанию, чтобы первый запуск был быстрее (это займет немного ОЗУ)."
+  },
+  "status_saved": {
+    "message": "Сохранено"
+  },
+  "section_local_title": {
+    "message": "Whisper"
+  },
+  "pill_local": {
+    "message": "Локально"
+  },
+  "pill_nostreaming": {
+    "message": "Streaming не поддерживается"
+  },
+  "local_config_note": {
+    "message": "Настройте локальную модель, язык и параметры времени молчания."
+  },
+  "ai_model": {
+    "message": "Модель ИИ"
+  },
+  "group_en_fast": {
+    "message": "Только английский"
+  },
+  "model_tiny_en": {
+    "message": "Tiny English (~75MB)"
+  },
+  "model_base_en": {
+    "message": "Base English (~150MB)"
+  },
+  "model_distil_en": {
+    "message": "Distil-Medium English (~600MB)"
+  },
+  "model_small_en": {
+    "message": "Small English (~500MB)"
+  },
+  "group_multi": {
+    "message": "Многоязычная (общего назначения)"
+  },
+  "model_tiny_multi": {
+    "message": "Tiny Multilingual (~150MB)"
+  },
+  "model_base_multi": {
+    "message": "Base Multilingual (~290MB)"
+  },
+  "model_small_multi": {
+    "message": "Small Multilingual (~1GB)"
+  },
+  "language_label": {
+    "message": "Язык"
+  },
+  "lang_auto": {
+    "message": "Автоопределение"
+  },
+  "lang_en": {
+    "message": "Английский"
+  },
+  "lang_es": {
+    "message": "Испанский"
+  },
+  "lang_fr": {
+    "message": "Французский"
+  },
+  "lang_de": {
+    "message": "Немецкий"
+  },
+  "lang_it": {
+    "message": "Итальянский"
+  },
+  "lang_pt": {
+    "message": "Португальский"
+  },
+  "lang_nl": {
+    "message": "Нидерландский"
+  },
+  "lang_ru": {
+    "message": "Русский"
+  },
+  "lang_zh": {
+    "message": "Китайский"
+  },
+  "lang_ja": {
+    "message": "Японский"
+  },
+  "lang_pl": {
+    "message": "Польский"
+  },
+  "lang_tr": {
+    "message": "Турецкий"
+  },
+  "lang_ar": {
+    "message": "Арабский"
+  },
+  "lang_hi": {
+    "message": "Хинди"
+  },
+  "timeout_label": {
+    "message": "Таймаут молчания (мс)"
+  },
+  "timeout_placeholder": {
+    "message": "Использовать по умолчанию"
+  },
+  "popup_page_title": {
+    "message": "Распознавание речи"
+  },
+  "popup_site_label": {
+    "message": "Сайт:"
+  },
+  "popup_status_section": {
+    "message": "Статус расширения"
+  },
+  "popup_status_default": {
+    "message": "Включено (по умолчанию)"
+  },
+  "popup_status_disabled": {
+    "message": "Отключено на этом сайте"
+  },
+  "override_use_default": {
+    "message": "Использовать по умолчанию"
+  },
+  "model_label": {
+    "message": "Модель"
+  },
+  "popup_timeout_label": {
+    "message": "Таймаут молчания (мс)"
+  },
+  "popup_timeout_placeholder": {
+    "message": "Использовать по умолчанию"
+  },
+  "popup_remove": {
+    "message": "Удалить переопределение"
+  },
+  "popup_open_options": {
+    "message": "Открыть все настройки"
+  },
+  "popup_status_saved": {
+    "message": "Сохранено"
+  },
+  "popup_removed": {
+    "message": "Удалено"
+  },
+  "model_not_allowed": {
+    "message": "Модель не разрешена."
+  },
+  "section_speech_logic": {
+    "message": "Логика речи"
+  },
+  "speech_logic_note": {
+    "message": "Настройте обнаружение тишины, потоковую передачу и прочую логику речи."
+  },
+  "enable_hardcap_label": {
+    "message": "Включить жёсткое ограничение длины записи"
+  },
+  "enable_hardcap_note": {
+    "message": "Останавливает запись после фиксированного времени (например, 30с), чтобы предотвратить длинные записи."
+  },
+  "section_vosk_title": {
+    "message": "Vosk"
+  },
+  "pill_streaming": {
+    "message": "Streaming"
+  },
+  "vosk_config_note": {
+    "message": "Настройте модель Vosk, грамматику и потоковую передачу."
+  },
+  "vosk_model_label": {
+    "message": "Модель Vosk"
+  },
+  "vosk_model_placeholder": {
+    "message": "Введите ID модели Vosk (например: vosk-model-small-en-us-0.15)"
+  },
+  "vosk_grammar_label": {
+    "message": "Грамматика Vosk (необязательно)"
+  },
+  "vosk_grammar_placeholder": {
+    "message": "Слова/фразы через запятую"
+  },
+  "vosk_streaming_label": {
+    "message": "Включить потоковую передачу Vosk"
+  },
+  "vosk_streaming_note": {
+    "message": "Передаёт промежуточные результаты в реальном времени."
+  },
+  "vosk_streaming_partial_label": {
+    "message": "Промежуточные результаты Vosk при паузе"
+  },
+  "vosk_streaming_partial_note": {
+    "message": "Отправлять промежуточные результаты во время пауз молчания."
+  },
+  "section_assemblyai_title": {
+    "message": "AssemblyAI"
+  },
+  "pill_cloud": {
+    "message": "Облако"
+  },
+  "assemblyai_config_note": {
+    "message": "Настройте API-ключ AssemblyAI и параметры потоковой передачи."
+  },
+  "assemblyai_key_label": {
+    "message": "API-ключ AssemblyAI"
+  },
+  "assemblyai_key_placeholder": {
+    "message": "Введите ваш API-ключ AssemblyAI"
+  },
+  "assemblyai_streaming_label": {
+    "message": "Включить потоковую передачу AssemblyAI"
+  },
+  "assemblyai_streaming_note": {
+    "message": "Передаёт промежуточные/финальные результаты в реальном времени."
+  },
+  "assemblyai_streaming_multilingual_label": {
+    "message": "Многоязычная потоковая передача AssemblyAI"
+  },
+  "assemblyai_streaming_multilingual_note": {
+    "message": "Поддерживает несколько языков в режиме потоковой передачи."
+  },
+  "assemblyai_streaming_silence_mode_label": {
+    "message": "Режим тишины для стрима"
+  },
+  "assemblyai_streaming_silence_partial": {
+    "message": "Частично при молчании"
+  },
+  "assemblyai_streaming_silence_always": {
+    "message": "Всегда при молчании"
+  },
+  "assemblyai_streaming_silence_never": {
+    "message": "Никогда при молчании"
+  },
+  "section_speech_triggers": {
+    "message": "Триггеры речи"
+  },
+  "speech_triggers_note": {
+    "message": "Настройте хоткеи, усиление микрофона и обработку вывода."
+  },
+  "strip_trailing_period_label": {
+    "message": "Удалять конечную точку"
+  },
+  "strip_trailing_period_note": {
+    "message": "Удаляет конечную точку из результата транскрипции."
+  },
+  "disable_space_normalization_label": {
+    "message": "Отключить нормализацию пробелов"
+  },
+  "disable_space_normalization_note": {
+    "message": "Отключает автоматическое добавление пробела между результатами."
+  },
+  "send_enter_after_label": {
+    "message": "Отправлять Enter после результата"
+  },
+  "send_enter_after_note": {
+    "message": "Имитация нажатия Enter после вставки текста."
+  },
+  "hotkey_label": {
+    "message": "Горячая клавиша"
+  },
+  "hotkey_set_button": {
+    "message": "Установить горячую клавишу"
+  },
+  "enable_shortcut_label": {
+    "message": "Включить сочетание клавиш"
+  },
+  "enable_shortcut_note": {
+    "message": "Включает хоткей для запуска/остановки записи."
+  },
+  "mic_gain_label": {
+    "message": "Усиление микрофона"
+  },
+  "mic_gain_note": {
+    "message": "Увеличивает громкость входа микрофона (1.0-3.0)."
+  },
+  "silence_sensitivity_label": {
+    "message": "Чувствительность к молчанию"
+  },
+  "silence_sensitivity_note": {
+    "message": "Настраивает порог обнаружения тишины (6-20)."
+  },
+  "section_dev": {
+    "message": "Опции разр��ботчика"
+  },
+  "dev_note": {
+    "message": "Расширенные опции для отладки и настроек UI."
+  },
+  "debug_logs": {
+    "message": "Включить логи отладки"
+  },
+  "debug_logs_note": {
+    "message": "Логирует подробные сообщения фоновых/контент-скриптов в консоль."
+  },
+  "toast_toggle": {
+    "message": "Включить toast-уведомления"
+  },
+  "toast_toggle_note": {
+    "message": "Показывать статусные toast'ы на странице (запись/обработка/ошибки)."
+  },
+  "hide_banner": {
+    "message": "Скрыть верхнее предупреждение"
+  },
+  "hide_banner_note": {
+    "message": "Удаляет баннер с предупреждением вверху этой страницы."
+  },
+  "disable_favicons_label": {
+    "message": "Отключить фавиконы в таблице переопределений"
+  },
+  "disable_favicons_note": {
+    "message": "Фавиконы показываются по умолчанию. Включите, чтобы скрыть их."
+  },
+  "section_save_reset": {
+    "message": "Данные"
+  },
+  "data_note": {
+    "message": "Экспорт/импорт настроек в JSON или сброс до значений по умолчанию. Предустановленные переопределения также включены ЗДЕСЬ!"
+  },
+  "export_settings": {
+    "message": "Экспорт"
+  },
+  "import_settings": {
+    "message": "Импорт"
+  },
+  "factory_reset": {
+    "message": "Сброс к заводским настройкам"
+  },
+  "backend_indicator_label": {
+    "message": "Локальный бэкенд Whisper:"
+  },
+  "backend_indicator_value_unknown": {
+    "message": "Неизвестно"
+  },
+  "backend_hint_default": {
+    "message": "Работает на WebGPU, когда доступен; при отсутствии поддержки используется WASM."
+  },
+  "backend_chip_unknown": {
+    "message": "Неизвестно"
+  },
+  "backend_indicator_value_active": {
+    "message": "Активен"
+  },
+  "backend_chip_webgpu": {
+    "message": "WebGPU"
+  },
+  "backend_chip_wasm": {
+    "message": "WASM"
+  },
+  "backend_hint_webgpu": {
+    "message": "Ускорение на GPU (лучшее быстродействие при поддержке)."
+  },
+  "backend_hint_webgpu_enabled_supported": {
+    "message": "WebGPU включен и поддерживается. Активируется после следующей загрузки/транскрипции локальной модели."
+  },
+  "backend_hint_preferred_wasm": {
+    "message": "WASM выбран как предпочтительный бэкенд."
+  },
+  "backend_hint_webgpu_init_failed_prefix": {
+    "message": "WebGPU API присутствует, но инициализация адаптера/устройства не удалась:"
+  },
+  "backend_unknown_error": {
+    "message": "неизвестная ошибка"
+  },
+  "backend_hint_webgpu_unavailable": {
+    "message": "WebGPU недоступен в этом контексте; используется WASM."
+  },
+  "backend_hint_using_wasm": {
+    "message": "Используется WASM."
+  },
+  "title_recording": {
+    "message": "Whisper: Прослушивание"
+  },
+  "title_processing": {
+    "message": "Whisper: Обработка"
+  },
+  "title_error": {
+    "message": "Whisper: Ошибка"
+  },
+  "title_idle": {
+    "message": "Whisper: Ожидание"
+  },
+  "size_warning": {
+    "message": "⚠️ Тяжёлая модель: первый запуск будет медленным. Если происходит падение, используйте Base или Tiny."
+  },
+  "vosk_size_warning": {
+    "message": "⚠️ Большая модель Vosk: первая загрузка будет медленной и потребует много памяти."
+  },
+  "popup_site_prefix": {
+    "message": "Сайт"
+  },
+  "popup_site_unknown": {
+    "message": "Сайт: (неизвестно)"
+  },
+  "hide": {
+    "message": "Скрыть"
+  },
+  "show": {
+    "message": "Показать"
+  },
+  "backend_chip_unknown_note": {
+    "message": "Статус бэкенда неизвестен"
+  },
+  "add_rule": {
+    "message": "Добавить правила"
+  },
+  "assemblyai_get_key_btn": {
+    "message": "Получить API-ключ AssemblyAI"
+  },
+  "assemblyai_key_note": {
+    "message": "Хранится локально; используется только при выборе облачного движка. Бесплатно, но требует аккаунта, так как аудиоданные отправляются в AssemblyAI для обработ��и."
+  },
+  "assemblyai_streaming_silence_always_label": {
+    "message": "Всегда применять таймаут молчания для стрима"
+  },
+  "assemblyai_streaming_silence_never_label": {
+    "message": "Никогда не применять таймаут молчания для стрима"
+  },
+  "assemblyai_streaming_silence_partial_label": {
+    "message": "Таймаут молчания только при запуске из UI сайта, но не по хоткею (детерминированно)"
+  },
+  "clear_inputs": {
+    "message": "Очистить ввод"
+  },
+  "cloud_key_note": {
+    "message": "Укажите ваш ключ AssemblyAI, чтобы включить облачную транскрипцию."
+  },
+  "developer_note": {
+    "message": "Расширенные переключатели для отладки и экспериментального поведения. Отсортированы по понятности."
+  },
+  "disable_assemblyai_multilingual_label": {
+    "message": "Отключить многоязычную стрим-модель AssemblyAI"
+  },
+  "disable_assemblyai_streaming_label": {
+    "message": "Отключить потоковую передачу AssemblyAI в реальном времени"
+  },
+  "disable_grace_label": {
+    "message": "Отключить окно 'grace'"
+  },
+  "disable_grace_note": {
+    "message": "'Grace' включён; задайте ms окна grace выше."
+  },
+  "disable_processing_timeouts_label": {
+    "message": "Отключить таймауты обработки ultimatum"
+  },
+  "disable_processing_timeouts_note": {
+    "message": "Отключает watchdog content-скрипта и проверки таймаутов фоновой обработки ultimatum. Может сделать расширение неотзывчивым, хотя полезно для записи длинных сессий."
+  },
+  "disable_speech_shortcut_label": {
+    "message": "Отключить шорткат для речи"
+  },
+  "grace_window_label": {
+    "message": "Окно grace (мс)"
+  },
+  "grace_window_note": {
+    "message": "Предотвращает поздние результаты после отмены/остановки, когда grace включён."
+  },
+  "group_vosk_quick": {
+    "message": "Vosk (быстрые варианты)"
+  },
+  "group_whisper": {
+    "message": "Whisper"
+  },
+  "hostname": {
+    "message": "Hostname"
+  },
+  "hostname_placeholder": {
+    "message": "example.com"
+  },
+  "lang_note": {
+    "message": "Язык, который переводчик попытается распознать."
+  },
+  "link_here": {
+    "message": "ЗДЕСЬ!"
+  },
+  "logic_note": {
+    "message": "Настройте аудиовход, поведение записи и правила стриминга."
+  },
+  "override_default_option": {
+    "message": "(По умолчанию)"
+  },
+  "override_status_default": {
+    "message": "(По умолчанию: Включено)"
+  },
+  "override_status_disabled": {
+    "message": "Отключено"
+  },
+  "override_status_label": {
+    "message": "Статус расширения"
+  },
+  "override_timeout_placeholder": {
+    "message": "(По умолчанию)"
+  },
+  "overrides_list_title": {
+    "message": "Сохранённые переопределения"
+  },
+  "overrides_note": {
+    "message": "Переопределяйте модель, язык или движок для каждого сайта."
+  },
+  "remove_rule": {
+    "message": "Удалить все правила"
+  },
+  "section_cloud_title": {
+    "message": "AssemblyAI"
+  },
+  "section_developer": {
+    "message": "Настройки разработчика"
+  },
+  "section_logic": {
+    "message": "Логика речи"
+  },
+  "section_overrides": {
+    "message": "Переопределения по сайту"
+  },
+  "section_triggers": {
+    "message": "Триггеры речи"
+  },
+  "shortcut_enable_note": {
+    "message": "Довольно понятно..."
+  },
+  "shortcut_hotkey_label": {
+    "message": "Клавиатурное сочетание"
+  },
+  "shortcut_hotkey_note": {
+    "message": "Кликните, нажмите желаемую комбинацию. Backspace/Delete — очистить. Esc — отключить шорткат. Пусто — отключает."
+  },
+  "shortcut_hotkey_placeholder": {
+    "message": "Кликните и нажмите клавиши (Alt+A)"
+  },
+  "silence_note": {
+    "message": "Время ожидания после прекращения речи перед отправкой."
+  },
+  "silence_timeout": {
+    "message": "Таймаут молчания (мс)"
+  },
+  "streaming_applies_note": {
+    "message": "Применимо к стрим-провайдерам (Vosk + AssemblyAI)."
+  },
+  "streaming_silence_timeout": {
+    "message": "Таймаут молчания для стрима"
+  },
+  "table_enabled": {
+    "message": "Включено"
+  },
+  "table_engine": {
+    "message": "Поставщик"
+  },
+  "table_grace": {
+    "message": "Grace"
+  },
+  "table_host": {
+    "message": "Хост"
+  },
+  "table_lang": {
+    "message": "Язык"
+  },
+  "table_model": {
+    "message": "Модель"
+  },
+  "table_remove": {
+    "message": ""
+  },
+  "table_timeout": {
+    "message": "Таймаут"
+  },
+  "triggers_note": {
+    "message": "Настройте, как захватывается речь и как отправляются результаты."
+  },
+  "vosk_model_label_short": {
+    "message": "модель Vosk (введите для поиска)"
+  }
 }

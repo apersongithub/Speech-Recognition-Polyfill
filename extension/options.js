@@ -8,7 +8,11 @@ const ALLOWED_MODELS = [
     'Xenova/whisper-small',
     'Xenova/distil-whisper-medium.en'
 ];
-const ALLOWED_PROVIDERS = ['local-whisper', 'assemblyai'];
+
+const DEFAULT_VOSK_MODEL = 'vosk-model-small-en-us-0.15';
+const ALLOWED_PROVIDERS = ['local-whisper', 'assemblyai', 'vosk'];
+
+const VOSK_MODEL_INDEX_URL = 'https://alphacephei.com/vosk/models/model-list.json';
 
 const MIC_GAIN_MIN = 1.0;
 const MIC_GAIN_MAX = 3.0;
@@ -32,6 +36,10 @@ let selectedOverrideHost = null;
 // dropdown state for list visibility
 let overridesListOpen = false;
 
+// Vosk model index (loaded from model-list.json)
+let voskModelIndex = new Map();
+let voskModelIndexPromise = null;
+
 async function broadcastConfigChanged() {
     try {
         try { browser.runtime.sendMessage({ type: 'CONFIG_CHANGED' }); } catch (_) { }
@@ -52,13 +60,12 @@ document.addEventListener('DOMContentLoaded', () => {
     installOverridesListToggle();
     installOverrideRowClickToLoad();
 
-    // backend indicator
+    ensureVoskModelIndex().then(() => checkVoskModelSize()).catch(() => { });
+
     refreshBackendIndicator().catch(() => { });
-    // Poll a bit so it updates after first model load; cheap + simple.
     setInterval(() => refreshBackendIndicator().catch(() => { }), 2000);
 });
 
-// Existing listeners
 document.getElementById('open-assemblyai')?.addEventListener('click', () => {
     browser.tabs.create({ url: 'https://www.assemblyai.com/dashboard/api-keys', active: true });
 });
@@ -66,25 +73,75 @@ document.getElementById('add-override')?.addEventListener('click', addOrUpdateOv
 document.getElementById('remove-override')?.addEventListener('click', removeAllOverrides);
 
 document.getElementById('debug-mode')?.addEventListener('change', () => saveDebugMode(['dev']));
-document.getElementById('grace-ms')?.addEventListener('change', () => saveGraceSetting(['local']));
+document.getElementById('disable-processing-timeouts')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['dev']);
+});
+document.getElementById('grace-ms')?.addEventListener('change', () => saveGraceSetting(['speech-logic']));
 document.getElementById('factory-reset')?.addEventListener('click', factoryReset);
 document.getElementById('disable-favicons')?.addEventListener('change', () => toggleFavicons(['dev']));
 
 document.getElementById('show-model-sections-toggle')?.addEventListener('change', () => {
-    if (!isRestoring) saveDefaults(['dev']);
+    if (!isRestoring) saveDefaults(['engine']);
     applyVisibility();
 });
 document.getElementById('provider-select')?.addEventListener('change', () => {
     if (!isRestoring) saveDefaults(['engine']);
     applyVisibility();
 });
-document.getElementById('enable-hardcap')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
-document.getElementById('disable-grace-window')?.addEventListener('change', () => { if (!isRestoring) saveGraceSetting(['dev']); });
-document.getElementById('cache-default-model')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
-document.getElementById('strip-trailing-period')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['dev']); });
+document.getElementById('enable-hardcap')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+document.getElementById('disable-grace-window')?.addEventListener('change', () => {
+    if (!isRestoring) saveGraceSetting(['speech-logic']);
+});
+document.getElementById('cache-default-model')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['engine']); });
+document.getElementById('strip-trailing-period')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-triggers']);
+});
+document.getElementById('assemblyai-streaming')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+document.getElementById('assemblyai-streaming-multilingual')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+document.getElementById('disable-space-normalization')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-triggers']);
+});
 
-document.getElementById('enable-shortcut')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
-document.getElementById('send-enter-after')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['speech']); });
+document.getElementById('assemblyai-streaming-silence-always')?.addEventListener('change', (e) => {
+    const neverEl = document.getElementById('assemblyai-streaming-silence-never');
+    const partialEl = document.getElementById('assemblyai-streaming-silence-partial');
+    if (e.target.checked) {
+        if (neverEl) neverEl.checked = false;
+        if (partialEl) partialEl.checked = false;
+    }
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+document.getElementById('assemblyai-streaming-silence-never')?.addEventListener('change', (e) => {
+    const alwaysEl = document.getElementById('assemblyai-streaming-silence-always');
+    const partialEl = document.getElementById('assemblyai-streaming-silence-partial');
+    if (e.target.checked) {
+        if (alwaysEl) alwaysEl.checked = false;
+        if (partialEl) partialEl.checked = false;
+    }
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+document.getElementById('assemblyai-streaming-silence-partial')?.addEventListener('change', (e) => {
+    const alwaysEl = document.getElementById('assemblyai-streaming-silence-always');
+    const neverEl = document.getElementById('assemblyai-streaming-silence-never');
+    if (e.target.checked) {
+        if (alwaysEl) alwaysEl.checked = false;
+        if (neverEl) neverEl.checked = false;
+    }
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+
+document.getElementById('enable-shortcut')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-triggers']);
+});
+document.getElementById('send-enter-after')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-triggers']);
+});
 
 document.getElementById('toast-notifications')?.addEventListener('change', () => {
     if (!isRestoring) saveDefaults(['dev']);
@@ -96,12 +153,22 @@ document.getElementById('hide-warning-banner')?.addEventListener('change', () =>
 
 document.getElementById('mic-gain')?.addEventListener('input', () => {
     updateMicGainDisplay();
-    if (!isRestoring) saveDefaults(['dev']);
+    if (!isRestoring) saveDefaults(['speech-logic']);
 });
 document.getElementById('silence-sensitivity')?.addEventListener('input', () => {
     updateSilenceSensitivityDisplay();
-    if (!isRestoring) saveDefaults(['dev']);
+    if (!isRestoring) saveDefaults(['speech-logic']);
 });
+
+const voskModelInput = document.getElementById('vosk-model-input');
+if (voskModelInput) {
+    voskModelInput.addEventListener('input', () => {
+        checkVoskModelSize();
+    });
+    voskModelInput.addEventListener('change', () => {
+        if (!isRestoring) saveDefaults(['vosk']);
+    });
+}
 
 // import/export
 document.getElementById('export-settings')?.addEventListener('click', exportSettingsToFile);
@@ -149,7 +216,7 @@ if (hotkeyInput) {
         const enableChk = document.getElementById('enable-shortcut');
         if (enableChk) enableChk.checked = true;
         hotkeyInput.blur();
-        saveDefaults(['speech']);
+        saveDefaults(['speech-triggers']);
     });
 }
 
@@ -202,9 +269,85 @@ function clampGrace(val) {
     if (Number.isNaN(n)) return 450;
     return Math.max(0, Math.min(2000, n));
 }
-function normalizeProvider(p) {
-    return ALLOWED_PROVIDERS.includes(p) ? p : 'local-whisper';
+function parseGraceOverride(val) {
+    const n = parseInt(val, 10);
+    if (Number.isNaN(n)) return null;
+    return Math.max(0, Math.min(2000, n));
 }
+function normalizeProvider(p) {
+    return ALLOWED_PROVIDERS.includes(p) ? p : 'vosk';
+}
+
+function parseVoskModelList(payload) {
+    const list = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload?.models) ? payload.models : []);
+    return list.map((entry) => {
+        const id = entry?.name || entry?.id || entry?.model || entry?.model_id;
+        const url = entry?.url || entry?.link || entry?.download;
+        const size = entry?.size || entry?.size_mb || entry?.sizeMB || entry?.size_in_mb;
+        const lang = entry?.lang || entry?.language || entry?.locale;
+        if (!id) return null;
+        return { id, url, size, lang };
+    }).filter(Boolean);
+}
+
+async function ensureVoskModelIndex() {
+    if (voskModelIndexPromise) return voskModelIndexPromise;
+
+    voskModelIndexPromise = (async () => {
+        try {
+            const resp = await fetch(VOSK_MODEL_INDEX_URL);
+            if (!resp.ok) throw new Error(`Failed to fetch Vosk models: ${resp.status}`);
+            const data = await resp.json();
+            const list = parseVoskModelList(data);
+            if (list.length > 0) {
+                voskModelIndex = new Map(list.map(m => [m.id, m]));
+                setVoskModelDatalist(list);
+                return true;
+            }
+        } catch (e) {
+            console.warn('[Options] Failed to load Vosk model list', e);
+        }
+        return false;
+    })();
+
+    try {
+        return await voskModelIndexPromise;
+    } finally {
+        voskModelIndexPromise = null;
+    }
+}
+
+function normalizeVoskModel(id, fallbackModel = DEFAULT_VOSK_MODEL) {
+    const candidate = (id || '').trim();
+    if (!candidate) return fallbackModel;
+
+    if (voskModelIndex.size > 0) {
+        return voskModelIndex.has(candidate) ? candidate : fallbackModel;
+    }
+
+    return candidate;
+}
+
+function formatSize(size) {
+    const n = typeof size === 'number' ? size : parseFloat(size);
+    if (!Number.isFinite(n)) return null;
+
+    // If size looks like bytes, convert to MB
+    const bytes = n > 1_000_000 ? n : n * 1024 * 1024;
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+    return `${Math.round(mb)} MB`;
+}
+
+function sizeToMb(size) {
+    const n = typeof size === 'number' ? size : parseFloat(size);
+    if (!Number.isFinite(n)) return null;
+    const bytes = n > 1_000_000 ? n : n * 1024 * 1024;
+    return bytes / (1024 * 1024);
+}
+
 function checkModelSize() {
     const model = document.getElementById('model-select')?.value;
     const warningBox = document.getElementById('size-warning');
@@ -216,6 +359,53 @@ function checkModelSize() {
         warningBox.textContent = t('size_warning', "⚠️ Heavy Model: First run will be slow. If it crashes, use Base or Tiny.");
     }
 }
+
+function checkVoskModelSize() {
+    const model = document.getElementById('vosk-model-input')?.value?.trim();
+    const warningBox = document.getElementById('vosk-size-warning');
+    if (!warningBox) return;
+    warningBox.style.display = 'none';
+
+    if (!model) return;
+
+    const meta = voskModelIndex.get(model);
+    if (meta?.size) {
+        const formatted = formatSize(meta.size);
+        const sizeNum = typeof meta.size === 'number' ? meta.size : parseFloat(meta.size);
+        const bytes = sizeNum > 1_000_000 ? sizeNum : sizeNum * 1024 * 1024;
+        const mb = bytes / (1024 * 1024);
+
+        if (formatted && mb >= 500) {
+            warningBox.style.display = 'block';
+            warningBox.textContent = `⚠️ Large Vosk model: ${formatted}. First load will be slow and memory-heavy.`;
+        }
+        return;
+    }
+
+    if (/large|gigaspeech|big/i.test(model)) {
+        warningBox.style.display = 'block';
+        warningBox.textContent = t('vosk_size_warning', "⚠️ Large Vosk model: first load will be slow and memory-heavy.");
+    }
+}
+
+function setVoskModelDatalist(list) {
+    const datalist = document.getElementById('vosk-model-list');
+    if (!datalist) return;
+    datalist.innerHTML = '';
+
+    const filtered = list.filter((model) => {
+        const mb = sizeToMb(model?.size);
+        return mb == null || mb <= 1042;
+    });
+
+    const sorted = filtered.sort((a, b) => a.id.localeCompare(b.id));
+    for (const model of sorted) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        datalist.appendChild(option);
+    }
+}
+
 function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
 
 function clampMicGain(val) {
@@ -262,21 +452,29 @@ function applyBannerVisibility(hidden) {
 function applyVisibility() {
     const showToggle = document.getElementById('show-model-sections-toggle')?.checked === true;
     const hideModelSections = !showToggle;
-    const provider = document.getElementById('provider-select')?.value || 'local-whisper';
+    const provider = document.getElementById('provider-select')?.value || 'vosk';
     const cardLocal = document.getElementById('card-local');
     const cardCloud = document.getElementById('card-cloud');
-    if (!cardLocal || !cardCloud) return;
+    const cardVosk = document.getElementById('card-vosk');
+    if (!cardLocal || !cardCloud || !cardVosk) return;
 
     if (!hideModelSections) {
         cardLocal.style.display = '';
         cardCloud.style.display = '';
+        cardVosk.style.display = '';
         return;
     }
     if (provider === 'assemblyai') {
         cardLocal.style.display = 'none';
+        cardVosk.style.display = 'none';
         cardCloud.style.display = '';
+    } else if (provider === 'vosk') {
+        cardLocal.style.display = 'none';
+        cardVosk.style.display = '';
+        cardCloud.style.display = 'none';
     } else {
         cardLocal.style.display = '';
+        cardVosk.style.display = 'none';
         cardCloud.style.display = 'none';
     }
 }
@@ -316,15 +514,15 @@ function ensureHotkeyValue(save = false) {
         hotkeyInputEl.value = next;
     }
     lastHotkeyValue = next;
-    if (save) saveDefaults(['speech']);
+    if (save) saveDefaults(['speech-triggers']);
     return next;
 }
 
 // Backend indicator helpers
 function setBackendIndicator(backend) {
     const root = document.getElementById('backend-indicator');
-    const valueEl = document.getElementById('backend-value');       // left value
-    const chipEl = document.getElementById('backend-chip');         // right chip
+    const valueEl = document.getElementById('backend-value');
+    const chipEl = document.getElementById('backend-chip');
     const chipText = document.getElementById('backend-chip-text');
     const hintEl = document.getElementById('backend-hint');
 
@@ -332,7 +530,6 @@ function setBackendIndicator(backend) {
 
     const b = (backend || '').toLowerCase();
 
-    // left value
     valueEl.textContent = t('backend_indicator_value_active', 'Active');
 
     if (b === 'webgpu') {
@@ -372,19 +569,17 @@ async function refreshBackendIndicator() {
         const resp = await browser.runtime.sendMessage({ type: 'ASR_BACKEND_PING' });
 
         const preferred = (resp?.preferredBackend || '').toLowerCase();
-        const active = (resp?.backend || '').toLowerCase(); // may be 'unloaded'
+        const active = (resp?.backend || '').toLowerCase();
         const hasModelLoaded = !!resp?.hasModelLoaded;
         const w = resp?.webgpu;
 
         const webgpuUsable = !!(w && w.hasNavigatorGpu && w.adapterOk && w.deviceOk);
 
-        // 1) If model is loaded, display the actual active backend.
         if (hasModelLoaded && (active === 'webgpu' || active === 'wasm')) {
             setBackendIndicator(active);
             return;
         }
 
-        // 2) If model isn't loaded, display "enabled" based on preference+capability.
         if (preferred === 'webgpu' && webgpuUsable) {
             setBackendIndicator('webgpu');
             const hintEl = document.getElementById('backend-hint');
@@ -395,7 +590,6 @@ async function refreshBackendIndicator() {
             return;
         }
 
-        // 3) Otherwise, show wasm and explain why
         setBackendIndicator('wasm');
         const hintEl2 = document.getElementById('backend-hint');
         if (hintEl2) {
@@ -420,6 +614,7 @@ async function saveDefaults(statusKeys = []) {
     if (isApplyingExternalUpdate) return;
 
     const model = document.getElementById('model-select')?.value || 'Xenova/whisper-base';
+    const voskModelInputValue = (document.getElementById('vosk-model-input')?.value || '').trim();
     const language = document.getElementById('language-select')?.value || 'auto';
     const silenceTimeout = clampTimeout(document.getElementById('silence-timeout')?.value) ?? 1500;
     const provider = normalizeProvider(document.getElementById('provider-select')?.value);
@@ -432,16 +627,26 @@ async function saveDefaults(statusKeys = []) {
     const showModelSections = document.getElementById('show-model-sections-toggle')?.checked === true;
     const hideModelSections = !showModelSections;
 
-    // IMPORTANT: default should NOT be checked => hard cap disabled by default
     const enableHardCap = document.getElementById('enable-hardcap')?.checked === true;
     const disableHardCap = !enableHardCap;
 
     const cacheDefaultModel = document.getElementById('cache-default-model')?.checked === true;
 
-    // Keep your existing semantics (checkbox label might be inverted, but preserve behavior)
     const stripTrailingPeriod = document.getElementById('strip-trailing-period')?.checked !== true;
+    const disableSpaceNormalization = document.getElementById('disable-space-normalization')?.checked === true;
 
-    const enableShortcut = document.getElementById('enable-shortcut')?.checked === true;
+    const assemblyaiStreamingEnabled = document.getElementById('assemblyai-streaming')?.checked !== true;
+    const assemblyaiStreamingMultilingualEnabled =
+        document.getElementById('assemblyai-streaming-multilingual')?.checked !== true;
+
+    const streamingSilenceAlways = document.getElementById('assemblyai-streaming-silence-always')?.checked === true;
+    const streamingSilenceNever = document.getElementById('assemblyai-streaming-silence-never')?.checked === true;
+    const streamingSilencePartial = document.getElementById('assemblyai-streaming-silence-partial')?.checked === true;
+    const assemblyaiStreamingSilenceMode = streamingSilenceNever
+        ? 'never'
+        : (streamingSilenceAlways ? 'always' : (streamingSilencePartial ? 'partial' : 'never'));
+
+    const enableShortcut = document.getElementById('enable-shortcut')?.checked !== true;
     const sendEnterAfter = document.getElementById('send-enter-after')?.checked === true;
 
     const toastNotificationsEnabled = document.getElementById('toast-notifications')?.checked === true;
@@ -456,8 +661,13 @@ async function saveDefaults(statusKeys = []) {
 
     const stored = await browser.storage.local.get('settings');
     const settings = stored.settings || {};
+    const previousVoskModel = settings?.defaults?.voskModel || DEFAULT_VOSK_MODEL;
+
+    const voskModel = normalizeVoskModel(voskModelInputValue, previousVoskModel);
+
     settings.defaults = {
         model,
+        voskModel,
         language,
         silenceTimeoutMs: silenceTimeout,
         provider,
@@ -472,12 +682,14 @@ async function saveDefaults(statusKeys = []) {
     settings.disableFavicons = disableFavicons;
     settings.hideModelSections = hideModelSections;
 
-    // persisted dev flags
     settings.disableHardCap = disableHardCap;
     settings.cacheDefaultModel = cacheDefaultModel;
     settings.stripTrailingPeriod = stripTrailingPeriod;
+    settings.disableSpaceNormalization = disableSpaceNormalization;
+    settings.assemblyaiStreamingEnabled = assemblyaiStreamingEnabled;
+    settings.assemblyaiStreamingMultilingualEnabled = assemblyaiStreamingMultilingualEnabled;
+    settings.assemblyaiStreamingSilenceMode = assemblyaiStreamingSilenceMode;
 
-    // speech flags
     settings.shortcutEnabled = enableShortcut;
     settings.hotkey = hotkey;
     settings.sendEnterAfterResult = sendEnterAfter;
@@ -521,15 +733,24 @@ async function addOrUpdateOverride() {
     if (!host) return;
 
     const modelEl = document.getElementById('override-model');
+    const voskModelEl = document.getElementById('override-vosk-model');
     const langEl = document.getElementById('override-language');
     const timeoutEl = document.getElementById('override-timeout');
     const providerEl = document.getElementById('override-provider');
     const statusEl = document.getElementById('override-status');
+    const graceEl = document.getElementById('override-grace');
 
-    const model = modelEl?.value || null;
+    const voskModelRaw = (voskModelEl?.value || '').trim();
+    const model = voskModelRaw || (modelEl?.value || null);
     const language = langEl?.value || null;
     const silenceTimeout = clampTimeout(timeoutEl?.value);
-    const provider = providerEl?.value || null;
+    let provider = providerEl?.value || null;
+    const graceMs = parseGraceOverride(graceEl?.value);
+
+    // ✅ Infer provider from model if provider not explicitly set
+    if (!provider && model) {
+        provider = model.startsWith('vosk-model-') ? 'vosk' : 'local-whisper';
+    }
 
     const siteStatus = (statusEl?.value || '').trim();
     const enabled = (siteStatus !== 'disabled');
@@ -543,19 +764,21 @@ async function addOrUpdateOverride() {
         ...(language ? { language } : {}),
         ...(silenceTimeout ? { silenceTimeoutMs: silenceTimeout } : {}),
         ...(provider ? { provider: normalizeProvider(provider) } : {}),
+        ...(typeof graceMs === 'number' ? { graceMs } : {}),
         ...(enabled ? {} : { enabled: false })
     };
 
     await browser.storage.local.set({ settings });
 
-    // keep selection
     selectedOverrideHost = host;
 
     renderOverrides(settings.overrides, settings.disableFavicons !== true);
 
     hostEl.value = '';
     if (timeoutEl) timeoutEl.value = '';
+    if (graceEl) graceEl.value = '';
     if (modelEl) modelEl.value = '';
+    if (voskModelEl) voskModelEl.value = '';
     if (langEl) langEl.value = '';
     if (providerEl) providerEl.value = '';
     if (statusEl) statusEl.value = '';
@@ -609,9 +832,6 @@ function renderOverrides(overrides, showFavicons) {
     setOverridesCount(entries.length);
 
     for (const [host, cfg] of entries) {
-        const favicon = showFavicons
-            ? `<img class="fav-icon" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32" onerror="this.style.display='none'">`
-            : '';
         const tr = document.createElement('tr');
         tr.dataset.host = host;
 
@@ -621,17 +841,47 @@ function renderOverrides(overrides, showFavicons) {
 
         const enabled = cfg?.enabled !== false;
 
-        tr.innerHTML = `
-          <td><span class="host-cell">${favicon}${host}</span></td>
-          <td>${enabled ? 'Yes' : 'No'}</td>
-          <td>${cfg.model || '—'}</td>
-          <td>${cfg.language || '—'}</td>
-          <td>${cfg.silenceTimeoutMs || '—'}</td>
-          <td>${cfg.provider || '—'}</td>
-          <td style="text-align:right;">
-            <button class="row-delete" data-host="${host}" aria-label="Remove ${host}">✖</button>
-          </td>
-        `;
+        // Host cell with optional favicon (no inline onerror)
+        const tdHost = document.createElement('td');
+        const hostSpan = document.createElement('span');
+        hostSpan.className = 'host-cell';
+        if (showFavicons) {
+            const img = document.createElement('img');
+            img.className = 'fav-icon';
+            img.src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`;
+            // Attach error handler programmatically to comply with CSP
+            img.addEventListener('error', () => { img.style.display = 'none'; });
+            hostSpan.appendChild(img);
+        }
+        hostSpan.appendChild(document.createTextNode(host));
+        tdHost.appendChild(hostSpan);
+        tr.appendChild(tdHost);
+
+        // Helper to create td cells
+        const makeTd = (content) => {
+            const td = document.createElement('td');
+            td.textContent = (content === undefined || content === null || content === '') ? '—' : String(content);
+            return td;
+        };
+
+        tr.appendChild(makeTd(enabled ? 'Yes' : 'No'));
+        tr.appendChild(makeTd(cfg.model || '—'));
+        tr.appendChild(makeTd(cfg.language || '—'));
+        tr.appendChild(makeTd(cfg.silenceTimeoutMs ?? '—'));
+        tr.appendChild(makeTd(cfg.graceMs ?? '—'));
+        tr.appendChild(makeTd(cfg.provider || '—'));
+
+        // Remove button
+        const tdRemove = document.createElement('td');
+        tdRemove.style.textAlign = 'right';
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'row-delete';
+        rmBtn.setAttribute('data-host', host);
+        rmBtn.setAttribute('aria-label', `Remove ${host}`);
+        rmBtn.textContent = '✖';
+        tdRemove.appendChild(rmBtn);
+        tr.appendChild(tdRemove);
+
         tbody.appendChild(tr);
     }
 }
@@ -669,9 +919,10 @@ async function restoreOptions() {
     const d = settings.defaults || {};
 
     document.getElementById('model-select').value = d.model || 'Xenova/whisper-base';
+    document.getElementById('vosk-model-input').value = normalizeVoskModel(d.voskModel || DEFAULT_VOSK_MODEL);
     document.getElementById('language-select').value = d.language || 'auto';
     document.getElementById('silence-timeout').value = d.silenceTimeoutMs || 1500;
-    document.getElementById('provider-select').value = normalizeProvider(d.provider || 'local-whisper');
+    document.getElementById('provider-select').value = normalizeProvider(d.provider || 'vosk');
     document.getElementById('assemblyai-key').value = settings.assemblyaiApiKey || '';
 
     const micGain = clampMicGain(
@@ -703,8 +954,7 @@ async function restoreOptions() {
     const hideModelSections = settings.hideModelSections !== false;
     document.getElementById('show-model-sections-toggle').checked = !hideModelSections;
 
-    // IMPORTANT: default should NOT be checked => enable-hardcap false unless explicitly enabled
-    const disableHardCap = settings.disableHardCap !== false; // default true (disabled)
+    const disableHardCap = settings.disableHardCap !== false;
     document.getElementById('enable-hardcap').checked = !disableHardCap;
 
     const disableGraceWindow = settings.graceEnabled === false;
@@ -719,6 +969,26 @@ async function restoreOptions() {
     const stripToggle = document.getElementById('strip-trailing-period');
     if (stripToggle) stripToggle.checked = !stripTrailing;
 
+    const disableSpaceNormalization = settings.disableSpaceNormalization === true;
+    const disableSpaceToggle = document.getElementById('disable-space-normalization');
+    if (disableSpaceToggle) disableSpaceToggle.checked = disableSpaceNormalization;
+
+    const assemblyStreamingToggle = document.getElementById('assemblyai-streaming');
+    if (assemblyStreamingToggle) assemblyStreamingToggle.checked = settings.assemblyaiStreamingEnabled === false;
+
+    const assemblyStreamingMultiToggle = document.getElementById('assemblyai-streaming-multilingual');
+    if (assemblyStreamingMultiToggle) {
+        assemblyStreamingMultiToggle.checked = settings.assemblyaiStreamingMultilingualEnabled === false;
+    }
+
+    const silenceMode = settings.assemblyaiStreamingSilenceMode || 'never';
+    const silenceAlwaysEl = document.getElementById('assemblyai-streaming-silence-always');
+    const silenceNeverEl = document.getElementById('assemblyai-streaming-silence-never');
+    const silencePartialEl = document.getElementById('assemblyai-streaming-silence-partial');
+    if (silenceAlwaysEl) silenceAlwaysEl.checked = silenceMode === 'always';
+    if (silenceNeverEl) silenceNeverEl.checked = silenceMode === 'never';
+    if (silencePartialEl) silencePartialEl.checked = silenceMode === 'partial';
+
     const enableShortcut = settings.shortcutEnabled !== false;
     const sendEnterAfter = settings.sendEnterAfterResult === true;
     const hkVal = typeof settings.hotkey === 'string' ? settings.hotkey : 'Alt+A';
@@ -727,17 +997,17 @@ async function restoreOptions() {
     const enableChk = document.getElementById('enable-shortcut');
     const sendEnterChk = document.getElementById('send-enter-after');
 
-    if (enableChk) enableChk.checked = enableShortcut;
+    if (enableChk) enableChk.checked = !enableShortcut;
     if (sendEnterChk) sendEnterChk.checked = sendEnterAfter;
     if (hotkeyInput) hotkeyInput.value = hkVal;
     lastHotkeyValue = hkVal || 'Alt+A';
 
     checkModelSize();
+    checkVoskModelSize();
 
     renderOverrides(settings.overrides || {}, settings.disableFavicons !== true);
     applyVisibility();
 
-    // keep list collapsed by default after restore (unless user toggled open)
     applyOverridesListOpenState();
 
     refreshBackendIndicator().catch(() => { });
@@ -745,7 +1015,6 @@ async function restoreOptions() {
     isRestoring = false;
 }
 
-// Auto-save hooks
 document.getElementById('model-select')?.addEventListener('change', () => {
     if (!isRestoring) {
         checkModelSize();
@@ -753,17 +1022,21 @@ document.getElementById('model-select')?.addEventListener('change', () => {
     }
 });
 document.getElementById('language-select')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['local']); });
-document.getElementById('silence-timeout')?.addEventListener('input', () => { if (!isRestoring) saveDefaults(['local']); });
+document.getElementById('silence-timeout')?.addEventListener('input', () => {
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
 document.getElementById('assemblyai-key')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['cloud']); });
 
 function showSaved(area = 'save') {
     const map = {
         'engine': 'status-engine',
         'local': 'status-local',
+        'vosk': 'status-vosk',
         'cloud': 'status-cloud',
         'dev': 'status-dev',
         'overrides': 'status-overrides',
-        'speech': 'status-speech',
+        'speech-triggers': 'status-speech-triggers',
+        'speech-logic': 'status-speech-logic',
         'save': 'status-save'
     };
     const id = map[area] || 'status-save';
@@ -783,7 +1056,6 @@ function showSaved(area = 'save') {
     statusTimers.set(id, timer);
 }
 
-// ---------------- dropdown/collapse for the list ----------------
 function applyOverridesListOpenState() {
     const body = document.getElementById('overrides-list-body');
     const btn = document.getElementById('toggle-overrides-list');
@@ -803,47 +1075,58 @@ function installOverridesListToggle() {
         applyOverridesListOpenState();
     });
 
-    // default: OPEN
     overridesListOpen = true;
     applyOverridesListOpenState();
 }
 
-// ---------------- click row -> load into inputs ----------------
 function loadOverrideIntoInputs(host, cfg) {
     const hostEl = document.getElementById('override-host');
     const modelEl = document.getElementById('override-model');
+    const voskModelEl = document.getElementById('override-vosk-model');
     const langEl = document.getElementById('override-language');
     const timeoutEl = document.getElementById('override-timeout');
     const providerEl = document.getElementById('override-provider');
     const statusEl = document.getElementById('override-status');
+    const graceEl = document.getElementById('override-grace');
 
     if (hostEl) hostEl.value = host || '';
 
-    if (modelEl) modelEl.value = cfg?.model || '';
+    if (cfg?.model && cfg.model.startsWith('vosk-model-')) {
+        if (voskModelEl) voskModelEl.value = cfg.model;
+        if (modelEl) modelEl.value = '';
+    } else {
+        if (modelEl) modelEl.value = cfg?.model || '';
+        if (voskModelEl) voskModelEl.value = '';
+    }
+
     if (langEl) langEl.value = (cfg?.language ?? '');
     if (timeoutEl) timeoutEl.value = (typeof cfg?.silenceTimeoutMs === 'number') ? String(cfg.silenceTimeoutMs) : '';
     if (providerEl) providerEl.value = cfg?.provider || '';
     if (statusEl) statusEl.value = (cfg?.enabled === false) ? 'disabled' : '';
+    if (graceEl) graceEl.value = (typeof cfg?.graceMs === 'number') ? String(cfg.graceMs) : '';
 }
 
 function clearOverrideInputs() {
     const hostEl = document.getElementById('override-host');
     const modelEl = document.getElementById('override-model');
+    const voskModelEl = document.getElementById('override-vosk-model');
     const langEl = document.getElementById('override-language');
     const timeoutEl = document.getElementById('override-timeout');
     const providerEl = document.getElementById('override-provider');
     const statusEl = document.getElementById('override-status');
+    const graceEl = document.getElementById('override-grace');
 
     if (hostEl) hostEl.value = '';
     if (modelEl) modelEl.value = '';
+    if (voskModelEl) voskModelEl.value = '';
     if (langEl) langEl.value = '';
     if (timeoutEl) timeoutEl.value = '';
     if (providerEl) providerEl.value = '';
     if (statusEl) statusEl.value = '';
+    if (graceEl) graceEl.value = '';
 
     selectedOverrideHost = null;
 
-    // optional: remove row highlight immediately
     browser.storage.local.get('settings').then(({ settings }) => {
         renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
     }).catch(() => { });
@@ -854,7 +1137,6 @@ function installOverrideRowClickToLoad() {
     if (!tbody) return;
 
     tbody.addEventListener('click', async (e) => {
-        // ignore delete clicks (handled elsewhere)
         if (e.target.closest('.row-delete')) return;
 
         const row = e.target.closest('tr');
@@ -867,12 +1149,10 @@ function installOverrideRowClickToLoad() {
         selectedOverrideHost = host;
         loadOverrideIntoInputs(host, cfg);
 
-        // highlight selection
         renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
     });
 }
 
-// ---------------- Live updates while options is open ----------------
 function installLiveSettingsListener() {
     try {
         browser.storage.onChanged.addListener((changes, areaName) => {
@@ -887,16 +1167,14 @@ function installLiveSettingsListener() {
 
             isApplyingExternalUpdate = true;
             try {
-                // Update overrides table instantly
                 renderOverrides(next.overrides || {}, next.disableFavicons !== true);
 
-                // keep toggles in sync
                 const hideModelSections = next.hideModelSections !== false;
                 const showToggle = document.getElementById('show-model-sections-toggle');
                 if (showToggle) showToggle.checked = !hideModelSections;
 
                 const providerSelect = document.getElementById('provider-select');
-                const nextProvider = normalizeProvider(next?.defaults?.provider || 'local-whisper');
+                const nextProvider = normalizeProvider(next?.defaults?.provider || 'vosk');
                 if (providerSelect && providerSelect.value !== nextProvider) providerSelect.value = nextProvider;
                 applyVisibility();
 
@@ -906,11 +1184,32 @@ function installLiveSettingsListener() {
                 const stripToggle = document.getElementById('strip-trailing-period');
                 if (stripToggle) stripToggle.checked = next.stripTrailingPeriod === false;
 
+                const disableSpaceToggle = document.getElementById('disable-space-normalization');
+                if (disableSpaceToggle) disableSpaceToggle.checked = next.disableSpaceNormalization === true;
+
+                const assemblyStreamingToggle = document.getElementById('assemblyai-streaming');
+                if (assemblyStreamingToggle) assemblyStreamingToggle.checked = next.assemblyaiStreamingEnabled === false;
+
+                const assemblyStreamingMultiToggle = document.getElementById('assemblyai-streaming-multilingual');
+                if (assemblyStreamingMultiToggle) {
+                    assemblyStreamingMultiToggle.checked = next.assemblyaiStreamingMultilingualEnabled === false;
+                }
+
+                const silenceMode = next.assemblyaiStreamingSilenceMode || 'never';
+                const silenceAlwaysEl = document.getElementById('assemblyai-streaming-silence-always');
+                const silenceNeverEl = document.getElementById('assemblyai-streaming-silence-never');
+                const silencePartialEl = document.getElementById('assemblyai-streaming-silence-partial');
+                if (silenceAlwaysEl) silenceAlwaysEl.checked = silenceMode === 'always';
+                if (silenceNeverEl) silenceNeverEl.checked = silenceMode === 'never';
+                if (silencePartialEl) silencePartialEl.checked = silenceMode === 'partial';
+
                 const d = next.defaults || {};
                 const modelEl = document.getElementById('model-select');
+                const voskModelEl = document.getElementById('vosk-model-input');
                 const langEl = document.getElementById('language-select');
                 const silenceEl = document.getElementById('silence-timeout');
                 if (modelEl && d.model && modelEl.value !== d.model) modelEl.value = d.model;
+                if (voskModelEl) voskModelEl.value = normalizeVoskModel(d.voskModel || DEFAULT_VOSK_MODEL);
                 if (langEl && d.language && langEl.value !== d.language) langEl.value = d.language;
                 if (silenceEl && typeof d.silenceTimeoutMs === 'number' && String(silenceEl.value) !== String(d.silenceTimeoutMs)) {
                     silenceEl.value = d.silenceTimeoutMs;
@@ -938,10 +1237,9 @@ function installLiveSettingsListener() {
                 if (hideBannerEl) hideBannerEl.checked = next.hideWarningBanner === true;
                 applyBannerVisibility(next.hideWarningBanner === true);
 
-                // IMPORTANT: default should NOT be checked
                 const enableHardcapEl = document.getElementById('enable-hardcap');
                 if (enableHardcapEl) {
-                    const disableHardCap = next.disableHardCap !== false; // default true (disabled)
+                    const disableHardCap = next.disableHardCap !== false;
                     enableHardcapEl.checked = !disableHardCap;
                 }
 
@@ -955,7 +1253,7 @@ function installLiveSettingsListener() {
                 if (disableGraceEl) disableGraceEl.checked = next.graceEnabled === false;
 
                 const enableShortcutEl = document.getElementById('enable-shortcut');
-                if (enableShortcutEl) enableShortcutEl.checked = next.shortcutEnabled !== false;
+                if (enableShortcutEl) enableShortcutEl.checked = next.shortcutEnabled === false;
 
                 const sendEnterEl = document.getElementById('send-enter-after');
                 if (sendEnterEl) sendEnterEl.checked = next.sendEnterAfterResult === true;
@@ -971,6 +1269,7 @@ function installLiveSettingsListener() {
                 if (keyEl && keyEl.value !== nextKey) keyEl.value = nextKey;
 
                 checkModelSize();
+                checkVoskModelSize();
 
                 refreshBackendIndicator().catch(() => { });
             } finally {
@@ -980,7 +1279,6 @@ function installLiveSettingsListener() {
     } catch (_) { }
 }
 
-// ---------------- Import / Export ----------------
 async function exportSettingsToFile() {
     try {
         const stored = await browser.storage.local.get('settings');
@@ -1023,7 +1321,7 @@ async function importSettingsFromFile(e) {
 
         if (incomingSettings.defaults) {
             const p = incomingSettings.defaults.provider;
-            if (p && !ALLOWED_PROVIDERS.includes(p)) incomingSettings.defaults.provider = 'local-whisper';
+            if (p && !ALLOWED_PROVIDERS.includes(p)) incomingSettings.defaults.provider = 'vosk';
         }
 
         await browser.storage.local.set({ settings: incomingSettings });

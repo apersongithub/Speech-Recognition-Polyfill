@@ -4,21 +4,6 @@
 // - Fall back to form.submit() or synthetic Enter only if needed.
 // - Debug mode: can mirror background debug logs into the *site's* console.
 
-// Behavior:
-// - Hotkey works even if we can't resolve an editable at keydown time (needed for shadow/contenteditable editors).
-// - BUT: we capture the "intended" editable target (when possible) at hotkey time,
-//   and insert the transcription back into that same element for full functionality.
-
-// NOTE (duplicate-text fix):
-// Some sites (e.g. speechnotes.co) already insert text when they receive a WebSpeech result.
-// Previously we BOTH inserted directly AND forwarded the result to the SpeechRecognition bridge,
-// causing duplicated text.
-// Now we do: forward to page FIRST, then wait briefly for a WHISPER_PAGE_HANDLED ack.
-// - If ack arrives => assume page handled insertion => do NOT insert.
-// - If no ack => fall back to direct insertion.
-// Caveat: a site could ack but not actually insert text. This is rare for sites that ack,
-// but if it happens, increase PAGE_ACK_TIMEOUT_MS or add a "did editor change?" check.
-
 const IS_TOP_FRAME = (window.self === window.top);
 if (!IS_TOP_FRAME) {
   // Do not throw in iframes (Google Docs/Slides rely on them).
@@ -33,13 +18,20 @@ const SILENCE_SENSITIVITY_MIN = 6;
 const SILENCE_SENSITIVITY_MAX = 20;
 const SILENCE_SENSITIVITY_DEFAULT = 12;
 
-let silenceTimeoutMs = 1000;
+const STREAM_TARGET_SAMPLE_RATE = 16000;
+const STREAM_CHUNK_MS = 250;
+const STREAM_CHUNK_SAMPLES = Math.round(STREAM_TARGET_SAMPLE_RATE * STREAM_CHUNK_MS / 1000);
+// Try these values (content.js)
+const STREAM_IDLE_TIMEOUT_MS = 15000; // or even 30000
+const STREAM_EARLY_STOP_GUARD_MS = 4500; // NEW: ignore premature UI stop on Duolingo
+
+let streamingEverHeard = false; // NEW: track if we detected any speech during streaming
+let silenceTimeoutMs = 1000; // Experiment: 5–10s
 let shouldShowNotifications = false;
 let debugLogsEnabled = false;
 let captureActive = false;
 let currentSessionId = 0;
 let activeSessionId = 0;
-let recordingStartTime = 0;
 
 let processingSessionId = null;
 let disableHardCap = false;
@@ -65,6 +57,26 @@ let extensionEnabledForSite = true;
 let stripTrailingPeriod = false;
 let micGain = MIC_GAIN_DEFAULT;
 let silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
+let streamingSilenceMode = 'partial';
+let disableSpaceNormalization = false;
+
+// NEW: disable processing timeouts
+let disableProcessingTimeouts = false;
+
+let streamingProvider = null; // 'assemblyai' | 'vosk' | null
+let streamingActive = false;
+
+// AssemblyAI streaming
+let assemblyaiStreamingEnabled = false;
+let streamingProcessor = null;
+let streamingGain = null;
+let streamingBuffers = [];
+let streamingBufferSamples = 0;
+let streamingSessionId = null;
+let streamingCaptureActive = false;
+
+// NEW: prevent multiple final submissions per Duolingo session
+let handledStreamingFinalSessionId = null;
 
 // watchdog
 let processingWatchdog = null;
@@ -81,6 +93,131 @@ const PAGE_ACK_TIMEOUT_MS = 220;
 // NEW: recording-start watchdog to prevent "Listening..." desync
 let startRecordingWatchdog = null;
 const START_RECORDING_WATCHDOG_MS = 1200;
+
+let nextStartSource = null;
+let currentStartSource = 'ui';
+
+let lastSpeechActive = false;
+let lastAudioActive = false;
+
+const STREAMING_FINAL_STABILITY_MS = 250; // NEW: wait briefly for matching partial
+
+let lastStreamingPartialText = null; // NEW
+let lastStreamingPartialSessionId = null; // NEW
+let pendingStreamingFinal = null; // NEW: { sessionId, text, timer }
+
+function floatTo16BitPCM(float32) {
+  const out = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    let s = Math.max(-1, Math.min(1, float32[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return out;
+}
+
+function armProcessingWatchdog(sessionId) {
+  if (disableProcessingTimeouts) return;
+  clearProcessingWatchdog();
+  processingWatchdog = setTimeout(() => {
+    dbg('Processing watchdog fired', { sessionId, processingSessionId });
+    processingSessionId = null;
+    showNotification("Transcription timed out. Please try again.", "error");
+  }, PROCESSING_WATCHDOG_MS);
+}
+
+function sendStreamingChunk(chunk) {
+  if (!streamingSessionId) return;
+
+  if (streamingProvider === 'assemblyai') {
+    const pcm = floatTo16BitPCM(chunk);
+    try {
+      browser.runtime.sendMessage({
+        type: 'ASSEMBLYAI_STREAM_CHUNK',
+        sessionId: streamingSessionId,
+        audioData: pcm.buffer,
+        hostname: location.hostname,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) { }
+    return;
+  }
+
+  if (streamingProvider === 'vosk') {
+    // ✅ send ONLY the chunk slice, not the full buffer
+    const slice = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
+    try {
+      browser.runtime.sendMessage({
+        type: 'VOSK_STREAM_CHUNK',
+        sessionId: streamingSessionId,
+        audioData: slice,
+        sampleRate: STREAM_TARGET_SAMPLE_RATE,
+        hostname: location.hostname,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) { }
+  }
+}
+
+function normalizeStreamingText(s) {
+  return (s || '').trim().replace(/\s+/g, ' ');
+}
+
+function needsLeadingSpace(prevChar, nextText) {
+  if (!prevChar) return false;
+  if (disableSpaceNormalization) return false;
+
+  const prev = String(prevChar);
+  const next = String(nextText || '');
+
+  if (/[\s\(\[\{'"“‘]$/.test(prev)) return false;
+  if (/^[\s\.,!?;:\)\]\}'"”’]/.test(next)) return false;
+
+  return true;
+}
+
+function getPrevCharFromTarget(target) {
+  if (!target) return '';
+
+  const tag = (target.tagName || '').toLowerCase();
+  if (tag === 'textarea' || tag === 'input') {
+    try {
+      const pos = typeof target.selectionStart === 'number' ? target.selectionStart : null;
+      if (pos && pos > 0) return target.value?.charAt(pos - 1) || '';
+    } catch (_) { }
+    return '';
+  }
+
+  if (target.isContentEditable) {
+    try {
+      const sel = window.getSelection?.();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const node = range.startContainer;
+        const offset = range.startOffset;
+        if (node && node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent || '';
+          if (offset > 0) return text.charAt(offset - 1);
+        }
+      }
+    } catch (_) { }
+  }
+
+  return '';
+}
+
+function normalizeInsertText(target, text) {
+  if (!text) return text;
+  const prevChar = getPrevCharFromTarget(target);
+  if (needsLeadingSpace(prevChar, text)) return ' ' + text;
+  return text;
+}
+
+function clearPendingStreamingFinal() {
+  if (pendingStreamingFinal?.timer) {
+    try { clearTimeout(pendingStreamingFinal.timer); } catch (_) { }
+  }
+  pendingStreamingFinal = null;
+}
 
 function clearStartRecordingWatchdog() {
   if (startRecordingWatchdog) {
@@ -111,6 +248,33 @@ function waitForPageHandledAck(sessionId) {
   });
 }
 
+function forceEndPageRecognition() {
+  try { window.postMessage({ type: 'WHISPER_FORCE_END' }, "*"); } catch (_) { }
+}
+
+function setAudioActive(active) {
+  if (!IS_TOP_FRAME) return;
+  if (lastAudioActive === active) return;
+  lastAudioActive = active;
+  window.postMessage({ type: active ? 'WHISPER_AUDIO_START' : 'WHISPER_AUDIO_END' }, "*");
+}
+
+function setSpeechActive(active) {
+  if (!IS_TOP_FRAME) return;
+  if (lastSpeechActive === active) return;
+  lastSpeechActive = active;
+  window.postMessage({ type: active ? 'WHISPER_SPEECH_START' : 'WHISPER_SPEECH_END' }, "*");
+}
+
+function pushPageConfig() {
+  if (!IS_TOP_FRAME) return;
+  window.postMessage({
+    type: 'WHISPER_CONFIG',
+    disableSpaceNormalization: !!disableSpaceNormalization,
+    streamingActive: !!streamingActive
+  }, "*");
+}
+
 // Listen for page ack from polyfill/page script
 window.addEventListener('message', (e) => {
   if (!IS_TOP_FRAME) return;
@@ -129,12 +293,13 @@ function isGoogleDocsOrSlidesHost() {
 }
 
 // NEW: docs.google.com-only workaround.
-// When the user presses the extension hotkey on docs.google.com, also dispatch Ctrl/⌘+Shift+S
-// via synthetic KeyboardEvent (based on your testing, this triggers "Start voice typing").
-//
-// Note: We ONLY do this on docs.google.com (not slides).
 function isDocsHost() {
   return (location.hostname || '').toLowerCase() === 'docs.google.com';
+}
+
+function isDuolingoHost() {
+  const h = (location.hostname || '').toLowerCase();
+  return h === 'www.duolingo.com' || h.endsWith('.duolingo.com') || h === 'www.duolingo.cn' || h.endsWith('.duolingo.cn');
 }
 
 function isMacOS() {
@@ -273,8 +438,6 @@ function isEditableTarget(el) {
   return false;
 }
 
-// Grab "best guess" editable from event path / active element.
-// This is used ONLY to lock insertion target on hotkey press.
 function findEditableFromEvent(e) {
   const path = (typeof e.composedPath === 'function') ? e.composedPath() : [];
   for (const node of path) {
@@ -312,7 +475,6 @@ function snapshotTargetInfo(el) {
     className: (typeof el.className === 'string') ? el.className : null
   };
 
-  // capture caret for inputs/textareas
   if (tag === 'textarea' || tag === 'input') {
     try {
       info.selectionStart = typeof el.selectionStart === 'number' ? el.selectionStart : null;
@@ -326,7 +488,6 @@ function snapshotTargetInfo(el) {
 }
 
 function lockInsertionTargetFromEvent(e) {
-  // Prefer a real editable if we can find one, otherwise keep null and we’ll fallback later.
   const candidate = findEditableFromEvent(e) || findActiveEditable();
   if (candidate && isEditableTarget(candidate)) {
     lockedInsertTarget = candidate;
@@ -349,6 +510,139 @@ function hostMatchesRule(host, ruleHost) {
   return host.endsWith('.' + ruleHost);
 }
 
+function getProviderFromSettings(settings, hostname) {
+  const defaults = settings?.defaults || {};
+  const overrides = settings?.overrides || {};
+  const site = overrides[hostname] || {};
+  const baseProvider = (defaults.provider === 'assemblyai')
+    ? 'assemblyai'
+    : (defaults.provider === 'local-whisper')
+      ? 'local-whisper'
+      : (defaults.provider === 'vosk' ? 'vosk' : 'vosk');
+  return (site.provider ?? baseProvider) === 'assemblyai'
+    ? 'assemblyai'
+    : ((site.provider ?? baseProvider) === 'vosk' ? 'vosk' : 'local-whisper');
+}
+
+function normalizeStreamingSilenceMode(mode) {
+  if (mode === 'always' || mode === 'never' || mode === 'partial') return mode;
+  return 'partial';
+}
+
+function shouldApplyStreamingSilenceTimeout() {
+  if (!streamingActive) return false;
+
+  // Apply the SAME silence-mode rules for all streaming providers (vosk + assemblyai)
+  if (streamingSilenceMode === 'always') return true;
+  if (streamingSilenceMode === 'never') return false;
+
+  // "partial" => only when started by site UI, not hotkey
+  return currentStartSource === 'ui';
+}
+
+function resetStreamingBuffers() {
+  streamingBuffers = [];
+  streamingBufferSamples = 0;
+}
+
+function mergeFloat32(buffers, totalLength) {
+  const out = new Float32Array(totalLength);
+  let offset = 0;
+  for (const b of buffers) {
+    out.set(b, offset);
+    offset += b.length;
+  }
+  return out;
+}
+
+function resampleTo16k(buffer, inputSampleRate) {
+  if (inputSampleRate === STREAM_TARGET_SAMPLE_RATE) return buffer;
+  const ratio = inputSampleRate / STREAM_TARGET_SAMPLE_RATE;
+  const newLength = Math.round(buffer.length / ratio);
+  const result = new Float32Array(newLength);
+  let offset = 0;
+  for (let i = 0; i < newLength; i++) {
+    const nextOffset = Math.min(buffer.length, Math.round((i + 1) * ratio));
+    let sum = 0;
+    let count = 0;
+    for (let j = offset; j < nextOffset; j++) {
+      sum += buffer[j];
+      count += 1;
+    }
+    result[i] = count ? sum / count : 0;
+    offset = nextOffset;
+  }
+  return result;
+}
+
+function floatTo16BitPCM(float32) {
+  const out = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    let s = Math.max(-1, Math.min(1, float32[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return out;
+}
+
+function flushStreamingBuffer() {
+  if (streamingBufferSamples < STREAM_CHUNK_SAMPLES) return;
+  const combined = mergeFloat32(streamingBuffers, streamingBufferSamples);
+
+  let offset = 0;
+  while (combined.length - offset >= STREAM_CHUNK_SAMPLES) {
+    const chunk = combined.subarray(offset, offset + STREAM_CHUNK_SAMPLES);
+    sendStreamingChunk(chunk);
+    offset += STREAM_CHUNK_SAMPLES;
+  }
+
+  const leftover = combined.subarray(offset);
+  streamingBuffers = leftover.length ? [leftover] : [];
+  streamingBufferSamples = leftover.length;
+}
+
+function appendStreamingSamples(input, inputSampleRate) {
+  const resampled = resampleTo16k(input, inputSampleRate);
+  if (!resampled || resampled.length === 0) return;
+
+  streamingBuffers.push(resampled);
+  streamingBufferSamples += resampled.length;
+  flushStreamingBuffer();
+}
+
+function setupStreamingProcessor(sourceNode) {
+  if (!globalContext) return;
+  if (streamingProcessor) return;
+
+  streamingProcessor = globalContext.createScriptProcessor(4096, 1, 1);
+  streamingGain = globalContext.createGain();
+  streamingGain.gain.value = 0.0001;
+
+  streamingProcessor.onaudioprocess = (e) => {
+    if (!streamingCaptureActive || !streamingActive) return;
+    const input = e.inputBuffer.getChannelData(0);
+    appendStreamingSamples(input, e.inputBuffer.sampleRate);
+  };
+
+  sourceNode.connect(streamingProcessor);
+  streamingProcessor.connect(streamingGain);
+  streamingGain.connect(globalContext.destination);
+}
+
+function teardownStreamingProcessor() {
+  try {
+    if (streamingProcessor) {
+      streamingProcessor.disconnect();
+      streamingProcessor.onaudioprocess = null;
+    }
+  } catch (_) { }
+  try {
+    if (streamingGain) streamingGain.disconnect();
+  } catch (_) { }
+  streamingProcessor = null;
+  streamingGain = null;
+  resetStreamingBuffers();
+}
+
 async function resolveEffectiveSettings() {
   const prevEnabled = extensionEnabledForSite;
 
@@ -360,11 +654,16 @@ async function resolveEffectiveSettings() {
     shouldShowNotifications = settings?.toastNotificationsEnabled === true;
     debugLogToSiteConsole = debugLogsEnabled;
 
+    disableProcessingTimeouts = settings?.disableProcessingTimeouts === true;
+
     const defaults = settings?.defaults || { silenceTimeoutMs: 1000 };
     const overrides = settings?.overrides || {};
     const site = overrides[hostname] || {};
 
-    silenceTimeoutMs = site.silenceTimeoutMs ?? defaults.silenceTimeoutMs ?? 1000;
+    const timeoutRaw = site.silenceTimeoutMs ?? defaults.silenceTimeoutMs ?? 1000;
+    const timeoutParsed = (typeof timeoutRaw === 'number') ? timeoutRaw : parseInt(timeoutRaw, 10);
+    silenceTimeoutMs = Number.isFinite(timeoutParsed) ? timeoutParsed : 1000;
+
     disableHardCap = settings?.disableHardCap === true;
 
     hotkey = typeof settings?.hotkey === 'string' ? settings.hotkey : 'Alt+A';
@@ -374,6 +673,7 @@ async function resolveEffectiveSettings() {
     normalizedHotkey = shortcutEnabled ? normalizeHotkey(hotkey) : null;
 
     stripTrailingPeriod = settings?.stripTrailingPeriod === true;
+    disableSpaceNormalization = settings?.disableSpaceNormalization === true;
 
     const rawMicGain = (typeof site.micGain === 'number')
       ? site.micGain
@@ -389,6 +689,21 @@ async function resolveEffectiveSettings() {
         : SILENCE_SENSITIVITY_DEFAULT);
     silenceSensitivity = clampSilenceSensitivity(rawSensitivity);
 
+    assemblyaiStreamingEnabled = settings?.assemblyaiStreamingEnabled !== false;
+    streamingSilenceMode = normalizeStreamingSilenceMode(settings?.assemblyaiStreamingSilenceMode || 'never');
+
+    const provider = getProviderFromSettings(settings, hostname);
+
+    if (provider === 'assemblyai') {
+      streamingProvider = assemblyaiStreamingEnabled ? 'assemblyai' : null;
+    } else if (provider === 'vosk') {
+      streamingProvider = 'vosk';
+    } else {
+      streamingProvider = null;
+    }
+
+    streamingActive = !!streamingProvider;
+
     extensionEnabledForSite = true;
 
     const disabledSites = settings?.disabledSites || {};
@@ -400,7 +715,7 @@ async function resolveEffectiveSettings() {
     }
     if (extensionEnabledForSite && site && site.enabled === false) extensionEnabledForSite = false;
 
-  } catch (_) {
+} catch (_) {
     silenceTimeoutMs = 1000;
     shouldShowNotifications = false;
     debugLogsEnabled = false;
@@ -414,7 +729,15 @@ async function resolveEffectiveSettings() {
     stripTrailingPeriod = false;
     micGain = MIC_GAIN_DEFAULT;
     silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
+    assemblyaiStreamingEnabled = false;
+    streamingProvider = null;
+    streamingActive = false;
+    streamingSilenceMode = 'partial';
+    disableSpaceNormalization = false;
+    disableProcessingTimeouts = false;
   }
+
+  pushPageConfig();
 
   // If the site just got disabled while running, stop immediately (no reload needed)
   if (prevEnabled && !extensionEnabledForSite) {
@@ -515,11 +838,13 @@ function handleHotkeyTrigger(e) {
     clearLockedInsertionTarget();
   }
 
+  nextStartSource = 'hotkey';
+
   const langGuess = (navigator.language || 'en').split('-')[0] || 'en';
   if (captureActive) {
     window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
   } else {
-    window.postMessage({ type: 'WHISPER_START_RECORDING', language: langGuess }, "*");
+    window.postMessage({ type: 'WHISPER_START_RECORDING', language: langGuess, startSource: 'hotkey' }, "*");
   }
 }
 
@@ -552,50 +877,187 @@ if (IS_TOP_FRAME) {
 if (IS_TOP_FRAME) {
   const INLINE_CODE = `
   (function() {
-    if (window.webkitSpeechRecognition) return;
-    window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {
-      constructor(type, options) {
-          super(type, options);
-          this.results = options ? options.results : [];
-          this.resultIndex = options ? options.resultIndex : 0;
-      }
-    };
-    window.webkitSpeechRecognition = class SpeechRecognition {
-      constructor() {
-        this.continuous = false; this.interimResults = false; this.lang = 'en-US';
-        this.onresult = null; this.onend = null; this.onstart = null; this.isRecording = false;
-        window.addEventListener("message", (e) => {
-          if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
-               if (!this.onresult) return;
-               const evt = new window.webkitSpeechRecognitionEvent('result', {
-                  results: [[ { transcript: e.data.text, confidence: 0.98, isFinal: true } ]],
-                  resultIndex: 0
-               });
-               evt.results[0].isFinal = true;
-               this.onresult?.(evt);
-               this.onend?.();
-               this.isRecording = false;
-               window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+      if (window.webkitSpeechRecognition) return;
+
+  window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {
+    constructor(type, options) {
+      super(type, options);
+      this.results = options ? options.results : [];
+      this.resultIndex = options ? options.resultIndex : 0;
+    }
+  };
+
+  window.webkitSpeechRecognition = class SpeechRecognition {
+    constructor() {
+      this.continuous = false;
+      this.interimResults = true;
+      this.lang = 'en-US';
+      this.onresult = null;
+      this.onend = null;
+      this.onstart = null;
+      this.onaudiostart = null;
+      this.onaudioend = null;
+      this.onspeechstart = null;
+      this.onspeechend = null;
+      this.onsoundstart = null;
+      this.onsoundend = null;
+
+      this._results = [];
+      this._interimActive = false;
+      this._disableSpaceNormalization = false;
+      this._streamingActive = false;
+
+      window.addEventListener("message", (e) => {
+        if (e.data && e.data.type === 'WHISPER_CONFIG') {
+          this._disableSpaceNormalization = !!e.data.disableSpaceNormalization;
+          this._streamingActive = !!e.data.streamingActive;
+        }
+
+        if (e.data && e.data.type === 'WHISPER_AUDIO_START') {
+          this.onaudiostart?.();
+          this.dispatchEvent(new Event('audiostart'));
+          this.onsoundstart?.();
+          this.dispatchEvent(new Event('soundstart'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_AUDIO_END') {
+          this.onaudioend?.();
+          this.dispatchEvent(new Event('audioend'));
+          this.onsoundend?.();
+          this.dispatchEvent(new Event('soundend'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
+          if (!this.onresult) return;
+
+          const isFinal = e.data.isFinal !== false;
+
+          const rawText = e.data.text || '';
+          const prevIndex = this._interimActive ? (this._results.length - 2) : (this._results.length - 1);
+          const prev = (prevIndex >= 0 && this._results[prevIndex]) ? this._results[prevIndex].transcript : '';
+const needsSpace = !this._disableSpaceNormalization && !!prev &&
+  !/[\s\(\[\{'"“‘]$/.test(prev) &&
+  !/^[\s\.,!?;:\)\]\}'"”’]/.test(rawText);
+
+const text = needsSpace ? (' ' + rawText) : rawText;
+
+          const resultObj = { transcript: text, confidence: 0.98, isFinal };
+
+          if (isFinal) {
+            if (this._interimActive) {
+              this._results[this._results.length - 1] = resultObj;
+            } else {
+              this._results.push(resultObj);
+            }
+            this._interimActive = false;
+          } else {
+            if (this._interimActive) {
+              this._results[this._results.length - 1] = resultObj;
+            } else {
+              this._results.push(resultObj);
+            }
+            this._interimActive = true;
           }
-        });
-      }
-      start() {
-        if (this.isRecording) return;
-        this.isRecording = true; this.onstart?.();
-        let reqLang = (this.lang || 'en').split('-')[0];
-        window.postMessage({ type: 'WHISPER_START_RECORDING', language: reqLang }, "*");
-      }
-      stop() {
-        this.isRecording = false;
-        window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
-        this.onend?.();
-      }
-      abort() {
-        this.isRecording = false;
-        window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
-        this.onend?.();
-      }
-    };
+
+          const resultsList = this._results.map(r => {
+            const arr = [r];
+            arr.isFinal = r.isFinal;
+            return arr;
+          });
+
+          const resultEvent = new window.webkitSpeechRecognitionEvent('result', {
+            results: resultsList,
+            resultIndex: resultsList.length - 1
+          });
+
+          resultEvent.results[resultEvent.resultIndex].isFinal = isFinal;
+          this.onresult?.(resultEvent);
+
+          if (isFinal) {
+            if (!e.data.streaming) {
+              this.onend?.();
+              this.isRecording = false;
+              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+            } else {
+              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+            }
+          }
+        }
+
+        if (e.data && e.data.type === 'WHISPER_AUDIO_START') {
+          this.onaudiostart?.();
+          this.dispatchEvent(new Event('audiostart'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_AUDIO_END') {
+          this.onaudioend?.();
+          this.dispatchEvent(new Event('audioend'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_SPEECH_START') {
+          this.onspeechstart?.();
+          this.dispatchEvent(new Event('speechstart'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_SPEECH_END') {
+          this.onspeechend?.();
+          this.dispatchEvent(new Event('speechend'));
+        }
+
+        if (e.data && e.data.type === 'WHISPER_FORCE_END') {
+          this.onend?.();
+          this.isRecording = false;
+        }
+      });
+    }
+
+    start() {
+  if (this.isRecording) {
+    if (this._streamingActive) {
+      this.isRecording = false; // allow restart during streaming sessions
+    } else {
+      return;
+    }
+  }
+  this.isRecording = true;
+  this.onstart?.();
+  this._results = [];
+  this._interimActive = false;
+
+  this.dispatchEvent(new Event('audiostart'));
+  this.dispatchEvent(new Event('soundstart'));
+
+  let requestedLang = this.lang || 'en';
+  if (requestedLang.includes('-')) requestedLang = requestedLang.split('-')[0];
+
+  window.postMessage({
+    type: 'WHISPER_START_RECORDING',
+    language: requestedLang
+  }, "*");
+}
+
+    stop() {
+  if (!this.isRecording) return;
+  this.isRecording = false;
+  window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
+  this.dispatchEvent(new Event('audioend'));
+  this.dispatchEvent(new Event('soundend'));
+  this.onend?.();
+}
+abort() {
+  this.isRecording = false;
+  window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
+  this.dispatchEvent(new Event('audioend'));
+  this.dispatchEvent(new Event('soundend'));
+  this.onend?.();
+}
+
+    dispatchEvent(event) { if (this["on" + event.type]) this["on" + event.type](event); }
+    addEventListener(type, callback) { this["on" + type] = callback; }
+  };
+
+  window.SpeechRecognition = window.webkitSpeechRecognition;
+  window.SpeechRecognitionEvent = window.webkitSpeechRecognitionEvent;
   })();
   `;
 
@@ -673,19 +1135,15 @@ function showNotification(message, type = "info") {
 }
 
 function resolveInsertTarget() {
-  // If we still have a locked target and it’s still in the DOM, use it.
   if (lockedInsertTarget && lockedInsertTarget.isConnected && isEditableTarget(lockedInsertTarget)) {
     return lockedInsertTarget;
   }
-
-  // Otherwise fallback to current active.
   return findActiveEditable();
 }
 
 function insertIntoElement(el, text) {
   if (!el || !isEditableTarget(el)) return false;
 
-  // Google Docs/Slides special handling stays
   if (isGoogleDocsOrSlidesHost()) {
     if (tryExecCommandInsert(text)) return true;
 
@@ -704,8 +1162,6 @@ function insertIntoElement(el, text) {
     return false;
   }
 
-  // Non-Google: prefer execCommand first (best for rich editors)
-  // Try focusing the element first, to improve insert reliability.
   try { el.focus?.(); } catch (_) { }
 
   if (tryExecCommandInsert(text)) return true;
@@ -715,10 +1171,8 @@ function insertIntoElement(el, text) {
     return false;
   }
 
-  // input/textarea path
   const tag = (el.tagName || '').toLowerCase();
   if (tag === 'textarea' || tag === 'input') {
-    // Prefer restoring caret if we captured it
     let start = el.selectionStart;
     let end = el.selectionEnd;
 
@@ -819,8 +1273,9 @@ window.addEventListener("message", async (event) => {
     }
     if (captureActive) return;
 
-    // IMPORTANT: do NOT set captureActive=true yet.
-    // We'll only flip it on MediaRecorder.onstart to avoid "Listening..." desync.
+    currentStartSource = event.data.startSource || nextStartSource || 'ui';
+    nextStartSource = null;
+
     currentSessionId += 1;
     activeSessionId = currentSessionId;
 
@@ -834,10 +1289,88 @@ window.addEventListener("message", async (event) => {
     startRecording(event.data.language, activeSessionId);
   }
   else if (event.data.type === 'WHISPER_STOP_RECORDING') {
-    if (captureActive) stopRecording(false);
-    else dbg('stop_recording_ignored_not_active', { sessionId: activeSessionId });
+    if (streamingActive && isDuolingoHost()) {
+      dbg('ignore_duolingo_stop_streaming', { elapsed: Date.now() - recordingStartTime });
+      return;
+    }
+
+    if (streamingActive) {
+      setSpeechActive(false);
+      setAudioActive(false);
+      forceEndPageRecognition();
+
+      if (captureActive) {
+        stopRecording(false); // do NOT cancel
+      } else if (streamingSessionId) {
+        try {
+          if (streamingProvider === 'assemblyai') {
+            browser.runtime.sendMessage({
+              type: 'ASSEMBLYAI_STREAM_STOP',
+              sessionId: streamingSessionId,
+              hostname: location.hostname,
+              pageInstanceId: PAGE_INSTANCE_ID
+            });
+          } else if (streamingProvider === 'vosk') {
+            browser.runtime.sendMessage({
+              type: 'VOSK_STREAM_STOP',
+              sessionId: streamingSessionId,
+              hostname: location.hostname,
+              pageInstanceId: PAGE_INSTANCE_ID
+            });
+          }
+        } catch (_) { }
+
+        teardownStreamingProcessor();
+        streamingSessionId = null;
+        clearSilenceTimer();
+        clearLockedInsertionTarget();
+        clearPendingPageAck();
+      }
+      return;
+    }
   }
+
   else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
+    if (streamingActive && isDuolingoHost()) {
+      dbg('ignore_duolingo_stop_streaming', { elapsed: Date.now() - recordingStartTime });
+      return;
+    }
+
+    if (streamingActive) {
+      setSpeechActive(false);
+      setAudioActive(false);
+      forceEndPageRecognition();
+
+      if (captureActive) {
+        stopRecording(false); // do NOT cancel
+      } else if (streamingSessionId) {
+        try {
+          if (streamingProvider === 'assemblyai') {
+            browser.runtime.sendMessage({
+              type: 'ASSEMBLYAI_STREAM_STOP',
+              sessionId: streamingSessionId,
+              hostname: location.hostname,
+              pageInstanceId: PAGE_INSTANCE_ID
+            });
+          } else if (streamingProvider === 'vosk') {
+            browser.runtime.sendMessage({
+              type: 'VOSK_STREAM_STOP',
+              sessionId: streamingSessionId,
+              hostname: location.hostname,
+              pageInstanceId: PAGE_INSTANCE_ID
+            });
+          }
+        } catch (_) { }
+
+        teardownStreamingProcessor();
+        streamingSessionId = null;
+        clearSilenceTimer();
+        clearLockedInsertionTarget();
+        clearPendingPageAck();
+      }
+      return;
+    }
+    // non-streaming fallback (keep original)
     clearProcessingWatchdog();
     clearLockedInsertionTarget();
     clearPendingPageAck();
@@ -873,26 +1406,150 @@ function clearSilenceTimer() {
   }
 }
 
+function stopStreamingOnly(reason = 'duolingo_foreignobject_removed') {
+  dbg('stop_streaming_only_called', {
+    reason,
+    streamingActive,
+    streamingSessionId,
+    streamingCaptureActive
+  });
+
+  if (!streamingActive) return;
+
+  // If a recording is active, stop it (this will also stop streaming)
+  if (captureActive && globalRecorder && globalRecorder.state !== 'inactive') {
+    stopRecording(false);
+    return;
+  }
+
+  if (streamingSessionId) {
+    try {
+      if (streamingProvider === 'assemblyai') {
+        browser.runtime.sendMessage({
+          type: 'ASSEMBLYAI_STREAM_STOP',
+          sessionId: streamingSessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      } else if (streamingProvider === 'vosk') {
+        browser.runtime.sendMessage({
+          type: 'VOSK_STREAM_STOP',
+          sessionId: streamingSessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      }
+    } catch (_) { }
+  }
+
+  teardownStreamingProcessor();
+  streamingSessionId = null;
+  streamingCaptureActive = false;
+  clearSilenceTimer();
+  clearLockedInsertionTarget();
+  clearPendingPageAck();
+}
+
+function logRemovalParents(node, reason) {
+  if (!debugLogsEnabled) return;
+  const chain = [];
+  let el = node?.parentNode;
+  let depth = 0;
+  while (el && depth < 8) {
+    const tag = (el.tagName || '').toLowerCase();
+    chain.push(tag || String(el.nodeName));
+    el = el.parentNode;
+    depth += 1;
+  }
+  dbg('foreignobject_removed_parent_chain', { reason, chain });
+}
+
+function installDuolingoForeignObjectRemovalStopper() {
+  if (!IS_TOP_FRAME) return;
+  if (!isDuolingoHost()) return;
+
+  const hasForeignObject = (node) => {
+    if (!node || node.nodeType !== 1) return false;
+    if ((node.tagName || '').toLowerCase() === 'foreignobject') return true;
+    return typeof node.querySelector === 'function' && node.querySelector('foreignObject');
+  };
+
+  const observer = new MutationObserver((mutations) => {
+    if (!streamingActive) return;
+    for (const m of mutations) {
+      if (m.type !== 'childList') continue;
+      for (const removed of m.removedNodes) {
+        if (hasForeignObject(removed)) {
+          logRemovalParents(removed, 'foreignobject_removed');
+          stopStreamingOnly('duolingo_foreignobject_removed');
+          return;
+        }
+      }
+    }
+  });
+
+  observer.observe(document.documentElement || document.body, {
+    childList: true,
+    subtree: true
+  });
+}
+
+installDuolingoForeignObjectRemovalStopper();
+
 async function startRecording(pageLanguage, sessionId) {
+  // 🔎 force-read settings at the moment recording starts
+  try {
+    const hostname = normalizeHost(location.hostname);
+    const { settings } = await browser.storage.local.get('settings');
+
+    const provider = getProviderFromSettings(settings, hostname);
+    const assemblyEnabled = settings?.assemblyaiStreamingEnabled !== false;
+
+    if (provider === 'vosk') {
+      streamingProvider = 'vosk';
+      streamingActive = true;
+    } else if (provider === 'assemblyai' && assemblyEnabled) {
+      streamingProvider = 'assemblyai';
+      streamingActive = true;
+    } else {
+      streamingProvider = null;
+      streamingActive = false;
+    }
+
+    console.log('[Whisper] provider check', {
+      provider,
+      streamingProvider,
+      streamingActive,
+      defaults: settings?.defaults
+    });
+  } catch (e) {
+    console.warn('[Whisper] provider check failed', e);
+  }
+
   clearStartRecordingWatchdog();
 
-  // Don't allow a stale start to proceed if session changed quickly.
   if (sessionId !== activeSessionId) {
     dbg('start_recording_aborted_session_mismatch', { sessionId, activeSessionId });
     return;
   }
+
+  // ... rest unchanged ...
 
   try {
     const langDisplay = pageLanguage ? pageLanguage.toUpperCase() : "AUTO";
     showNotification(`Listening (${langDisplay})...`, "recording");
 
     recordingStartTime = Date.now();
+    streamingEverHeard = false; // NEW
+    handledStreamingFinalSessionId = null; // NEW
 
-    // Acquire mic first
+    lastStreamingPartialText = null; // NEW
+    lastStreamingPartialSessionId = null; // NEW
+    clearPendingStreamingFinal(); // NEW
+
     globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     dbg('gum_ok', { sessionId });
 
-    // Create context and resume (avoids "suspended" edge cases)
     globalContext = new AudioContext();
     try { await globalContext.resume?.(); } catch (_) { }
     dbg('audiocontext_state', { sessionId, state: globalContext?.state });
@@ -911,6 +1568,33 @@ async function startRecording(pageLanguage, sessionId) {
     const destination = globalContext.createMediaStreamDestination();
     gainNode.connect(destination);
 
+    if (streamingActive) {
+      streamingSessionId = sessionId;
+      streamingCaptureActive = true;
+      setupStreamingProcessor(source);
+      try {
+        if (streamingProvider === 'assemblyai') {
+          browser.runtime.sendMessage({
+            type: 'ASSEMBLYAI_STREAM_START',
+            sessionId,
+            hostname: location.hostname,
+            language: pageLanguage,
+            pageInstanceId: PAGE_INSTANCE_ID,
+            sampleRate: STREAM_TARGET_SAMPLE_RATE
+          });
+        } else if (streamingProvider === 'vosk') {
+          console.log('[Whisper] sending VOSK_STREAM_START', { sessionId, host: location.hostname });
+          browser.runtime.sendMessage({
+            type: 'VOSK_STREAM_START',
+            sessionId,
+            hostname: location.hostname,
+            pageInstanceId: PAGE_INSTANCE_ID,
+            sampleRate: STREAM_TARGET_SAMPLE_RATE
+          });
+        }
+      } catch (_) { }
+    }
+
     const mimeType = pickBestRecorderMimeType();
     globalRecorder = mimeType
       ? new MediaRecorder(destination.stream, { mimeType })
@@ -927,8 +1611,13 @@ async function startRecording(pageLanguage, sessionId) {
     const startTime = Date.now();
     const maxNoSpeechMs = Math.max(2500, silenceTimeoutMs * 2.5);
 
-    // ---- NEW: confirmed-start logic (prevents "Listening..." but not recording) ----
+    const applyStreamingSilence = streamingActive && shouldApplyStreamingSilenceTimeout();
+    const applyStreamingIdle = streamingActive;
+
     let started = false;
+
+    setAudioActive(true);
+    setSpeechActive(false);
 
     globalRecorder.onstart = () => {
       started = true;
@@ -948,13 +1637,11 @@ async function startRecording(pageLanguage, sessionId) {
 
     globalRecorder.onerror = (e) => {
       dbg('mediarecorder_error', { sessionId, error: e?.error?.name || e?.message || String(e) });
-      // If start never happened, watchdog will clean up; but provide immediate feedback in debug mode.
       if (!started) {
         showNotification("Failed to start recording. Click again.", "error");
       }
     };
 
-    // Watchdog: if onstart doesn't fire quickly, force reset.
     startRecordingWatchdog = setTimeout(() => {
       startRecordingWatchdog = null;
 
@@ -965,7 +1652,6 @@ async function startRecording(pageLanguage, sessionId) {
         try { stopRecording(true); } catch (_) { }
         captureActive = false;
 
-        // Best-effort: keep background icon in sync
         try {
           browser.runtime.sendMessage({
             type: 'RECORDING_STOP',
@@ -992,12 +1678,46 @@ async function startRecording(pageLanguage, sessionId) {
       const silenceThreshold = noiseFloor + Math.max(2, Math.round(silenceSensitivity / 3));
 
       const now = Date.now();
-      if (avg > speechThreshold) {
+      const speaking = avg > speechThreshold;
+
+      setSpeechActive(speaking);
+
+      if (speaking) {
         lastHeard = now;
         everHeard = true;
+        if (streamingActive) streamingEverHeard = true; // NEW
       }
 
       const sinceHeard = now - lastHeard;
+
+      if (streamingActive) {
+        if (applyStreamingSilence) {
+          // NEW: Duolingo plays a prompt first; skip the no‑speech timeout there
+          if (!isDuolingoHost()) {
+            if (!everHeard && (now - startTime > maxNoSpeechMs)) {
+              dbg('STREAM_STOP no-speech', { elapsed: now - startTime, maxNoSpeechMs, host: location.hostname });
+              stopRecording(false);
+              forceEndPageRecognition();
+              return;
+            }
+          }
+
+          if (everHeard && avg < silenceThreshold && sinceHeard > silenceTimeoutMs) {
+            stopRecording(false);
+            forceEndPageRecognition();
+            return;
+          }
+        }
+
+        if (applyStreamingIdle && sinceHeard > STREAM_IDLE_TIMEOUT_MS) {
+          stopRecording(false);
+          forceEndPageRecognition();
+          return;
+        }
+
+        silenceCheckTimer = setTimeout(checkSilence, 120);
+        return;
+      }
 
       if (!everHeard && (now - startTime > maxNoSpeechMs)) { stopRecording(false); return; }
       if (everHeard && avg < silenceThreshold && sinceHeard > silenceTimeoutMs) { stopRecording(false); return; }
@@ -1005,17 +1725,17 @@ async function startRecording(pageLanguage, sessionId) {
       silenceCheckTimer = setTimeout(checkSilence, 120);
     };
 
-    // Install data handler before start
     globalRecorder.ondataavailable = event => globalChunks.push(event.data);
 
     globalRecorder.onstop = async () => {
       clearSilenceTimer();
       clearStartRecordingWatchdog();
+      setSpeechActive(false);
+      setAudioActive(false);
 
       try {
         const duration = Date.now() - recordingStartTime;
 
-        // Only send RECORDING_STOP if we truly started (avoids confusing background state)
         try {
           if (started) {
             browser.runtime.sendMessage({
@@ -1036,8 +1756,33 @@ async function startRecording(pageLanguage, sessionId) {
           chunks: globalChunks?.length || 0
         });
 
+        if (streamingActive) {
+          try {
+            if (streamingProvider === 'assemblyai') {
+              browser.runtime.sendMessage({
+                type: 'ASSEMBLYAI_STREAM_STOP',
+                sessionId,
+                hostname: location.hostname,
+                pageInstanceId: PAGE_INSTANCE_ID
+              });
+            } else if (streamingProvider === 'vosk') {
+              browser.runtime.sendMessage({
+                type: 'VOSK_STREAM_STOP',
+                sessionId,
+                hostname: location.hostname,
+                pageInstanceId: PAGE_INSTANCE_ID
+              });
+            }
+          } catch (_) { }
+          teardownStreamingProcessor();
+          streamingSessionId = null;
+          streamingCaptureActive = false;
+          clearLockedInsertionTarget();
+          clearPendingPageAck();
+          return;
+        }
+
         if (!started) {
-          // If we never started, nothing to transcribe; ensure state is clean.
           captureActive = false;
           clearLockedInsertionTarget();
           clearPendingPageAck();
@@ -1081,18 +1826,17 @@ async function startRecording(pageLanguage, sessionId) {
       }
     };
 
-    // Start recorder after handlers installed
     globalRecorder.start();
     dbg('mediarecorder_start_called', { sessionId, state: globalRecorder?.state, mimeType: globalRecorder?.mimeType });
 
-    // Only start silence timer once we're actually recording;
-    // but it's okay to arm early since it checks captureActive.
     silenceCheckTimer = setTimeout(checkSilence, 120);
 
-    if (!disableHardCap) {
-      setTimeout(() => {
-        if (captureActive && sessionId === activeSessionId) stopRecording(false);
-      }, 5000);
+    if (!streamingActive) {
+      if (!disableHardCap) {
+        setTimeout(() => {
+          if (captureActive && sessionId === activeSessionId) stopRecording(false);
+        }, 5000);
+      }
     }
   } catch (err) {
     clearSilenceTimer();
@@ -1100,11 +1844,13 @@ async function startRecording(pageLanguage, sessionId) {
     captureActive = false;
     clearLockedInsertionTarget();
     clearPendingPageAck();
+    teardownStreamingProcessor();
+    streamingSessionId = null;
+    streamingCaptureActive = false;
 
     dbg('startRecording_error', { sessionId, error: err?.message || String(err) });
 
     try {
-      // Best-effort background sync
       browser.runtime.sendMessage({
         type: 'RECORDING_STOP',
         sessionId,
@@ -1124,10 +1870,15 @@ function stopRecording(cancel = false) {
   clearStartRecordingWatchdog();
   skipTranscribe = cancel;
 
+  clearPendingStreamingFinal(); // NEW
+  lastStreamingPartialText = null; // NEW
+  lastStreamingPartialSessionId = null; // NEW
+
   if (globalStream) { globalStream.getTracks().forEach(track => track.stop()); globalStream = null; }
   if (globalContext && globalContext.state !== 'closed') { globalContext.close(); globalContext = null; }
   if (globalRecorder && globalRecorder.state !== 'inactive') { globalRecorder.stop(); }
 
+  streamingCaptureActive = false;
   captureActive = false;
 }
 
@@ -1144,45 +1895,105 @@ browser.runtime.onMessage.addListener((message) => {
 
     let text = fixEncoding(message.text);
     text = applyOutputPostProcessing(text);
-    const now = Date.now();
-    if (text === lastText && (now - lastTextTime < 2000)) return;
-    lastText = text; lastTextTime = now;
+    const isFinal = message.isFinal !== false;
+    const isStreaming = streamingActive === true;
 
-    showNotification(text, "success");
-
-    // Always resolve target now (we'll use it only if we need fallback insertion)
-    const target = resolveInsertTarget();
-
-    // NEW: bridge-first, insertion fallback (prevents duplicate insertion on sites that handle WebSpeech)
     const sid = message.sessionId || activeSessionId || 0;
-    const ackPromise = waitForPageHandledAck(sid);
 
-    // Forward to page SpeechRecognition bridge first
-    window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text }, "*");
+    const sendFinal = (finalText) => {
+      if (isFinal && isStreaming && streamingProvider === 'assemblyai' && isDuolingoHost()) {
+        if (handledStreamingFinalSessionId === sid) {
+          dbg('duolingo_duplicate_final_ignored', { sid });
+          return;
+        }
+        handledStreamingFinalSessionId = sid;
 
-    ackPromise.then((pageHandled) => {
-      if (pageHandled) {
-        // Page handled the result (likely inserted). Do NOT insert.
+        try { stopRecording(false); } catch (_) { }
+      }
+
+      const now = Date.now();
+      if (finalText === lastText && (now - lastTextTime < 2000)) return;
+      lastText = finalText; lastTextTime = now;
+
+      showNotification(finalText, "success");
+
+      const target = resolveInsertTarget();
+      const ackPromise = waitForPageHandledAck(sid);
+
+      window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text: finalText, isFinal: true, streaming: isStreaming }, "*");
+
+      ackPromise.then((pageHandled) => {
+        if (pageHandled) return;
+
+        const normalizedText = normalizeInsertText(target, finalText);
+        const inserted = insertIntoElement(target, normalizedText);
+        if (!inserted) {
+          dbg('Insert failed; no editable target', { lockedInsertTargetInfo });
+        }
+
+        if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
+          sendEnterAfterInsertForTarget(target || document.activeElement);
+        }
+      }).finally(() => {
+        if (!(streamingActive && captureActive)) {
+          clearLockedInsertionTarget();
+        }
+      });
+    };
+
+    if (!isFinal) {
+      if (isStreaming) {
+        lastStreamingPartialText = text;
+        lastStreamingPartialSessionId = sid;
+
+        if (
+          pendingStreamingFinal &&
+          pendingStreamingFinal.sessionId === sid &&
+          normalizeStreamingText(pendingStreamingFinal.text) === normalizeStreamingText(text)
+        ) {
+          const pendingText = pendingStreamingFinal.text;
+          clearPendingStreamingFinal();
+          sendFinal(pendingText);
+          return;
+        }
+      }
+
+      window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text, isFinal: false, streaming: isStreaming }, "*");
+      return;
+    }
+
+    if (isStreaming) {
+      const normalizedFinal = normalizeStreamingText(text);
+      const normalizedPartial = normalizeStreamingText(
+        lastStreamingPartialSessionId === sid ? lastStreamingPartialText : ''
+      );
+
+      if (normalizedPartial && normalizedPartial === normalizedFinal) {
+        clearPendingStreamingFinal();
+        sendFinal(text);
         return;
       }
 
-      // Fallback: insert ourselves
-      const inserted = insertIntoElement(target, text);
-      if (!inserted) {
-        dbg('Insert failed; no editable target', { lockedInsertTargetInfo });
-      }
+      clearPendingStreamingFinal();
+      pendingStreamingFinal = {
+        sessionId: sid,
+        text,
+        timer: setTimeout(() => {
+          const pendingText = pendingStreamingFinal?.text;
+          const pendingSid = pendingStreamingFinal?.sessionId;
+          pendingStreamingFinal = null;
+          if (pendingText && pendingSid === sid) {
+            sendFinal(pendingText);
+          }
+        }, STREAMING_FINAL_STABILITY_MS)
+      };
+      dbg('streaming_final_pending', { sid });
+      return;
+    }
 
-      if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
-        // Submit/enter should apply to the same target we inserted into (or attempted to).
-        sendEnterAfterInsertForTarget(target || document.activeElement);
-      }
-    }).finally(() => {
-      // Clear lock after completion so next run can capture a new target
-      clearLockedInsertionTarget();
-      // ack state already cleared by waiter; but safe:
-      // clearPendingPageAck();
-    });
+    sendFinal(text);
   }
+
   else if (message.type === 'WHISPER_NO_AUDIO') {
     clearProcessingWatchdog();
     processingSessionId = null;

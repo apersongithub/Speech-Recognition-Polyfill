@@ -1,182 +1,611 @@
 {
-  "ext_name": { "message": "音声認識ポリフィル" },
-  "ext_desc": { "message": "ローカル Whisper とオプションのクラウド文字起こし（AssemblyAI）を備えた音声認識ポリフィル。" },
-  "browser_action_title": { "message": "音声認識" },
-
-  "options_page_title": { "message": "音声認識の設定" },
-  "options_heading": { "message": "音声認識の設定" },
-  "banner_text": { "message": "⚠️ 注意：これは WebSpeech API の応急処置ではありません。音声認識の状態は拡張機能アイコンから確認できます（ピン留めしてください）。最良の性能のためにクラウドエンジンを使用してください。一部の設定はページの再読み込みが必要です。詳細は <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>こちら</strong></a>" },
-
-  "section_engine": { "message": "エンジン" },
-  "engine_note": { "message": "Whisper はローカルで実行され、AssemblyAI は音声をクラウドへ送信します（API キーが必要）。" },
-  "engine_label": { "message": "プロバイダー" },
-  "engine_local": { "message": "端末上の Whisper（OpenAI）" },
-  "engine_assemblyai": { "message": "クラウド（AssemblyAI）" },
-
-  "status_saved": { "message": "保存しました" },
-
-  "section_local_title": { "message": "端末上の Whisper" },
-  "pill_local": { "message": "ローカル" },
-  "local_config_note": { "message": "ローカルモデル、言語、無音時間を設定します。" },
-
-  "ai_model": { "message": "AI モデル" },
-  "group_en_fast": { "message": "英語のみ" },
-  "group_multi": { "message": "多言語（汎用）" },
-
-  "model_tiny_en": { "message": "Tiny 英語（約75MB）" },
-  "model_base_en": { "message": "Base 英語（約150MB）" },
-  "model_distil_en": { "message": "Distil-Medium 英語（約600MB）" },
-  "model_small_en": { "message": "Small 英語（約500MB）" },
-  "model_tiny_multi": { "message": "Tiny 多言語（約150MB）" },
-  "model_base_multi": { "message": "Base 多言語（約290MB）" },
-  "model_small_multi": { "message": "Small 多言語（約1GB）" },
-
-  "size_warning": { "message": "⚠️ 重いモデル：初回は遅くなります。クラッシュする場合は Base または Tiny を使用してください。" },
-
-  "language_label": { "message": "言語" },
-  "lang_auto": { "message": "自動検出" },
-  "lang_en": { "message": "英語" },
-  "lang_es": { "message": "スペイン語" },
-  "lang_fr": { "message": "フランス語" },
-  "lang_de": { "message": "ドイツ語" },
-  "lang_it": { "message": "イタリア語" },
-  "lang_pt": { "message": "ポルトガル語" },
-  "lang_ja": { "message": "日本語" },
-  "lang_zh": { "message": "中国語" },
-  "lang_ru": { "message": "ロシア語" },
-  "lang_note": { "message": "翻訳が解析しようとする言語です。" },
-
-  "silence_timeout": { "message": "無音タイムアウト（ms）" },
-  "silence_note": { "message": "話し終えた後に送信するまでの待機時間。" },
-
-  "grace_window_label": { "message": "猶予時間（ms）" },
-  "grace_window_note": { "message": "猶予が有効な場合、停止後の遅延結果を防ぎます。" },
-
-  "section_cloud_title": { "message": "クラウド（AssemblyAI）" },
-  "pill_cloud": { "message": "クラウド" },
-  "cloud_key_note": { "message": "クラウド文字起こしを有効にするには AssemblyAI キーを入力してください。" },
-  "assemblyai_key_label": { "message": "AssemblyAI API キー" },
-  "assemblyai_key_placeholder": { "message": "例: 68c0a2c49a4dc8e9c07b30dc8a9c06d" },
-  "assemblyai_key_note": { "message": "ローカルに保存され、クラウドエンジン選択時のみ使用します。音声データは AssemblyAI に送信されるため、無料ですがアカウントが必要です。" },
-  "assemblyai_get_key_btn": { "message": "AssemblyAI API キーを取得" },
-
-  "section_shortcuts": { "message": "音声ショートカット" },
-  "shortcuts_note": { "message": "音声ホットキーと挿入動作を設定します。" },
-  "shortcut_enable": { "message": "音声ショートカットを有効化" },
-  "shortcut_enable_note": { "message": "説明不要ですね..." },
-  "shortcut_hotkey_label": { "message": "キーボードショートカット" },
-  "shortcut_hotkey_placeholder": { "message": "クリックしてキーを押す（Alt+A）" },
-  "shortcut_hotkey_note": { "message": "クリックして組み合わせを押します。Backspace/Delete でクリア、Esc で無効化。空欄で無効。" },
-  "send_enter_after_label": { "message": "挿入後に Enter を送信" },
-  "send_enter_after_note": { "message": "挿入直後にフォーカスされたフィールドへ自動で Enter を送信します。" },
-
-  "section_overrides": { "message": "サイト別上書き" },
-  "overrides_note": { "message": "サイトごとにモデル、言語、エンジンを上書きできます。" },
-
-  "hostname": { "message": "ホスト名" },
-  "hostname_placeholder": { "message": "example.com" },
-
-  "model_label": { "message": "モデル" },
-  "override_default_option": { "message": "（デフォルト）" },
-
-  "timeout_label": { "message": "タイムアウト" },
-  "override_timeout_placeholder": { "message": "（デフォルト）" },
-
-  "override_status_label": { "message": "拡張機能の状態" },
-  "override_status_default": { "message": "（デフォルト: 有効）" },
-  "override_status_disabled": { "message": "無効" },
-
-  "add_rule": { "message": "ルールを追加" },
-  "clear_inputs": { "message": "入力をクリア" },
-  "remove_rule": { "message": "すべてのルールを削除" },
-
-  "overrides_list_title": { "message": "保存済みの上書き" },
-  "show": { "message": "表示" },
-  "hide": { "message": "非表示" },
-
-  "table_host": { "message": "ホスト" },
-  "table_enabled": { "message": "有効" },
-  "table_model": { "message": "モデル" },
-  "table_lang": { "message": "言語" },
-  "table_timeout": { "message": "タイムアウト" },
-  "table_engine": { "message": "プロバイダー" },
-  "table_remove": { "message": "削除" },
-
-  "section_developer": { "message": "開発者設定" },
-  "developer_note": { "message": "デバッグや実験的な動作のための高度な設定です。" },
-
-  "debug_banners": { "message": "デバッグモードを有効化" },
-  "debug_note": { "message": "トースト通知とコンソールログを有効化します。" },
-
-  "boost_mic_label": { "message": "マイクゲインを強化" },
-  "boost_mic_note": { "message": "録音前にマイク入力を増幅します（固定ブースト）。" },
-
-  "strip_trailing_period_label": { "message": "末尾のピリオド削除を無効化" },
-  "strip_trailing_period_note": { "message": "認識テキスト末尾の「.」を削除します。" },
-
-  "disable_favicons_label": { "message": "上書き表のファビコンを無効化" },
-  "disable_favicons_note": { "message": "ファビコンは既定で表示されます。非表示にする場合は有効化してください。" },
-
-  "show_engine_sections_label": { "message": "エンジン別セクションを表示" },
-  "show_engine_sections_note": { "message": "エンジンに応じてセクションが自動で表示/非表示になります。" },
-
-  "cache_default_model_label": { "message": "デフォルトモデルをキャッシュ（起動時にプリフェッチ）" },
-  "cache_default_model_note": { "message": "初回利用を高速化するため既定モデルを事前読み込みします（RAM を使用）。ローカルエンジンのみ。" },
-
-  "enable_hardcap_label": { "message": "5秒のハード上限を有効化" },
-  "enable_hardcap_note": { "message": "音声録音は5秒の固定上限があります。" },
-
-  "disable_grace_label": { "message": "猶予時間を無効化" },
-  "disable_grace_note": { "message": "猶予は有効です。上で ms を設定してください。" },
-
-  "section_save_reset": { "message": "データ" },
-  "data_note": { "message": "設定を JSON でエクスポート/インポートしたり初期化できます。プリセットの上書きも <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides\" target=\"_blank\"><strong>こちら</strong></a> にあります。" },
-  "export_settings": { "message": "エクスポート" },
-  "import_settings": { "message": "インポート" },
-  "factory_reset": { "message": "初期化" },
-
-  "popup_page_title": { "message": "音声認識" },
-  "popup_site_label": { "message": "サイト:（読み込み中…）" },
-  "popup_status_section": { "message": "拡張機能の状態" },
-  "popup_status_default": { "message": "有効（デフォルト）" },
-  "popup_status_disabled": { "message": "このサイトでは無効" },
-
-  "override_use_default": { "message": "デフォルトを使用" },
-
-  "popup_timeout_label": { "message": "無音タイムアウト（ms）" },
-  "popup_timeout_placeholder": { "message": "デフォルトを使用" },
-
-  "popup_remove": { "message": "上書きを削除" },
-  "popup_open_options": { "message": "詳細オプションを開く" },
-  "popup_status_saved": { "message": "保存しました" },
-
-  "popup_site_prefix": { "message": "サイト" },
-  "popup_site_unknown": { "message": "サイト:（不明）" },
-  "popup_removed": { "message": "削除しました" },
-
-  "model_not_allowed": { "message": "許可されていないモデルです。" },
-
-  "title_idle": { "message": "Whisper: 待機中" },
-  "title_recording": { "message": "Whisper: 録音中" },
-  "title_processing": { "message": "Whisper: 処理中" },
-  "title_error": { "message": "Whisper: エラー" },
-
-  "backend_indicator_label": { "message": "ローカル Whisper バックエンド:" },
-  "backend_indicator_value_active": { "message": "有効" },
-  "backend_indicator_value_unknown": { "message": "不明" },
-
-  "backend_chip_webgpu": { "message": "WebGPU" },
-  "backend_chip_wasm": { "message": "WASM" },
-  "backend_chip_unknown": { "message": "不明" },
-
-  "backend_hint_default": { "message": "WebGPU が利用可能な場合は使用し、非対応なら WASM にフォールバックします。" },
-  "backend_hint_webgpu": { "message": "GPU アクセラレーション（対応時に最高性能）。" },
-  "backend_hint_wasm": { "message": "CPU フォールバック（WebGPU 非対応または初期化失敗）。" },
-  "backend_hint_unknown": { "message": "最初のローカル文字起こし/モデル読み込み後に検出されます。" },
-  "backend_hint_webgpu_enabled_supported": { "message": "WebGPU は有効でサポートされています。次回のモデル読み込み/文字起こし後に有効化されます。" },
-  "backend_hint_preferred_wasm": { "message": "WASM が優先バックエンドとして選択されています。" },
-  "backend_hint_webgpu_init_failed_prefix": { "message": "WebGPU API は存在しますが、アダプタ/デバイス初期化に失敗しました:" },
-  "backend_hint_webgpu_unavailable": { "message": "この環境では WebGPU が利用できないため、WASM を使用します。" },
-  "backend_hint_using_wasm": { "message": "WASM を使用中。" },
-  "backend_unknown_error": { "message": "不明なエラー" }
+  "ext_name": {
+    "message": "Speech Recognition Polyfill"
+  },
+  "ext_desc": {
+    "message": "ローカルの Whisper、Vosk とオプションのクラウド文字起こし（AssemblyAI）を備えた音声認識ポリフィル。"
+  },
+  "browser_action_title": {
+    "message": "音声認識"
+  },
+  "options_page_title": {
+    "message": "音声認識設定"
+  },
+  "options_heading": {
+    "message": "音声認識設定"
+  },
+  "banner_text": {
+    "message": "⚠️ 注意：これは WebSpeech API の応急処置ではありません。拡張機能アイコンで音声認識の状態を確認できます（メニューバーにピン留めしてください）。追加情報は <a href=\"https://github.com/apersongithub/Speech-Recognition-Polyfill\" target=\"_blank\"><strong>こちら！</strong></a>"
+  },
+  "section_engine": {
+    "message": "エンジン"
+  },
+  "engine_note": {
+    "message": "Whisper と Vosk はローカルで動作します。AssemblyAI は音声をクラウドに送信します（APIキーが必要）。"
+  },
+  "engine_label": {
+    "message": "プロバイダ"
+  },
+  "engine_local": {
+    "message": "Whisper"
+  },
+  "engine_vosk": {
+    "message": "Vosk"
+  },
+  "engine_assemblyai": {
+    "message": "AssemblyAI"
+  },
+  "show_engine_sections_label": {
+    "message": "エンジン固有のセクションを表示"
+  },
+  "show_engine_sections_note": {
+    "message": "エンジンに応じてセクションが自動で非表示になります。"
+  },
+  "cache_default_model_label": {
+    "message": "起動時にデフォルトモデルをキャッシュ"
+  },
+  "cache_default_model_note": {
+    "message": "初回使用を高速化するため、デフォルトのローカルモデルを事前読み込みします（RAM を使用します）。"
+  },
+  "status_saved": {
+    "message": "保存済み"
+  },
+  "section_local_title": {
+    "message": "Whisper"
+  },
+  "pill_local": {
+    "message": "ローカル"
+  },
+  "pill_nostreaming": {
+    "message": "ストリーミング非対応"
+  },
+  "local_config_note": {
+    "message": "ローカルモデル、言語、無音タイミングを設定します。"
+  },
+  "ai_model": {
+    "message": "AI モデル"
+  },
+  "group_en_fast": {
+    "message": "英語のみ"
+  },
+  "model_tiny_en": {
+    "message": "Tiny English (~75MB)"
+  },
+  "model_base_en": {
+    "message": "Base English (~150MB)"
+  },
+  "model_distil_en": {
+    "message": "Distil-Medium English (~600MB)"
+  },
+  "model_small_en": {
+    "message": "Small English (~500MB)"
+  },
+  "group_multi": {
+    "message": "多言語（汎用）"
+  },
+  "model_tiny_multi": {
+    "message": "Tiny Multilingual (~150MB)"
+  },
+  "model_base_multi": {
+    "message": "Base Multilingual (~290MB)"
+  },
+  "model_small_multi": {
+    "message": "Small Multilingual (~1GB)"
+  },
+  "language_label": {
+    "message": "言語"
+  },
+  "lang_auto": {
+    "message": "自動検出"
+  },
+  "lang_en": {
+    "message": "英語"
+  },
+  "lang_es": {
+    "message": "スペイン語"
+  },
+  "lang_fr": {
+    "message": "フランス語"
+  },
+  "lang_de": {
+    "message": "ドイツ語"
+  },
+  "lang_it": {
+    "message": "イタリア語"
+  },
+  "lang_pt": {
+    "message": "ポルトガル語"
+  },
+  "lang_nl": {
+    "message": "オランダ語"
+  },
+  "lang_ru": {
+    "message": "ロシア語"
+  },
+  "lang_zh": {
+    "message": "中国語"
+  },
+  "lang_ja": {
+    "message": "日本語"
+  },
+  "lang_pl": {
+    "message": "ポーランド語"
+  },
+  "lang_tr": {
+    "message": "トルコ語"
+  },
+  "lang_ar": {
+    "message": "アラビア語"
+  },
+  "lang_hi": {
+    "message": "ヒンディー語"
+  },
+  "timeout_label": {
+    "message": "無音タイムアウト（ms）"
+  },
+  "timeout_placeholder": {
+    "message": "デフォルトを使用"
+  },
+  "popup_page_title": {
+    "message": "音声認識"
+  },
+  "popup_site_label": {
+    "message": "サイト："
+  },
+  "popup_status_section": {
+    "message": "拡張機能の状態"
+  },
+  "popup_status_default": {
+    "message": "有効（デフォルト）"
+  },
+  "popup_status_disabled": {
+    "message": "このサイトでは無効"
+  },
+  "override_use_default": {
+    "message": "デフォルトを使う"
+  },
+  "model_label": {
+    "message": "モデル"
+  },
+  "popup_timeout_label": {
+    "message": "無音タイムアウト（ms）"
+  },
+  "popup_timeout_placeholder": {
+    "message": "デフォルトを使用"
+  },
+  "popup_remove": {
+    "message": "オー��ーライドを削除"
+  },
+  "popup_open_options": {
+    "message": "詳細オプションを開く"
+  },
+  "popup_status_saved": {
+    "message": "保存しました"
+  },
+  "popup_removed": {
+    "message": "削除しました"
+  },
+  "model_not_allowed": {
+    "message": "モデルは許可されていません。"
+  },
+  "section_speech_logic": {
+    "message": "音声ロジック"
+  },
+  "speech_logic_note": {
+    "message": "無音検出、ストリーミング、その他の音声ロジックを設定します。"
+  },
+  "enable_hardcap_label": {
+    "message": "録音長の上限を有効にする"
+  },
+  "enable_hardcap_note": {
+    "message": "固定時間（例：30秒）で録音を停止し、長時間の録音を防ぎます。"
+  },
+  "section_vosk_title": {
+    "message": "Vosk"
+  },
+  "pill_streaming": {
+    "message": "ストリーミング"
+  },
+  "vosk_config_note": {
+    "message": "Vosk モデル、文法、ストリーミングを設定します。"
+  },
+  "vosk_model_label": {
+    "message": "Vosk モデル"
+  },
+  "vosk_model_placeholder": {
+    "message": "Vosk モデル ID を入力（例: vosk-model-small-en-us-0.15）"
+  },
+  "vosk_grammar_label": {
+    "message": "Vosk 文法（任意）"
+  },
+  "vosk_grammar_placeholder": {
+    "message": "カンマ区切りの単語/フレーズ"
+  },
+  "vosk_streaming_label": {
+    "message": "Vosk ストリーミングを有効にする"
+  },
+  "vosk_streaming_note": {
+    "message": "部分的な結果をリアルタイムでストリームします。"
+  },
+  "vosk_streaming_partial_label": {
+    "message": "無音時の Vosk 部分結果"
+  },
+  "vosk_streaming_partial_note": {
+    "message": "無音の一時停止中に部分結果を送信します。"
+  },
+  "section_assemblyai_title": {
+    "message": "AssemblyAI"
+  },
+  "pill_cloud": {
+    "message": "クラウド"
+  },
+  "assemblyai_config_note": {
+    "message": "AssemblyAI の API キーとストリーミング設定を行います。"
+  },
+  "assemblyai_key_label": {
+    "message": "AssemblyAI API キー"
+  },
+  "assemblyai_key_placeholder": {
+    "message": "AssemblyAI の API キーを入力"
+  },
+  "assemblyai_streaming_label": {
+    "message": "AssemblyAI ストリーミングを有効にする"
+  },
+  "assemblyai_streaming_note": {
+    "message": "部分/最終結果をリアルタイムでストリームします。"
+  },
+  "assemblyai_streaming_multilingual_label": {
+    "message": "AssemblyAI 多言語ストリーミング"
+  },
+  "assemblyai_streaming_multilingual_note": {
+    "message": "ストリーミングモードで複数言語をサポートします。"
+  },
+  "assemblyai_streaming_silence_mode_label": {
+    "message": "ストリーミング無音モード"
+  },
+  "assemblyai_streaming_silence_partial": {
+    "message": "無音時に部分"
+  },
+  "assemblyai_streaming_silence_always": {
+    "message": "無音時は常に"
+  },
+  "assemblyai_streaming_silence_never": {
+    "message": "無音時はなし"
+  },
+  "section_speech_triggers": {
+    "message": "音声トリガー"
+  },
+  "speech_triggers_note": {
+    "message": "ホットキー、マイクゲイン、出力処理を設定します。"
+  },
+  "strip_trailing_period_label": {
+    "message": "末尾のピリオドを削除"
+  },
+  "strip_trailing_period_note": {
+    "message": "文字起こし出力の末尾のピリオドを削除します。"
+  },
+  "disable_space_normalization_label": {
+    "message": "空白正規化を無効にする"
+  },
+  "disable_space_normalization_note": {
+    "message": "結果間の自動スペース挿入を無効にします。"
+  },
+  "send_enter_after_label": {
+    "message": "結果後に Enter を送信"
+  },
+  "send_enter_after_note": {
+    "message": "テキスト挿入後に Enter キーをシミュレートします。"
+  },
+  "hotkey_label": {
+    "message": "ホットキー"
+  },
+  "hotkey_set_button": {
+    "message": "ホットキーを設定"
+  },
+  "enable_shortcut_label": {
+    "message": "ショートカットを有効にする"
+  },
+  "enable_shortcut_note": {
+    "message": "録音の開始/停止用ホットキーを有効にします。"
+  },
+  "mic_gain_label": {
+    "message": "マイクゲイン"
+  },
+  "mic_gain_note": {
+    "message": "マイク入力音量を上げます (1.0-3.0)。"
+  },
+  "silence_sensitivity_label": {
+    "message": "無音感度"
+  },
+  "silence_sensitivity_note": {
+    "message": "無音検出の閾値を調整します (6-20)。"
+  },
+  "section_dev": {
+    "message": "開発者オプション"
+  },
+  "dev_note": {
+    "message": "デバッグや UI 調整の高度なオプション。"
+  },
+  "debug_logs": {
+    "message": "デバッグログを有効にする"
+  },
+  "debug_logs_note": {
+    "message": "バックグラウンド/コンテントスクリプトの詳細メッセージをコンソールに記録します。"
+  },
+  "toast_toggle": {
+    "message": "トースト通知を有効にする"
+  },
+  "toast_toggle_note": {
+    "message": "ページ上のステータストーストを表示します（録音/処理/エラー）。"
+  },
+  "hide_banner": {
+    "message": "バナーを非表示"
+  },
+  "hide_banner_note": {
+    "message": "このページ上部の警告バナーを削除します。"
+  },
+  "disable_favicons_label": {
+    "message": "Overrides テーブルのファビコンを無効にする"
+  },
+  "disable_favicons_note": {
+    "message": "ファビコンはデフォルトで表示されます。非表示にするには有効にしてください。"
+  },
+  "section_save_reset": {
+    "message": "データ"
+  },
+  "data_note": {
+    "message": "設定を JSON としてエクスポート/インポートするか、デフォルトにリセットします。事前構築された Overrides も こちら にあります！"
+  },
+  "export_settings": {
+    "message": "エクスポート"
+  },
+  "import_settings": {
+    "message": "インポート"
+  },
+  "factory_reset": {
+    "message": "工場出荷時にリセット"
+  },
+  "backend_indicator_label": {
+    "message": "ローカル Whisper バックエンド："
+  },
+  "backend_indicator_value_unknown": {
+    "message": "不明"
+  },
+  "backend_hint_default": {
+    "message": "可能な場合は WebGPU で動作；サポートされない場合は WASM にフォールバックします。"
+  },
+  "backend_chip_unknown": {
+    "message": "不明"
+  },
+  "backend_indicator_value_active": {
+    "message": "アクティブ"
+  },
+  "backend_chip_webgpu": {
+    "message": "WebGPU"
+  },
+  "backend_chip_wasm": {
+    "message": "WASM"
+  },
+  "backend_hint_webgpu": {
+    "message": "GPU 加速（サポートされている場合は最高のパフォーマンス）。"
+  },
+  "backend_hint_webgpu_enabled_supported": {
+    "message": "WebGPU は有効でサポートされています。次回ローカルモデルの読み込み/文字起こし後に有効になります。"
+  },
+  "backend_hint_preferred_wasm": {
+    "message": "WASM が優先バックエンドに選択されています。"
+  },
+  "backend_hint_webgpu_init_failed_prefix": {
+    "message": "WebGPU API は存在しますが、アダプタ/デバイスの初期化に失敗しました："
+  },
+  "backend_unknown_error": {
+    "message": "不明なエラー"
+  },
+  "backend_hint_webgpu_unavailable": {
+    "message": "このコンテキストでは WebGPU は利用できません；WASM を使用します。"
+  },
+  "backend_hint_using_wasm": {
+    "message": "WASM を使用中。"
+  },
+  "title_recording": {
+    "message": "Whisper：リッスン中"
+  },
+  "title_processing": {
+    "message": "Whisper：処理中"
+  },
+  "title_error": {
+    "message": "Whisper：エラー"
+  },
+  "title_idle": {
+    "message": "Whisper：アイドル"
+  },
+  "size_warning": {
+    "message": "⚠️ 大きなモデル：初回実行は遅くなります。クラッシュする場合は Base または Tiny を使用してください。"
+  },
+  "vosk_size_warning": {
+    "message": "⚠️ 大きな Vosk モデル：初回ロードは遅くメモリを多く使います。"
+  },
+  "popup_site_prefix": {
+    "message": "サイト"
+  },
+  "popup_site_unknown": {
+    "message": "サイト： (不明)"
+  },
+  "hide": {
+    "message": "非表示"
+  },
+  "show": {
+    "message": "表示"
+  },
+  "backend_chip_unknown_note": {
+    "message": "��明なバックエンド状態"
+  },
+  "add_rule": {
+    "message": "ルールを追加"
+  },
+  "assemblyai_get_key_btn": {
+    "message": "AssemblyAI API キーを取得"
+  },
+  "assemblyai_key_note": {
+    "message": "ローカルに保存されます；クラウドエンジンが選択されたときのみ使用されます。無料ですが、音声データが AssemblyAI に送信されるためアカウントが必要です。"
+  },
+  "assemblyai_streaming_silence_always_label": {
+    "message": "ストリーミングに対して常に無音タイムアウトを適用"
+  },
+  "assemblyai_streaming_silence_never_label": {
+    "message": "ストリーミングに対して無音タイムアウトを適用しない"
+  },
+  "assemblyai_streaming_silence_partial_label": {
+    "message": "サイト UI によって開始された場合にのみ無音タイムアウト（ホットキー起動時は適用しない）"
+  },
+  "clear_inputs": {
+    "message": "入力をクリア"
+  },
+  "cloud_key_note": {
+    "message": "クラウド文字起こしを有効にするには AssemblyAI キーを入力してください。"
+  },
+  "developer_note": {
+    "message": "デバッグや実験的動作のための高度なトグル。理解しやすさでソートされています。"
+  },
+  "disable_assemblyai_multilingual_label": {
+    "message": "AssemblyAI の多言語ストリーミングモデルを無効化"
+  },
+  "disable_assemblyai_streaming_label": {
+    "message": "AssemblyAI のリアルタイムストリーミングを無効化"
+  },
+  "disable_grace_label": {
+    "message": "グレースウィンドウを無効化"
+  },
+  "disable_grace_note": {
+    "message": "グレースは有効です；上でグレース ms を設定してください。"
+  },
+  "disable_processing_timeouts_label": {
+    "message": "処理タイムアウトを無効化"
+  },
+  "disable_processing_timeouts_note": {
+    "message": "コンテントスクリプトのウォッチドッグとバックグラウンドの処理タイムアウトチェックを無効にします。長時間の録音には有用ですが、拡張機能の応答性が低下する可能性があります。"
+  },
+  "disable_speech_shortcut_label": {
+    "message": "音声ショートカットを無効化"
+  },
+  "grace_window_label": {
+    "message": "グレースウィンドウ（ms）"
+  },
+  "grace_window_note": {
+    "message": "グレースが有効な場合にキャンセル/停止後の遅延結果を防ぎます。"
+  },
+  "group_vosk_quick": {
+    "message": "Vosk（クイックピック）"
+  },
+  "group_whisper": {
+    "message": "Whisper"
+  },
+  "hostname": {
+    "message": "ホスト名"
+  },
+  "hostname_placeholder": {
+    "message": "example.com"
+  },
+  "lang_note": {
+    "message": "翻訳が解読しようとする言語です。"
+  },
+  "link_here": {
+    "message": "こちら！"
+  },
+  "logic_note": {
+    "message": "オーディオ入力、録音動作、ストリーミングルールを設定します。"
+  },
+  "override_default_option": {
+    "message": "(デフォルト)"
+  },
+  "override_status_default": {
+    "message": "(デフォルト：有効)"
+  },
+  "override_status_disabled": {
+    "message": "無効"
+  },
+  "override_status_label": {
+    "message": "拡張機能の状態"
+  },
+  "override_timeout_placeholder": {
+    "message": "(デフォルト)"
+  },
+  "overrides_list_title": {
+    "message": "保存済みのオーバーライド"
+  },
+  "overrides_note": {
+    "message": "サイトごとにモデル、言語、またはエンジンを上書きします。"
+  },
+  "remove_rule": {
+    "message": "すべてのルールを削除"
+  },
+  "section_cloud_title": {
+    "message": "AssemblyAI"
+  },
+  "section_developer": {
+    "message": "開発者設定"
+  },
+  "section_logic": {
+    "message": "音声ロジック"
+  },
+  "section_overrides": {
+    "message": "サイトごとのオーバーライド"
+  },
+  "section_triggers": {
+    "message": "トリガー"
+  },
+  "shortcut_enable_note": {
+    "message": "ほぼ自明です..."
+  },
+  "shortcut_hotkey_label": {
+    "message": "キーボードショートカット"
+  },
+  "shortcut_hotkey_note": {
+    "message": "クリックして、希望する組み合わせを押してください。Backspace/Delete でクリア。Esc で無効化。空欄で無効化。"
+  },
+  "shortcut_hotkey_placeholder": {
+    "message": "クリックしてキーを押す (Alt+A)"
+  },
+  "silence_note": {
+    "message": "話すのをやめてから送信するまでの待機時間です。"
+  },
+  "silence_timeout": {
+    "message": "無音タイムアウト（ms）"
+  },
+  "streaming_applies_note": {
+    "message": "ストリーミングプロバイダ（Vosk + AssemblyAI）に適用されます。"
+  },
+  "streaming_silence_timeout": {
+    "message": "ストリーミング無音タイムアウト"
+  },
+  "table_enabled": {
+    "message": "有効"
+  },
+  "table_engine": {
+    "message": "プロバイダ"
+  },
+  "table_grace": {
+    "message": "グレース"
+  },
+  "table_host": {
+    "message": "ホスト"
+  },
+  "table_lang": {
+    "message": "言語"
+  },
+  "table_model": {
+    "message": "モデル"
+  },
+  "table_remove": {
+    "message": ""
+  },
+  "table_timeout": {
+    "message": "タイムアウト"
+  },
+  "triggers_note": {
+    "message": "音声のキャプチャ方法と結果の送信方法を設定します。"
+  },
+  "vosk_model_label_short": {
+    "message": "Vosk モデル（検索するには入力）"
+  }
 }
