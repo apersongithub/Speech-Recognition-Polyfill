@@ -47,7 +47,7 @@
 | Streaming | ✅ True Streaming | ❌ Batch Processing | ✅ True Streaming |
 | Privacy | High (Device only) | High (Device only) | Equivalent to Chrome (Uploaded) |
 | Speed | Fastest | Slower | Fast |
-| Accuracy | Medicoure | High | Very High |
+| Accuracy | Medicore | High | Very High |
 
 | Engine          | Model ID                       | Notes                                |
 |-----------------|--------------------------------|--------------------------------------|
