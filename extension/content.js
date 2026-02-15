@@ -4,6 +4,18 @@
 // - Fall back to form.submit() or synthetic Enter only if needed.
 // - Debug mode: can mirror background debug logs into the *site's* console.
 
+
+// content.js - ABSOLUTE TOP
+let extensionEnabledForSite = true; // Declare this first to avoid ReferenceError
+
+(function injectPolyfill() {
+    const s = document.createElement('script');
+    s.src = browser.runtime.getURL('polyfill.js');
+    s.async = false; // Force immediate execution order
+    (document.head || document.documentElement).prepend(s);
+    s.onload = () => s.remove();
+})();
+
 const IS_TOP_FRAME = (window.self === window.top);
 if (!IS_TOP_FRAME) {
   // Do not throw in iframes (Google Docs/Slides rely on them).
@@ -49,9 +61,6 @@ let skipTranscribe = false;
 let silenceCheckTimer = null;
 
 let debugLogToSiteConsole = false;
-
-// per-site enabled
-let extensionEnabledForSite = true;
 
 // dev options
 let stripTrailingPeriod = false;
