@@ -48,9 +48,19 @@ const VOSK_STOP_TIMEOUT_MS = 8000;
 
 const VOSK_LRU_MAX = 2;
 
-function normalizeVoskModel(id) {
-  return VOSK_MODELS.has(id) ? id : DEFAULT_VOSK_MODEL;
-}
+// New/modified Vosk index + size handling in background.js (replace or merge into the index-fetch & ensure logic)
+
+// Limit (MB)
+const VOSK_MODEL_SIZE_LIMIT_MB = 1024;
+// --- Add near the other VOSK_* constants at top of file ---
+const VOSK_TOTAL_CACHE_LIMIT_MB = 2048; // total MB across all cached Vosk models
+
+// Meta map: id -> { url, sizeMb }
+const VOSK_MODEL_META = new Map();
+
+// --- Add near the other ASR worker / model control variables ---
+let asrModelSwitches = 0;
+const ASR_MODEL_SWITCH_TERMINATE_THRESHOLD = 8; // tune this if needed (lower => more recycling)
 
 const ASSEMBLYAI_STREAM_SAMPLE_RATE = 16000;
 const ASSEMBLYAI_BEGIN_TIMEOUT_MS = 6000;
@@ -108,7 +118,7 @@ const BADGE_MS = {
   done: 650
 };
 
-const MODEL_IDLE_UNLOAD_MS = 15_000;
+const MODEL_IDLE_UNLOAD_MS = 60_000;
 let modelGcTimer = null;
 
 // Debug mode (developer option)
@@ -136,6 +146,130 @@ let voskDownloadsInProgress = 0;
 // NEW: disable processing timeouts
 let disableProcessingTimeouts = false;
 
+// New: URL to fetch the public Vosk model index (same index used by options/popup)
+const VOSK_MODEL_INDEX_URL = 'https://alphacephei.com/vosk/models/model-list.json';
+
+// Cache promise so we only fetch once per background lifetime
+let voskModelIndexPromise = null;
+
+
+// --- Modify ensureModelForTab to increment the switch counter and recycle the worker ---
+// Replace the existing ensureModelForTab function body with the version below
+
+async function fetchVoskModelIndexOnce() {
+  if (voskModelIndexPromise) return voskModelIndexPromise;
+  voskModelIndexPromise = (async () => {
+    try {
+      const resp = await fetch(VOSK_MODEL_INDEX_URL, { cache: 'no-cache' });
+      if (!resp.ok) throw new Error(`Failed to fetch Vosk model index: ${resp.status}`);
+      const data = await resp.json();
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.models) ? data.models : []);
+      for (const entry of list) {
+        const id = entry?.name || entry?.id || entry?.model || entry?.model_id;
+        const url = entry?.url || entry?.link || entry?.download;
+        const rawSize = entry?.size || entry?.size_mb || entry?.sizeMB || entry?.size_in_mb;
+        if (!id || !url) continue;
+
+        // Normalize size to MB if present
+        let sizeMb = null;
+        if (typeof rawSize === 'number') {
+          // If large number assume bytes when > 1e6, otherwise MB
+          if (rawSize > 1_000_000) sizeMb = rawSize / (1024 * 1024);
+          else sizeMb = rawSize;
+        } else if (typeof rawSize === 'string') {
+          const parsed = parseFloat(rawSize.replace(/[^\d\.]/g, ''));
+          if (!Number.isNaN(parsed)) {
+            // Heuristic: if the string contains 'MB' treat as MB, if 'GB' convert etc.
+            if (/gb/i.test(rawSize)) sizeMb = parsed * 1024;
+            else if (/mb/i.test(rawSize)) sizeMb = parsed;
+            else sizeMb = parsed;
+          }
+        }
+
+        // Ensure we keep url map (existing built-ins remain)
+        if (!VOSK_MODELS.has(id)) VOSK_MODELS.set(id, url);
+        // Update meta
+        VOSK_MODEL_META.set(id, { url, sizeMb });
+      }
+      return true;
+    } catch (e) {
+      console.warn('[BG] Failed to fetch Vosk model index', e);
+      return false;
+    }
+  })();
+  return voskModelIndexPromise;
+}
+
+async function ensureVoskModel(modelId) {
+  const safeId = normalizeVoskModel(modelId);
+  const existing = voskModels.get(safeId);
+
+  if (existing?.model?.ready) {
+    touchVoskModel(safeId);
+    return { modelId: safeId, model: existing.model, cached: true };
+  }
+
+  // If the id isn't known in the static map, try to fetch the public index
+  if (!VOSK_MODELS.has(safeId)) {
+    try {
+      await fetchVoskModelIndexOnce();
+    } catch (_) { /* ignore fetch errors here - fallback below */ }
+  }
+
+  // Choose final id (fall back to default if still unknown)
+  const finalId = VOSK_MODELS.has(safeId) ? safeId : DEFAULT_VOSK_MODEL;
+
+  // Check size metadata and refuse if over the limit
+  const meta = VOSK_MODEL_META.get(finalId);
+  if (meta?.sizeMb != null && meta.sizeMb > VOSK_MODEL_SIZE_LIMIT_MB) {
+    throw new Error(`Vosk model "${finalId}" is ${Math.round(meta.sizeMb)} MB which exceeds the ${VOSK_MODEL_SIZE_LIMIT_MB} MB limit.`);
+  }
+
+  const inflight = voskModelLoadPromises.get(finalId);
+  if (inflight) {
+    await inflight;
+    const ready = voskModels.get(finalId);
+    if (ready?.model?.ready) {
+      touchVoskModel(finalId);
+      return { modelId: finalId, model: ready.model, cached: false };
+    }
+  }
+
+  const url = VOSK_MODELS.get(finalId);
+  if (!url) throw new Error(`Unknown Vosk model: ${finalId}`);
+
+  const loadPromise = (async () => {
+    voskDownloadsInProgress += 1;
+    try {
+      const model = await Vosk.createModel(url);
+      return model;
+    } finally {
+      voskDownloadsInProgress = Math.max(0, voskDownloadsInProgress - 1);
+    }
+  })();
+
+  voskModelLoadPromises.set(finalId, loadPromise);
+
+  try {
+    const model = await loadPromise;
+    voskModels.set(finalId, { model, lastUsed: Date.now() });
+    trimVoskModelCache();
+    return { modelId: finalId, model, cached: false };
+  } finally {
+    voskModelLoadPromises.delete(finalId);
+  }
+}
+
+function normalizeVoskModel(id) {
+  // If known in the static map, use it; otherwise return the id unchanged.
+  // The caller (ensureVoskModel) will fetch the remote index if needed and choose the final id/fallback.
+  if (!id || typeof id !== 'string') return DEFAULT_VOSK_MODEL;
+  if (VOSK_MODELS.has(id)) return id;
+  // If the user provided a full URL treat it as unsupported here and fallback later
+  if (id.startsWith('http://') || id.startsWith('https://')) return DEFAULT_VOSK_MODEL;
+  return id;
+}
+
 function getActiveVoskModelIds() {
   const active = new Set();
   for (const entry of voskRecognizers.values()) {
@@ -160,6 +294,20 @@ async function disposeVoskModel(modelId, reason = 'gc') {
   dbg('vosk_model_disposed', { modelId, reason });
 }
 
+function getVoskTotalCachedMb() {
+  let total = 0;
+  for (const [modelId, entry] of voskModels.entries()) {
+    const meta = VOSK_MODEL_META.get(modelId);
+    if (meta?.sizeMb != null) total += meta.sizeMb;
+    else {
+      // fallback: if unknown, assume a conservative default for small models (50MB)
+      total += 50;
+    }
+  }
+  return total;
+}
+
+// --- Replace existing trimVoskModelCache(...) with this enhanced version ---
 function trimVoskModelCache({ forceIdle = false } = {}) {
   const active = getActiveVoskModelIds();
 
@@ -172,62 +320,27 @@ function trimVoskModelCache({ forceIdle = false } = {}) {
     return;
   }
 
-  if (voskModels.size <= VOSK_LRU_MAX) return;
+  // First, if we are below the simple LRU max, still check cumulative size
+  if (voskModels.size <= VOSK_LRU_MAX) {
+    const totalMb = getVoskTotalCachedMb();
+    if (totalMb <= VOSK_TOTAL_CACHE_LIMIT_MB) return;
+  }
 
+  // Sort by lastUsed ascending (oldest first)
   const entries = [...voskModels.entries()]
     .sort((a, b) => (a[1]?.lastUsed || 0) - (b[1]?.lastUsed || 0));
 
-  for (const [modelId] of entries) {
-    if (voskModels.size <= VOSK_LRU_MAX) break;
+  // Evict least-recently-used entries until we satisfy BOTH constraints:
+  // - models count <= VOSK_LRU_MAX
+  // - total cached MB <= VOSK_TOTAL_CACHE_LIMIT_MB
+  for (const [modelId, metaEntry] of entries) {
+    if (voskModels.size <= VOSK_LRU_MAX && getVoskTotalCachedMb() <= VOSK_TOTAL_CACHE_LIMIT_MB) break;
     if (active.has(modelId)) continue;
     if (keepVoskResident && modelId === residentVoskModelId) continue;
     disposeVoskModel(modelId, 'lru');
   }
 }
 
-async function ensureVoskModel(modelId) {
-  const safeId = normalizeVoskModel(modelId);
-  const existing = voskModels.get(safeId);
-
-  if (existing?.model?.ready) {
-    touchVoskModel(safeId);
-    return { modelId: safeId, model: existing.model, cached: true };
-  }
-
-  const inflight = voskModelLoadPromises.get(safeId);
-  if (inflight) {
-    await inflight;
-    const ready = voskModels.get(safeId);
-    if (ready?.model?.ready) {
-      touchVoskModel(safeId);
-      return { modelId: safeId, model: ready.model, cached: false };
-    }
-  }
-
-  const url = VOSK_MODELS.get(safeId);
-  if (!url) throw new Error(`Unknown Vosk model: ${safeId}`);
-
-  const loadPromise = (async () => {
-    voskDownloadsInProgress += 1;
-    try {
-      const model = await Vosk.createModel(url);
-      return model;
-    } finally {
-      voskDownloadsInProgress = Math.max(0, voskDownloadsInProgress - 1);
-    }
-  })();
-
-  voskModelLoadPromises.set(safeId, loadPromise);
-
-  try {
-    const model = await loadPromise;
-    voskModels.set(safeId, { model, lastUsed: Date.now() });
-    trimVoskModelCache();
-    return { modelId: safeId, model, cached: false };
-  } finally {
-    voskModelLoadPromises.delete(safeId);
-  }
-}
 
 function startVoskStream(sessionId, tabId, frameId, sampleRate = 16000, graceEnabled = false, graceMs = 0, modelId = null, model = null) {
   const modelInstance = model || voskModels.get(modelId)?.model;
@@ -235,16 +348,17 @@ function startVoskStream(sessionId, tabId, frameId, sampleRate = 16000, graceEna
     throw new Error('Vosk model not ready');
   }
 
-  console.log('[Vosk Direct] Creating recognizer for session:', sessionId);
-
   const KaldiRecognizer = modelInstance.KaldiRecognizer;
   const recognizer = new KaldiRecognizer(sampleRate);
 
   recognizer.on('result', (message) => {
+    // CRITICAL FIX: If session was deleted (stopped), do NOT send result
+    if (!voskRecognizers.has(sessionId)) return;
+
     const text = message?.result?.text || '';
-    console.log('[Vosk Direct] Result:', text);
     if (text) {
       const send = () => {
+        if (!voskRecognizers.has(sessionId)) return; // Double check for grace period
         sendTerminal(tabId, frameId, {
           type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
           text: text.trim(),
@@ -258,8 +372,10 @@ function startVoskStream(sessionId, tabId, frameId, sampleRate = 16000, graceEna
   });
 
   recognizer.on('partialresult', (message) => {
+    // CRITICAL FIX: If session was deleted (stopped), do NOT send result
+    if (!voskRecognizers.has(sessionId)) return;
+
     const text = message?.result?.partial || '';
-    console.log('[Vosk Direct] Partial:', text);
     if (text) {
       sendTerminal(tabId, frameId, {
         type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
@@ -272,7 +388,6 @@ function startVoskStream(sessionId, tabId, frameId, sampleRate = 16000, graceEna
 
   voskRecognizers.set(sessionId, { recognizer, tabId, frameId, modelId });
   touchVoskModel(modelId);
-  console.log('[Vosk Direct] Recognizer created and stored');
   return recognizer;
 }
 
@@ -302,13 +417,15 @@ function sendVoskChunk(sessionId, audioData) {
 
 function stopVoskStream(sessionId) {
   const entry = voskRecognizers.get(sessionId);
-  if (!entry) {
-    console.log('[Vosk Direct] No recognizer to stop for session:', sessionId);
-    return;
-  }
+  if (!entry) return;
+
+  // CRITICAL FIX: Delete from map IMMEDIATELY so any pending callbacks know to stop
+  voskRecognizers.delete(sessionId);
 
   const { recognizer, modelId } = entry;
 
+  // We can still clean up, but the callbacks (defined in startVoskStream) 
+  // will now see that the session is gone and silently abort.
   try {
     recognizer.retrieveFinalResult();
   } catch (err) {
@@ -321,7 +438,6 @@ function stopVoskStream(sessionId) {
     console.warn('[Vosk Direct] Error removing recognizer:', err);
   }
 
-  voskRecognizers.delete(sessionId);
   if (modelId) touchVoskModel(modelId);
   trimVoskModelCache();
   console.log('[Vosk Direct] Stream stopped for session:', sessionId);
@@ -440,106 +556,6 @@ async function terminateAsrWorker() {
   }
 }
 
-// ---------------- Vosk Worker (Streaming) ----------------
-let voskWorker = null;
-let voskSeq = 1;
-const voskInflight = new Map();
-const voskStreamingBySession = new Map();
-
-function ensureVoskWorker() {
-  if (voskWorker) return;
-
-  voskWorker = new Worker(browser.runtime.getURL('vosk-worker.js'));
-
-  voskWorker.onmessage = (ev) => {
-    const msg = ev.data || {};
-    if (typeof msg.id === 'number') {
-      const h = voskInflight.get(msg.id);
-      if (!h) return;
-      voskInflight.delete(msg.id);
-      if (h.timeout) clearTimeout(h.timeout);
-      if (msg.ok) h.resolve(msg);
-      else h.reject(new Error(msg.error || 'Vosk worker error'));
-      return;
-    }
-
-    if (msg.type === 'VOSK_PARTIAL' || msg.type === 'VOSK_RESULT') {
-      let session = null;
-
-      if (msg.tabId != null) {
-        session = voskStreamingBySession.get(sessionKey(msg.tabId, msg.sessionId));
-      }
-
-      if (!session) {
-        for (const s of voskStreamingBySession.values()) {
-          if (s.sessionId === msg.sessionId) { session = s; break; }
-        }
-      }
-
-      if (!session) return;
-
-      sendTerminal(session.tabId, session.frameId, {
-        type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
-        text: msg.text || '',
-        sessionId: msg.sessionId,
-        isFinal: msg.type === 'VOSK_RESULT'
-      });
-    }
-  };
-
-  voskWorker.onerror = (e) => {
-    dbg('vosk_worker_error', { message: e?.message || String(e) });
-    for (const [id, h] of voskInflight.entries()) {
-      voskInflight.delete(id);
-      if (h.timeout) clearTimeout(h.timeout);
-      h.reject(new Error('Vosk worker crashed'));
-    }
-    try { voskWorker.terminate(); } catch (_) { }
-    voskWorker = null;
-  };
-}
-
-function callVoskWorker(type, payload = {}, timeoutMs = PROCESSING_TIMEOUT_MS) {
-  ensureVoskWorker();
-  const id = voskSeq++;
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      voskInflight.delete(id);
-      reject(new Error('Vosk worker call timed out'));
-    }, timeoutMs);
-
-    voskInflight.set(id, { resolve, reject, timeout });
-    try {
-      voskWorker.postMessage({ id, type, ...payload });
-    } catch (e) {
-      clearTimeout(timeout);
-      voskInflight.delete(id);
-      reject(e);
-    }
-  });
-}
-
-function postVoskWorker(type, payload = {}) {
-  ensureVoskWorker();
-  try {
-    voskWorker.postMessage({ type, ...payload });
-  } catch (e) {
-    dbg('vosk_post_error', { message: e?.message || String(e) });
-  }
-}
-
-async function terminateVoskWorker() {
-  if (!voskWorker) return;
-  try { voskWorker.terminate(); } catch (_) { }
-  voskWorker = null;
-
-  for (const [id, h] of voskInflight.entries()) {
-    voskInflight.delete(id);
-    if (h.timeout) clearTimeout(h.timeout);
-    h.reject(new Error('Vosk worker terminated'));
-  }
-}
-
 // ---------------- Runtime flags ----------------
 async function refreshRuntimeFlagsFromStorage() {
   try {
@@ -574,7 +590,7 @@ async function refreshRuntimeFlagsFromStorage() {
     residentVoskModelId = null;
   }
 
-  if (voskStreamInitPromise.size === 0 && voskStreamingBySession.size === 0) {
+  if (voskStreamInitPromise.size === 0 && voskRecognizers.size === 0) {
     if (!keepModelResident && !keepVoskResident) scheduleModelGc();
   }
 }
@@ -953,6 +969,14 @@ function sendTerminal(tabId, frameId, payload) {
   } catch (_) { }
 }
 
+// Add this helper near sendTerminal(...) (search for sendTerminal and place right after it)
+function sendToast(tabId, frameId, message, level = 'info') {
+  // level: 'info' | 'processing' | 'success' | 'error' | 'recording'
+  try {
+    sendTerminal(tabId, frameId, { type: 'WHISPER_TOAST', message, level });
+  } catch (_) {}
+}
+
 // ---------- Model / GC / Prefetch (worker-based) ----------
 async function disposeCurrentModel() {
   if (!asrWorker) return;
@@ -991,15 +1015,15 @@ function scheduleModelGc() {
       dbg('gc_skip_vosk_initializing', { count: voskStreamInitPromise.size });
       return;
     }
-    if (voskStreamingBySession.size > 0) {
-      dbg('gc_skip_vosk_active', { count: voskStreamingBySession.size });
+    if (voskRecognizers.size > 0) {
+      dbg('gc_skip_vosk_active', { count: voskRecognizers.size });
       return;
     }
     if (voskModelLoadPromises.size > 0) return;
 
     await disposeCurrentModel();
     await terminateAsrWorker();
-    await terminateVoskWorker();
+    
 
     trimVoskModelCache({ forceIdle: true });
 
@@ -1018,8 +1042,21 @@ async function getEffectiveSettings(hostname) {
     : (defaults.provider === PROVIDERS.LOCAL ? PROVIDERS.LOCAL : PROVIDERS.VOSK);
 
   const overrides = settings?.overrides || {};
-  const host = normalizeHost(hostname);
-  const site = host ? (overrides[host] || {}) : {};
+const host = normalizeHost(hostname);
+let site = {};
+
+// exact lookup first (fast path)
+if (host && overrides[host]) {
+  site = overrides[host];
+} else if (host) {
+  // rule matching: find the first override key that matches this host
+  for (const [ruleHost, cfg] of Object.entries(overrides)) {
+    if (hostMatchesRule(host, normalizeHost(ruleHost))) {
+      site = cfg;
+      break;
+    }
+  }
+}
   const provider = (site.provider ?? baseProvider) === PROVIDERS.ASSEMBLY
     ? PROVIDERS.ASSEMBLY
     : ((site.provider ?? baseProvider) === PROVIDERS.VOSK ? PROVIDERS.VOSK : PROVIDERS.LOCAL);
@@ -1051,12 +1088,13 @@ async function ensureModelSilently(modelID) {
   await callAsrWorker('ENSURE_MODEL', { modelID: safeModel }, PROCESSING_TIMEOUT_MS);
   currentModel = safeModel;
 }
-
 async function ensureModelForTab(tabId, modelID) {
   const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-base';
   const colors = ICON_COLORS();
 
   showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
+
+  const previousModel = currentModel;
 
   modelLoadPromise = (async () => {
     return await callAsrWorker('ENSURE_MODEL', { modelID: safeModel }, PROCESSING_TIMEOUT_MS);
@@ -1065,6 +1103,22 @@ async function ensureModelForTab(tabId, modelID) {
   try {
     const res = await modelLoadPromise;
     currentModel = res.model || safeModel;
+
+    // If the model actually changed, increment a small counter. When threshold reached,
+    // terminate the worker to force native-level resource release (GPU/WASM).
+    if (previousModel && previousModel !== currentModel) {
+      asrModelSwitches += 1;
+      dbg('asr_model_switched', { previousModel, currentModel, switches: asrModelSwitches });
+    }
+
+    // If we've switched models frequently, recycle the worker
+    if (asrModelSwitches >= ASR_MODEL_SWITCH_TERMINATE_THRESHOLD) {
+      dbg('asr_worker_recycle_trigger', { switches: asrModelSwitches });
+      try {
+        await terminateAsrWorker();
+      } catch (e) { dbg('asr_worker_recycle_error', { error: String(e) }); }
+      asrModelSwitches = 0;
+    }
 
     if (res.cached) {
       showBadgeForTab(tabId, { type: 'cached', color: colors.cached }, BADGE_MS.cached);
@@ -1186,8 +1240,21 @@ function isExcessiveRepeat(words) {
   return false;
 }
 
-function normalizeHost(hostname) {
-  return (hostname || '').trim().toLowerCase();
+function normalizeHost(id) {
+  if (!id) return '';
+  let host = String(id).trim().toLowerCase();
+
+  try {
+    if (host.includes('://') || host.includes('/')) {
+      host = new URL(host).hostname.toLowerCase();
+    }
+  } catch (_) {}
+
+  // Remove optional port if present
+  host = host.replace(/:\d+$/, '');
+
+  // Preserve "www." exactly as stored by the user — do NOT strip it.
+  return host;
 }
 
 function hostMatchesRule(host, ruleHost) {
@@ -1339,6 +1406,8 @@ function resolveAssemblyStreamingLanguage(settings) {
   return lang;
 }
 
+// background.js
+
 function buildAssemblyStreamingUrl(token, opts = {}) {
   const params = new URLSearchParams({
     sample_rate: String(ASSEMBLYAI_STREAM_SAMPLE_RATE),
@@ -1349,12 +1418,18 @@ function buildAssemblyStreamingUrl(token, opts = {}) {
 
   const language = (opts.language && opts.language !== 'auto') ? opts.language : null;
 
+  // FIX: If the user enabled multilingual in your options, use the correct model
   if (opts.multilingual) {
     params.set('speech_model', 'universal-streaming-multilingual');
-    params.set('language_detection', language ? 'false' : 'true');
-  }
-
-  if (language) {
+    
+    // If language is 'auto', tell AssemblyAI to detect it
+    if (!language) {
+      params.set('language_detection', 'true');
+    } else {
+      params.set('language_code', language);
+    }
+  } else if (language) {
+    // Standard model with specific language
     params.set('language_code', language);
   }
 
@@ -1368,6 +1443,11 @@ function openAssemblyStreamingSocket(token, opts = {}) {
 
 function handleStreamingMessage(session, payload) {
   const { tabId, frameId, sessionId, graceEnabled, graceMs } = session;
+  
+  // CRITICAL FIX: Check if this session is still active in the main map
+  const key = sessionKey(tabId, sessionId);
+  if (!assemblyStreamingBySession.has(key)) return;
+
   const msgType = payload?.type;
 
   if (msgType === 'Begin') {
@@ -1389,6 +1469,9 @@ function handleStreamingMessage(session, payload) {
     const isFinal = payload.end_of_turn === true;
 
     const send = () => {
+      // Re-check validity in case grace period expired
+      if (!assemblyStreamingBySession.has(key)) return;
+      
       sendTerminal(tabId, frameId, {
         type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
         text,
@@ -1404,7 +1487,6 @@ function handleStreamingMessage(session, payload) {
   }
 
   if (msgType === 'Termination') {
-    const key = sessionKey(tabId, sessionId);
     closeAssemblyStreaming(key);
   }
 }
@@ -1413,6 +1495,7 @@ function handleStreamingMessage(session, payload) {
 async function cancelAllSessions(reason = 'config_changed') {
   dbg('cancel_all_sessions', { reason, inflightTabs: inflightByTab.size });
 
+  // 1. Cancel pending HTTP/Worker transcriptions (Whisper/AssemblyAI non-streaming)
   for (const [tabId, inflight] of inflightByTab.entries()) {
     if (inflight?.sessionId) markCanceled(tabId, inflight.sessionId);
 
@@ -1434,14 +1517,23 @@ async function cancelAllSessions(reason = 'config_changed') {
     } catch (_) { }
   }
 
+  // 2. Close AssemblyAI Streaming Sockets
   for (const [key] of assemblyStreamingBySession.entries()) {
     closeAssemblyStreaming(key);
   }
 
-  for (const [key] of voskStreamingBySession.entries()) {
-    voskStreamingBySession.delete(key);
+  // 3. FIX: Stop ALL active Vosk Recognizers
+  // This frees the KaldiRecognizer memory and removes the ID from the "active" list.
+  // We use Array.from() to avoid modification issues while iterating.
+  const allVoskSessions = Array.from(voskRecognizers.keys());
+  for (const sessionId of allVoskSessions) {
+    stopVoskStream(sessionId);
   }
 
+  // 4. Clear Vosk Metadata
+  
+
+  // 5. Reset Tab UI States
   for (const tabId of tabStateById.keys()) {
     try { await clearBadge(tabId); } catch (_) { }
     try { await setTabState(tabId, 'idle', null); } catch (_) { }
@@ -1450,9 +1542,12 @@ async function cancelAllSessions(reason = 'config_changed') {
   canceledSessionsByTab.clear();
   lastSessionByTab.clear();
 
+  // 6. Terminate Workers & GC
   await disposeCurrentModel();
   await terminateAsrWorker();
-  await terminateVoskWorker();
+  
+
+  // Now that voskRecognizers is empty, this will successfully unload the models
   trimVoskModelCache({ forceIdle: true });
 }
 
@@ -1473,6 +1568,40 @@ console.log('[Whisper BG] onMessage', message?.type, {
 
   onMessageMaybeResetEpoch(tabId, frameId, message?.pageInstanceId, message?.hostname).catch(() => { });
 
+  if (message?.type === 'GET_EFFECTIVE_LANGUAGE') {
+  // Expect: { hostname }
+  return (async () => {
+    try {
+      const hostname = message.hostname || '';
+      const settings = await getEffectiveSettings(hostname);
+      // Default language selection:
+      let lang = settings.language || 'auto';
+
+      if (settings.provider === PROVIDERS.VOSK) {
+        // Prefer model metadata language if available (we maintain VOSK_MODEL_META when
+        // we fetch the public index). Fall back to heuristics on model id.
+        const modelId = normalizeVoskModel(settings.model);
+        let meta = null;
+        try { meta = (typeof VOSK_MODEL_META !== 'undefined' ? VOSK_MODEL_META.get(modelId) : null); } catch (_) { meta = null; }
+        if (meta && meta.lang) {
+          lang = meta.lang;
+        } else {
+          // heuristic: look for known language codes in modelId
+          const m = String(modelId || '').match(/-(en|ja|zh|ru|fr|de|it|pt|es|vn)\b/i);
+          if (m && m[1]) lang = m[1].toLowerCase();
+        }
+      } else {
+        // For local whisper models: models ending with ".en" are English-only
+        if (settings.model && String(settings.model).endsWith('.en')) lang = 'en';
+      }
+
+      return { ok: true, language: lang };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  })();
+}
+  
 // ============================================================
 // VOSK_STREAM_START handler
 // ============================================================
@@ -1485,56 +1614,66 @@ if (message?.type === 'VOSK_STREAM_START') {
 
   voskPendingChunks.set(key, []);
 
-  const initPromise = (async () => {
-    try {
-      const settings = await getEffectiveSettings(hostname);
-      console.log('[BG] Settings:', { enabled: settings.enabled, provider: settings.provider });
-      
-      if (!settings.enabled || settings.provider !== PROVIDERS.VOSK) {
-        return { ok: false, reason: 'disabled' };
-      }
+  // --- Inside the VOSK_STREAM_START handler (the initPromise body) ---
+const initPromise = (async () => {
+  try {
+    const settings = await getEffectiveSettings(hostname);
+    console.log('[BG] Settings:', { enabled: settings.enabled, provider: settings.provider });
 
-      const modelId = normalizeVoskModel(settings.model);
-      const sampleRate = message.sampleRate || 16000;
-
-      const colors = ICON_COLORS();
-      showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
-
-      console.log('[BG] Loading Vosk model directly...', { modelId });
-      const res = await ensureVoskModel(modelId);
-      console.log('[BG] Model loaded, starting stream...');
-
-      if (res.cached) {
-        showBadgeForTab(tabId, { type: 'cached', color: colors.cached }, BADGE_MS.cached);
-      } else {
-        showBadgeForTab(tabId, { type: 'download', color: colors.downloaded }, BADGE_MS.downloaded);
-      }
-
-      startVoskStream(sessionId, tabId, frameId, sampleRate, settings.graceEnabled, settings.graceMs, res.modelId, res.model);
-      console.log('[BG] Stream started');
-
-      voskStreamingBySession.set(key, { tabId, frameId, sessionId, hostname });
-      voskStreamReady.add(key);
-
-      // Flush buffered chunks
-      const pending = voskPendingChunks.get(key) || [];
-      console.log('[BG] Flushing buffered chunks:', pending.length);
-      
-      for (const chunk of pending) {
-        sendVoskChunk(sessionId, chunk);
-      }
-      voskPendingChunks.delete(key);
-
-      return { ok: true };
-    } catch (err) {
-      console.error('[BG] VOSK init error:', err);
-      voskPendingChunks.delete(key);
-      voskStreamReady.delete(key);
-      showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
-      sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: err?.message || String(err) });
-      return { ok: false, error: err?.message };
+    if (!settings.enabled || settings.provider !== PROVIDERS.VOSK) {
+      return { ok: false, reason: 'disabled' };
     }
-  })();
+
+    const modelId = normalizeVoskModel(settings.model);
+    const sampleRate = message.sampleRate || 16000;
+
+    const colors = ICON_COLORS();
+    // Show the UI badge and also notify page that we're downloading the model
+    showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
+    sendTerminal(tabId, frameId, { type: 'WHISPER_TOAST', message: 'Downloading Vosk model…', level: 'processing' });
+
+    console.log('[BG] Loading Vosk model directly...', { modelId });
+    const res = await ensureVoskModel(modelId);
+    console.log('[BG] Model loaded, starting stream...');
+
+    if (res.cached) {
+      showBadgeForTab(tabId, { type: 'cached', color: colors.cached }, BADGE_MS.cached);
+    } else {
+      showBadgeForTab(tabId, { type: 'download', color: colors.downloaded }, BADGE_MS.downloaded);
+    }
+
+    startVoskStream(sessionId, tabId, frameId, sampleRate, settings.graceEnabled, settings.graceMs, res.modelId, res.model);
+    console.log('[BG] Stream started');
+
+    // Inform page that streaming is ready (so it can show recording toast immediately)
+    sendTerminal(tabId, frameId, { type: 'WHISPER_STREAMING_STARTED', provider: 'vosk', sessionId });
+
+    
+    voskStreamReady.add(key);
+
+    // Flush buffered chunks
+    const pending = voskPendingChunks.get(key) || [];
+    console.log('[BG] Flushing buffered chunks:', pending.length);
+
+    for (const chunk of pending) {
+      sendVoskChunk(sessionId, chunk);
+    }
+    voskPendingChunks.delete(key);
+
+    return { ok: true };
+  } catch (err) {
+    console.error('[BG] VOSK init error:', err);
+    voskPendingChunks.delete(key);
+    voskStreamReady.delete(key);
+    // Provide a clearer, actionable message to the page
+    const msg = (err && err.message) ? `Failed to load Vosk model: ${err.message}` : 'Failed to load Vosk model';
+    showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
+    sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: msg });
+    // Also cancel the page-side recording so users don't keep recording when model failed
+    sendTerminal(tabId, frameId, { type: 'WHISPER_CANCEL_ALL', reason: 'vosk_model_failed' });
+    return { ok: false, error: err?.message };
+  }
+})();
 
   voskStreamInitPromise.set(key, initPromise);
   return;
@@ -1585,11 +1724,12 @@ if (message?.type === 'VOSK_STREAM_STOP') {
     voskStreamInitPromise.delete(key);
     voskPendingChunks.delete(key);
     voskStreamReady.delete(key);
-    voskStreamingBySession.delete(key);
+    
 
     // Stop the recognizer
     stopVoskStream(sessionId);
     console.log('[BG] Stream stopped');
+    scheduleModelGc();
   })();
 
   return;
@@ -1637,39 +1777,58 @@ if (message?.type === 'VOSK_STREAM_STOP') {
     return;
   }
 
-  if (message?.type === 'ASSEMBLYAI_STREAM_START') {
-    (async () => {
-      const hostname = message.hostname || '';
-      const sessionId = message.sessionId || 0;
-      const key = sessionKey(tabId, sessionId);
+// --- Update inside the message handler: ASSEMBLYAI_STREAM_START ---
+if (message?.type === 'ASSEMBLYAI_STREAM_START') {
+  (async () => {
+    const hostname = message.hostname || '';
+    const sessionId = message.sessionId || 0;
+    const key = sessionKey(tabId, sessionId);
 
-      closeAssemblyStreaming(key);
+    closeAssemblyStreaming(key);
 
-      const settings = await getEffectiveSettings(hostname);
-      if (!settings.enabled || settings.provider !== PROVIDERS.ASSEMBLY || !settings.assemblyaiStreamingEnabled) {
-        return;
-      }
+    const settings = await getEffectiveSettings(hostname);
+    if (!settings.enabled || settings.provider !== PROVIDERS.ASSEMBLY || !settings.assemblyaiStreamingEnabled) {
+      return;
+    }
 
-      const rawKey = (settings.assemblyaiApiKey || '').trim();
-      if (!rawKey) {
-        sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'AssemblyAI API key missing. Set it in options.' });
-        return;
-      }
-
-      let token;
-      try {
-        token = await getAssemblyStreamingToken(rawKey);
-      } catch (err) {
-        sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: err?.message || String(err) });
-        return;
-      }
+// Inside the ASSEMBLYAI_STREAM_START handler, replace the missing token checks with:
+const rawKey = (settings.assemblyaiApiKey || '').trim();
+if (!rawKey) {
+  // Tell page + immediately stop recording so mic isn't left open
+  sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: 'AssemblyAI API key missing. Set it in options.' });
+  sendTerminal(tabId, frameId, { type: 'WHISPER_CANCEL_ALL', reason: 'assemblyai_api_missing' });
+  // show visual badge error for tab and provide toast
+  try {
+    const colors = ICON_COLORS();
+    showBadgeForTab(tabId, { type: 'download', color: colors.download_error }, BADGE_MS.download_error);
+    sendToast(tabId, frameId, 'AssemblyAI API key missing — open options to set it.', 'error');
+    await setTabErrorHold(tabId, ERROR_HOLD_MS);
+  } catch (_) { }
+  return;
+}
+let token;
+try {
+  token = await getAssemblyStreamingToken(rawKey);
+} catch (err) {
+  sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: err?.message || String(err) });
+  sendTerminal(tabId, frameId, { type: 'WHISPER_CANCEL_ALL', reason: 'assemblyai_token_error' });
+  try {
+    const colors = ICON_COLORS();
+    showBadgeForTab(tabId, { type: 'download', color: colors.download_error }, BADGE_MS.download_error);
+    sendToast(tabId, frameId, 'AssemblyAI token error — check your API key.', 'error');
+    await setTabErrorHold(tabId, ERROR_HOLD_MS);
+  } catch (_) {}
+  return;
+}
 
       const language = resolveAssemblyStreamingLanguage(settings);
+const isNonEnglish = language && language !== 'en' && language !== 'auto';
+const shouldUseMultilingual = settings.assemblyaiStreamingMultilingualEnabled === true || isNonEnglish;
 
-      const ws = openAssemblyStreamingSocket(token, {
-        multilingual: settings.assemblyaiStreamingMultilingualEnabled === true,
-        language
-      });
+const ws = openAssemblyStreamingSocket(token, {
+  multilingual: shouldUseMultilingual,
+  language
+});
 
       const session = {
         ws,
@@ -1802,6 +1961,43 @@ if (message?.type === 'VOSK_STREAM_STOP') {
       hostname: message.hostname,
       pageInstanceId: message.pageInstanceId
     });
+
+    // NEW: determine effective language for the session and emit an enriched debug log.
+    // For Vosk provider prefer the model's metadata language (if available) rather than the page-provided language.
+    (async () => {
+      try {
+        const hostname = message.hostname || '';
+        const pageLang = message.language || null;
+
+        const settings = await getEffectiveSettings(hostname);
+        let langToReport = pageLang || settings.language || 'auto';
+
+        if (settings.provider === PROVIDERS.VOSK) {
+          // Prefer metadata language for Vosk models if present
+          const modelId = normalizeVoskModel(settings.model);
+          // Try model meta map (VOSK_MODEL_META), fall back to any stored meta or model naming
+          const meta = (typeof VOSK_MODEL_META !== 'undefined' && VOSK_MODEL_META.get)
+            ? VOSK_MODEL_META.get(modelId)
+            : null;
+          if (meta && meta.lang) {
+            langToReport = meta.lang;
+          } else {
+            // Attempt simple heuristic: some model ids contain a language code, e.g. "-en-","-ja-"
+            const m = String(modelId || '').match(/-(en|ja|zh|ru|fr|de|it|pt|es|vn)\b/i);
+            if (m && m[1]) langToReport = m[1];
+          }
+        }
+
+        // Normalize display
+        const langDisplay = (langToReport && langToReport !== 'auto') ? String(langToReport).toUpperCase() : 'AUTO';
+
+        dbg('recording_start_lang', { tabId, sessionId: message.sessionId, hostname, language: langDisplay, provider: settings.provider, model: settings.model });
+        dbgToTab(tabId, frameId, 'recording_start_lang', { language: langDisplay, provider: settings.provider, model: settings.model });
+      } catch (e) {
+        dbg('recording_start_lang_error', { error: e?.message || String(e) });
+      }
+    })();
+
     return;
   }
 
@@ -1827,6 +2023,25 @@ if (message?.type === 'VOSK_STREAM_STOP') {
     });
     return;
   }
+
+  // --- Add inside the existing runtime.onMessage listener ---
+if (message?.type === 'WHISPER_STREAMING_STARTED') {
+  // Only show the "Listening..." toast for Vosk streaming so user sees microphone state
+  if (message.provider === 'vosk') {
+    showNotification("Listening...", "recording");
+  }
+  return;
+}
+
+if (message?.type === 'WHISPER_TOAST') {
+  // Generic background->page toast: { message, level } where level is "info"|"processing"|"success"|"error"|"recording"
+  try {
+    const m = String(message.message || '');
+    const lvl = (message.level || 'info');
+    showNotification(m, lvl);
+  } catch (_) { }
+  return;
+}
 
   if (message?.type === 'CANCEL_SESSION') {
     const sessionId = message.sessionId || 0;
@@ -2063,11 +2278,18 @@ function clearTabTracking(tabId) {
     }
   }
 
-  for (const [key, session] of voskStreamingBySession.entries()) {
-    if (session.tabId === tabId) {
-      voskStreamingBySession.delete(key);
+  // --- FIX START: Clean up Vosk Recognizers for this tab ---
+  // We must collect keys first to avoid modification issues during iteration
+  const voskSessionsToStop = [];
+  for (const [sessionId, entry] of voskRecognizers.entries()) {
+    if (entry.tabId === tabId) {
+      voskSessionsToStop.push(sessionId);
     }
   }
+  voskSessionsToStop.forEach(sid => stopVoskStream(sid));
+  // --- FIX END ---
+
+  
 }
 
 browser.tabs.onCreated.addListener((tab) => {

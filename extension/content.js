@@ -503,25 +503,61 @@ function clearLockedInsertionTarget() {
   lockedInsertTargetInfo = null;
 }
 
-function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
+function normalizeHost(hostname) {
+  if (!hostname) return '';
+  let host = String(hostname).trim().toLowerCase();
+
+  // If caller passed a full URL, extract hostname
+  try {
+    if (host.includes('://') || host.includes('/')) {
+      host = new URL(host).hostname.toLowerCase();
+    }
+  } catch (_) { /* leave host as-is on parse failure */ }
+
+  // Remove optional port if present (example.com:8080 -> example.com)
+  host = host.replace(/:\d+$/, '');
+
+  // Do not strip "www." anymore — keep host exactly as provided.
+  return host;
+}
+
 function hostMatchesRule(host, ruleHost) {
   if (!host || !ruleHost) return false;
   if (host === ruleHost) return true;
   return host.endsWith('.' + ruleHost);
 }
 
+// Robust provider lookup: handles normalized hosts and rule matches (www/ports, wildcard subhosts)
 function getProviderFromSettings(settings, hostname) {
   const defaults = settings?.defaults || {};
   const overrides = settings?.overrides || {};
-  const site = overrides[hostname] || {};
+
+  // Accept either a full hostname or a value that may already be normalized
+  const host = normalizeHost(hostname);
+
+  // Resolve site override using exact match first, then rule matching (example.com → matches www.example.com)
+  let site = {};
+  if (host && overrides[host]) {
+    site = overrides[host];
+  } else if (host) {
+    for (const [ruleHost, cfg] of Object.entries(overrides)) {
+      if (hostMatchesRule(host, normalizeHost(ruleHost))) {
+        site = cfg;
+        break;
+      }
+    }
+  }
+
   const baseProvider = (defaults.provider === 'assemblyai')
     ? 'assemblyai'
     : (defaults.provider === 'local-whisper')
       ? 'local-whisper'
-      : (defaults.provider === 'vosk' ? 'vosk' : 'vosk');
-  return (site.provider ?? baseProvider) === 'assemblyai'
-    ? 'assemblyai'
-    : ((site.provider ?? baseProvider) === 'vosk' ? 'vosk' : 'local-whisper');
+      : 'vosk';
+
+  const chosen = (site?.provider ?? baseProvider);
+  if (chosen === 'assemblyai') return 'assemblyai';
+  if (chosen === 'vosk') return 'vosk';
+  return 'local-whisper';
 }
 
 function normalizeStreamingSilenceMode(mode) {
@@ -785,17 +821,49 @@ browser.runtime.onMessage.addListener((message) => {
     dbgSite(message.tag, message.data);
   }
 
-  if (message?.type === 'WHISPER_CANCEL_ALL') {
-    clearProcessingWatchdog();
-    processingSessionId = null;
-    captureActive = false;
-    skipTranscribe = true;
-    clearLockedInsertionTarget();
-    clearPendingPageAck();
-    clearStartRecordingWatchdog();
-    try { stopRecording(true); } catch (_) { }
+// Replace the existing WHISPER_CANCEL_ALL handler in the runtime.onMessage listener with this:
+if (message?.type === 'WHISPER_CANCEL_ALL') {
+  clearProcessingWatchdog();
+  processingSessionId = null;
+  captureActive = false;
+  skipTranscribe = true;
+  clearLockedInsertionTarget();
+  clearPendingPageAck();
+  clearStartRecordingWatchdog();
+  try { stopRecording(true); } catch (_) { }
+
+  // Show a more helpful toast depending on the cancel reason.
+  // Background sends reason = 'assemblyai_api_missing' when the API key is absent.
+  const reason = message?.reason || '';
+  if (reason === 'assemblyai_api_missing') {
+    showNotification("AssemblyAI API key missing. Set it in options.", "error");
+  } else if (reason === 'assemblyai_token_error') {
+    showNotification("AssemblyAI token error. Check your API key in options.", "error");
+  } else if (reason === 'vosk_model_failed') {
+    showNotification("Failed to load Vosk model. See options or try a different model.", "error");
+  } else {
     showNotification("Canceled (settings changed)", "info");
   }
+}
+
+if (message?.type === 'WHISPER_STREAMING_STARTED') {
+  // Show listening toast for streaming providers (Vosk)
+  if (message.provider === 'vosk') {
+    showNotification("Listening...", "recording");
+  }
+  return;
+}
+
+if (message?.type === 'WHISPER_TOAST') {
+  // Generic background->page toast: { message, level }
+  try {
+    const m = String(message.message || '');
+    const lvl = (message.level || 'info');
+    showNotification(m, lvl);
+  } catch (_) { }
+  return;
+}
+
 });
 
 function cancelProcessing(reason = 'user_restart') {
@@ -873,208 +941,12 @@ if (IS_TOP_FRAME) {
   });
 }
 
-// polyfill injection (only when enabled + top frame)
-if (IS_TOP_FRAME) {
-  const INLINE_CODE = `
-  (function() {
-      if (window.webkitSpeechRecognition) return;
-
-  window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {
-    constructor(type, options) {
-      super(type, options);
-      this.results = options ? options.results : [];
-      this.resultIndex = options ? options.resultIndex : 0;
-    }
-  };
-
-  window.webkitSpeechRecognition = class SpeechRecognition {
-    constructor() {
-      this.continuous = false;
-      this.interimResults = true;
-      this.lang = 'en-US';
-      this.onresult = null;
-      this.onend = null;
-      this.onstart = null;
-      this.onaudiostart = null;
-      this.onaudioend = null;
-      this.onspeechstart = null;
-      this.onspeechend = null;
-      this.onsoundstart = null;
-      this.onsoundend = null;
-
-      this._results = [];
-      this._interimActive = false;
-      this._disableSpaceNormalization = false;
-      this._streamingActive = false;
-
-      window.addEventListener("message", (e) => {
-        if (e.data && e.data.type === 'WHISPER_CONFIG') {
-          this._disableSpaceNormalization = !!e.data.disableSpaceNormalization;
-          this._streamingActive = !!e.data.streamingActive;
-        }
-
-        if (e.data && e.data.type === 'WHISPER_AUDIO_START') {
-          this.onaudiostart?.();
-          this.dispatchEvent(new Event('audiostart'));
-          this.onsoundstart?.();
-          this.dispatchEvent(new Event('soundstart'));
-        }
-
-        if (e.data && e.data.type === 'WHISPER_AUDIO_END') {
-          this.onaudioend?.();
-          this.dispatchEvent(new Event('audioend'));
-          this.onsoundend?.();
-          this.dispatchEvent(new Event('soundend'));
-        }
-
-        if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
-          if (!this.onresult) return;
-
-          const isFinal = e.data.isFinal !== false;
-
-          const rawText = e.data.text || '';
-          const prevIndex = this._interimActive ? (this._results.length - 2) : (this._results.length - 1);
-          const prev = (prevIndex >= 0 && this._results[prevIndex]) ? this._results[prevIndex].transcript : '';
-const needsSpace = !this._disableSpaceNormalization && !!prev &&
-  !/[\s\(\[\{'"“‘]$/.test(prev) &&
-  !/^[\s\.,!?;:\)\]\}'"”’]/.test(rawText);
-
-const text = needsSpace ? (' ' + rawText) : rawText;
-
-          const resultObj = { transcript: text, confidence: 0.98, isFinal };
-
-          if (isFinal) {
-            if (this._interimActive) {
-              this._results[this._results.length - 1] = resultObj;
-            } else {
-              this._results.push(resultObj);
-            }
-            this._interimActive = false;
-          } else {
-            if (this._interimActive) {
-              this._results[this._results.length - 1] = resultObj;
-            } else {
-              this._results.push(resultObj);
-            }
-            this._interimActive = true;
-          }
-
-          const resultsList = this._results.map(r => {
-            const arr = [r];
-            arr.isFinal = r.isFinal;
-            return arr;
-          });
-
-          const resultEvent = new window.webkitSpeechRecognitionEvent('result', {
-            results: resultsList,
-            resultIndex: resultsList.length - 1
-          });
-
-          resultEvent.results[resultEvent.resultIndex].isFinal = isFinal;
-          this.onresult?.(resultEvent);
-
-          if (isFinal) {
-            if (!e.data.streaming) {
-              this.onend?.();
-              this.isRecording = false;
-              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
-            } else {
-              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
-            }
-          }
-        }
-
-        if (e.data && e.data.type === 'WHISPER_AUDIO_START') {
-          this.onaudiostart?.();
-          this.dispatchEvent(new Event('audiostart'));
-        }
-
-        if (e.data && e.data.type === 'WHISPER_AUDIO_END') {
-          this.onaudioend?.();
-          this.dispatchEvent(new Event('audioend'));
-        }
-
-        if (e.data && e.data.type === 'WHISPER_SPEECH_START') {
-          this.onspeechstart?.();
-          this.dispatchEvent(new Event('speechstart'));
-        }
-
-        if (e.data && e.data.type === 'WHISPER_SPEECH_END') {
-          this.onspeechend?.();
-          this.dispatchEvent(new Event('speechend'));
-        }
-
-        if (e.data && e.data.type === 'WHISPER_FORCE_END') {
-          this.onend?.();
-          this.isRecording = false;
-        }
-      });
-    }
-
-    start() {
-  if (this.isRecording) {
-    if (this._streamingActive) {
-      this.isRecording = false; // allow restart during streaming sessions
-    } else {
-      return;
-    }
-  }
-  this.isRecording = true;
-  this.onstart?.();
-  this._results = [];
-  this._interimActive = false;
-
-  this.dispatchEvent(new Event('audiostart'));
-  this.dispatchEvent(new Event('soundstart'));
-
-  let requestedLang = this.lang || 'en';
-  if (requestedLang.includes('-')) requestedLang = requestedLang.split('-')[0];
-
-  window.postMessage({
-    type: 'WHISPER_START_RECORDING',
-    language: requestedLang
-  }, "*");
-}
-
-    stop() {
-  if (!this.isRecording) return;
-  this.isRecording = false;
-  window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
-  this.dispatchEvent(new Event('audioend'));
-  this.dispatchEvent(new Event('soundend'));
-  this.onend?.();
-}
-abort() {
-  this.isRecording = false;
-  window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
-  this.dispatchEvent(new Event('audioend'));
-  this.dispatchEvent(new Event('soundend'));
-  this.onend?.();
-}
-
-    dispatchEvent(event) { if (this["on" + event.type]) this["on" + event.type](event); }
-    addEventListener(type, callback) { this["on" + type] = callback; }
-  };
-
-  window.SpeechRecognition = window.webkitSpeechRecognition;
-  window.SpeechRecognitionEvent = window.webkitSpeechRecognitionEvent;
-  })();
-  `;
-
-  if (extensionEnabledForSite) {
-    const isGoogle = window.location.hostname.includes("google");
-    if (isGoogle) {
-      const script = document.createElement('script');
-      script.src = browser.runtime.getURL('polyfill.js');
-      script.onload = () => script.remove();
-      (document.head || document.documentElement).appendChild(script);
-    } else {
-      const script = document.createElement('script');
-      script.textContent = INLINE_CODE;
-      (document.head || document.documentElement).appendChild(script);
-      script.remove();
-    }
-  }
+// Recommended Fix (Clean & Compliant):
+if (extensionEnabledForSite) {
+  const script = document.createElement('script');
+  script.src = browser.runtime.getURL('polyfill.js'); // Use file for EVERYONE
+  script.onload = () => script.remove();
+  (document.head || document.documentElement).appendChild(script);
 }
 
 function fixEncoding(text) {
@@ -1288,7 +1160,7 @@ window.addEventListener("message", async (event) => {
 
     startRecording(event.data.language, activeSessionId);
   }
-  else if (event.data.type === 'WHISPER_STOP_RECORDING') {
+ else if (event.data.type === 'WHISPER_STOP_RECORDING') {
     if (streamingActive && isDuolingoHost()) {
       dbg('ignore_duolingo_stop_streaming', { elapsed: Date.now() - recordingStartTime });
       return;
@@ -1304,19 +1176,9 @@ window.addEventListener("message", async (event) => {
       } else if (streamingSessionId) {
         try {
           if (streamingProvider === 'assemblyai') {
-            browser.runtime.sendMessage({
-              type: 'ASSEMBLYAI_STREAM_STOP',
-              sessionId: streamingSessionId,
-              hostname: location.hostname,
-              pageInstanceId: PAGE_INSTANCE_ID
-            });
+             // ... existing code ...
           } else if (streamingProvider === 'vosk') {
-            browser.runtime.sendMessage({
-              type: 'VOSK_STREAM_STOP',
-              sessionId: streamingSessionId,
-              hostname: location.hostname,
-              pageInstanceId: PAGE_INSTANCE_ID
-            });
+             // ... existing code ...
           }
         } catch (_) { }
 
@@ -1328,6 +1190,12 @@ window.addEventListener("message", async (event) => {
       }
       return;
     }
+    
+    // --- ADD THIS BLOCK FOR LOCAL WHISPER ---
+    if (captureActive) {
+      stopRecording(false); // Stop immediately and Transcribe
+    }
+    // ----------------------------------------
   }
 
   else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
@@ -1498,7 +1366,29 @@ installDuolingoForeignObjectRemovalStopper();
 
 async function startRecording(pageLanguage, sessionId) {
   // 🔎 force-read settings at the moment recording starts
-  try {
+try {
+    // Wrap getUserMedia in a specific try/catch for permission errors
+    try {
+      globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (permError) {
+      if (permError.name === 'NotAllowedError' || permError.name === 'PermissionDeniedError') {
+        showNotification("Microphone access denied. Please allow it in browser settings.", "error");
+      } else {
+        showNotification("Could not access microphone: " + permError.message, "error");
+      }
+      // Clean up UI state since we can't record
+      captureActive = false;
+      await browser.runtime.sendMessage({
+        type: 'RECORDING_STOP',
+        sessionId,
+        hostname: location.hostname,
+        canceled: true,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+      return; 
+    }
+
+    dbg('gum_ok', { sessionId });
     const hostname = normalizeHost(location.hostname);
     const { settings } = await browser.storage.local.get('settings');
 
@@ -1533,11 +1423,15 @@ async function startRecording(pageLanguage, sessionId) {
     return;
   }
 
-  // ... rest unchanged ...
 
   try {
-    const langDisplay = pageLanguage ? pageLanguage.toUpperCase() : "AUTO";
-    showNotification(`Listening (${langDisplay})...`, "recording");
+    // Determine a more accurate display language from background (uses Vosk model metadata / overrides)
+    try {
+      const resp = await browser.runtime.sendMessage({ type: 'GET_EFFECTIVE_LANGUAGE', hostname: location.hostname });
+      if (resp && resp.ok && resp.language) {
+        pageLanguage = resp.language;
+      }
+    } catch (_) { /* ignore */ }
 
     recordingStartTime = Date.now();
     streamingEverHeard = false; // NEW
@@ -1619,21 +1513,24 @@ async function startRecording(pageLanguage, sessionId) {
     setAudioActive(true);
     setSpeechActive(false);
 
-    globalRecorder.onstart = () => {
-      started = true;
-      captureActive = true;
-      clearStartRecordingWatchdog();
-      dbg('mediarecorder_onstart', { sessionId, state: globalRecorder?.state, mimeType: globalRecorder?.mimeType });
+// Inside startRecording(...), in globalRecorder.onstart = () => { ... }
+globalRecorder.onstart = () => {
+  started = true;
+  captureActive = true;
+  clearStartRecordingWatchdog();
+  // Show listening toast so users get immediate feedback
+  showNotification("Listening...", "recording");
+  dbg('mediarecorder_onstart', { sessionId, state: globalRecorder?.state, mimeType: globalRecorder?.mimeType });
 
-      try {
-        browser.runtime.sendMessage({
-          type: 'RECORDING_START',
-          sessionId,
-          hostname: location.hostname,
-          pageInstanceId: PAGE_INSTANCE_ID
-        });
-      } catch (_) { }
-    };
+  try {
+    browser.runtime.sendMessage({
+      type: 'RECORDING_START',
+      sessionId,
+      hostname: location.hostname,
+      pageInstanceId: PAGE_INSTANCE_ID
+    });
+  } catch (_) { }
+};
 
     globalRecorder.onerror = (e) => {
       dbg('mediarecorder_error', { sessionId, error: e?.error?.name || e?.message || String(e) });
@@ -1866,20 +1763,41 @@ async function startRecording(pageLanguage, sessionId) {
 }
 
 function stopRecording(cancel = false) {
+  dbg('stop_recording_called', { cancel, streamingActive });
+
+  // 1. IMMEDIATELY kill the gatekeeper variable.
+  // This ensures Fix #2 in the bridge logic blocks any results starting NOW.
+  streamingCaptureActive = false;
+
   clearSilenceTimer();
   clearStartRecordingWatchdog();
   skipTranscribe = cancel;
 
-  clearPendingStreamingFinal(); // NEW
-  lastStreamingPartialText = null; // NEW
-  lastStreamingPartialSessionId = null; // NEW
+  clearPendingStreamingFinal();
+  lastStreamingPartialText = null;
+  lastStreamingPartialSessionId = null;
 
-  if (globalStream) { globalStream.getTracks().forEach(track => track.stop()); globalStream = null; }
-  if (globalContext && globalContext.state !== 'closed') { globalContext.close(); globalContext = null; }
-  if (globalRecorder && globalRecorder.state !== 'inactive') { globalRecorder.stop(); }
+  // 2. Tear down the audio hardware
+  if (globalStream) { 
+    globalStream.getTracks().forEach(track => track.stop()); 
+    globalStream = null; 
+  }
+  
+  if (globalContext && globalContext.state !== 'closed') { 
+    globalContext.close(); 
+    globalContext = null; 
+  }
 
-  streamingCaptureActive = false;
+  // 3. Stop the MediaRecorder (this triggers the onstop event)
+  if (globalRecorder && globalRecorder.state !== 'inactive') { 
+    globalRecorder.stop(); 
+  }
+
+  // 4. Final state cleanup
   captureActive = false;
+  
+  // Note: We leave streamingActive as-is until the background confirms shutdown
+  // but the 'streamingCaptureActive' flag above handles the immediate UI block.
 }
 
 // Responses
@@ -1890,26 +1808,40 @@ browser.runtime.onMessage.addListener((message) => {
   if (!IS_TOP_FRAME) return;
 
   if (message.type === 'WHISPER_RESULT_TO_PAGE_BRIDGE') {
+    const sid = message.sessionId || activeSessionId || 0;
+
+    // --- FIX 1: Ghost Text Protection ---
+    // Only block if this specific Session ID has been marked as "Fully Done"
+    if (handledStreamingFinalSessionId === sid) {
+      return;
+    }
+
+    // --- FIX 2: Hard Stop (Gatekeeper) ---
+    // We only drop packets if 'streamingCaptureActive' is false (meaning you clicked STOP).
+    // If you are still talking (captureActive is true), we let it through!
+    const isStreaming = streamingActive === true;
+    if (isStreaming && !streamingCaptureActive) {
+      dbg('dropped_late_streaming_packet', { sid, text: message.text });
+      return;
+    }
+
     clearProcessingWatchdog();
     processingSessionId = null;
 
     let text = fixEncoding(message.text);
     text = applyOutputPostProcessing(text);
     const isFinal = message.isFinal !== false;
-    const isStreaming = streamingActive === true;
-
-    const sid = message.sessionId || activeSessionId || 0;
 
     const sendFinal = (finalText) => {
+      // Duolingo special handling: only stop if it's AssemblyAI (Standard behavior for that site)
       if (isFinal && isStreaming && streamingProvider === 'assemblyai' && isDuolingoHost()) {
-        if (handledStreamingFinalSessionId === sid) {
-          dbg('duolingo_duplicate_final_ignored', { sid });
-          return;
-        }
         handledStreamingFinalSessionId = sid;
-
         try { stopRecording(false); } catch (_) { }
       }
+
+      // --- THE CHANGE ---
+      // We NO LONGER set handledStreamingFinalSessionId = sid here for everyone.
+      // This allows the stream to stay open for the next sentence.
 
       const now = Date.now();
       if (finalText === lastText && (now - lastTextTime < 2000)) return;
@@ -1926,47 +1858,34 @@ browser.runtime.onMessage.addListener((message) => {
         if (pageHandled) return;
 
         const normalizedText = normalizeInsertText(target, finalText);
-        const inserted = insertIntoElement(target, normalizedText);
-        if (!inserted) {
-          dbg('Insert failed; no editable target', { lockedInsertTargetInfo });
-        }
+        insertIntoElement(target, normalizedText);
 
         if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
           sendEnterAfterInsertForTarget(target || document.activeElement);
         }
       }).finally(() => {
-        if (!(streamingActive && captureActive)) {
+        // Only clear target if the mic is actually turned off
+        if (!streamingCaptureActive) {
           clearLockedInsertionTarget();
         }
       });
     };
 
+    // Vosk/Assembly logic continues below as before...
+    if (isFinal && isStreaming && streamingProvider === 'vosk') {
+      clearPendingStreamingFinal();
+      sendFinal(text);
+      return;
+    }
+
     if (!isFinal) {
-      if (isStreaming) {
-        lastStreamingPartialText = text;
-        lastStreamingPartialSessionId = sid;
-
-        if (
-          pendingStreamingFinal &&
-          pendingStreamingFinal.sessionId === sid &&
-          normalizeStreamingText(pendingStreamingFinal.text) === normalizeStreamingText(text)
-        ) {
-          const pendingText = pendingStreamingFinal.text;
-          clearPendingStreamingFinal();
-          sendFinal(pendingText);
-          return;
-        }
-      }
-
       window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text, isFinal: false, streaming: isStreaming }, "*");
       return;
     }
 
     if (isStreaming) {
       const normalizedFinal = normalizeStreamingText(text);
-      const normalizedPartial = normalizeStreamingText(
-        lastStreamingPartialSessionId === sid ? lastStreamingPartialText : ''
-      );
+      const normalizedPartial = normalizeStreamingText(lastStreamingPartialSessionId === sid ? lastStreamingPartialText : '');
 
       if (normalizedPartial && normalizedPartial === normalizedFinal) {
         clearPendingStreamingFinal();
@@ -1980,14 +1899,10 @@ browser.runtime.onMessage.addListener((message) => {
         text,
         timer: setTimeout(() => {
           const pendingText = pendingStreamingFinal?.text;
-          const pendingSid = pendingStreamingFinal?.sessionId;
           pendingStreamingFinal = null;
-          if (pendingText && pendingSid === sid) {
-            sendFinal(pendingText);
-          }
+          sendFinal(pendingText);
         }, STREAMING_FINAL_STABILITY_MS)
       };
-      dbg('streaming_final_pending', { sid });
       return;
     }
 

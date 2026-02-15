@@ -63,7 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ensureVoskModelIndex().then(() => checkVoskModelSize()).catch(() => { });
 
     refreshBackendIndicator().catch(() => { });
-    setInterval(() => refreshBackendIndicator().catch(() => { }), 2000);
+    // Change 2000 (2s) to 30000 (30s) or remove it
+setInterval(() => refreshBackendIndicator().catch(() => { }), 30000);
 });
 
 document.getElementById('open-assemblyai')?.addEventListener('click', () => {
@@ -214,7 +215,7 @@ if (hotkeyInput) {
         lastHotkeyValue = combo;
         capturingHotkey = false;
         const enableChk = document.getElementById('enable-shortcut');
-        if (enableChk) enableChk.checked = true;
+if (enableChk) enableChk.checked = false;
         hotkeyInput.blur();
         saveDefaults(['speech-triggers']);
     });
@@ -276,20 +277,6 @@ function parseGraceOverride(val) {
 }
 function normalizeProvider(p) {
     return ALLOWED_PROVIDERS.includes(p) ? p : 'vosk';
-}
-
-function parseVoskModelList(payload) {
-    const list = Array.isArray(payload)
-        ? payload
-        : (Array.isArray(payload?.models) ? payload.models : []);
-    return list.map((entry) => {
-        const id = entry?.name || entry?.id || entry?.model || entry?.model_id;
-        const url = entry?.url || entry?.link || entry?.download;
-        const size = entry?.size || entry?.size_mb || entry?.sizeMB || entry?.size_in_mb;
-        const lang = entry?.lang || entry?.language || entry?.locale;
-        if (!id) return null;
-        return { id, url, size, lang };
-    }).filter(Boolean);
 }
 
 async function ensureVoskModelIndex() {
@@ -388,25 +375,177 @@ function checkVoskModelSize() {
     }
 }
 
-function setVoskModelDatalist(list) {
-    const datalist = document.getElementById('vosk-model-list');
-    if (!datalist) return;
-    datalist.innerHTML = '';
+// --- In options.js ---
 
-    const filtered = list.filter((model) => {
-        const mb = sizeToMb(model?.size);
-        return mb == null || mb <= 1042;
+function autoPrettifyVoskId(id) {
+    let s = id.replace(/^vosk-model-/, '').replace(/-/g, ' ');
+    s = s.replace(/\b\w/g, l => l.toUpperCase());
+
+    const langMap = {
+        'En Us': 'English (US)',
+        'En In': 'English (India)',
+        'En':    'English',
+        'Cn':    'Chinese',
+        'Ru':    'Russian',
+        'Fr':    'French',
+        'De':    'German',
+        'Es':    'Spanish',
+        'Pt':    'Portuguese',
+        'It':    'Italian',
+        'Tr':    'Turkish',
+        'Vn':    'Vietnamese',
+        'Ja':    'Japanese',
+        'Hi':    'Hindi',
+        'Fa':    'Persian',
+        'Uk':    'Ukrainian',
+        'Kz':    'Kazakh',
+        'Sv':    'Swedish',
+        'Ca':    'Catalan',
+        'Ar':    'Arabic', // Added
+        'Nl':    'Dutch',  // Added
+        'Ni':    'Dutch',  // Added per your observation
+        'El Gr': 'Greek'
+    };
+
+    Object.keys(langMap).sort((a, b) => b.length - a.length).forEach(code => {
+        const re = new RegExp(`\\b${code}\\b`, 'g');
+        s = s.replace(re, langMap[code]);
     });
 
-    const sorted = filtered.sort((a, b) => a.id.localeCompare(b.id));
+    return s;
+}
+
+// --- In options.js ---
+
+// 1. Update Parser to capture 'version'
+function parseVoskModelList(payload) {
+  const list = Array.isArray(payload)
+    ? payload
+    : (Array.isArray(payload?.models) ? payload.models : []);
+  
+  return list.map((entry) => {
+    const id = entry?.name || entry?.id || entry?.model || entry?.model_id;
+    if (!id) return null;
+
+    return { 
+        id, 
+        url: entry?.url || entry?.link || entry?.download, 
+        size: entry?.size,
+        langText: entry?.lang_text,
+        sizeText: entry?.size_text,
+        type: entry?.type,
+        obsolete: (entry?.obsolete === 'true' || entry?.obsolete === true),
+        version: entry?.version // NEW: Capture version
+    };
+  }).filter(Boolean);
+}
+
+// 2. Update Display Logic
+window.VOSK_PRETTY_TO_ID = new Map();
+window.VOSK_ID_TO_PRETTY = new Map();
+
+function setVoskModelDatalist(list) {
+    const datalist = document.getElementById('vosk-model-list');
+    const realInput = document.getElementById('vosk-model-input'); // Options ID
+    
+    if (!datalist || !realInput) return;
+    
+    datalist.innerHTML = '';
+    window.VOSK_PRETTY_TO_ID.clear();
+    window.VOSK_ID_TO_PRETTY.clear();
+
+    // --- Shadow Input Logic (Same as before) ---
+    let prettyInput = document.getElementById('vosk-model-pretty-display');
+    if (!prettyInput) {
+        prettyInput = document.createElement('input');
+        prettyInput.id = 'vosk-model-pretty-display';
+        prettyInput.type = 'text';
+        prettyInput.className = realInput.className;
+        prettyInput.placeholder = "Select a model...";
+        prettyInput.style.width = "100%";
+        
+        prettyInput.setAttribute('list', 'vosk-model-list');
+        realInput.removeAttribute('list');
+        realInput.style.display = 'none';
+        realInput.parentNode.insertBefore(prettyInput, realInput);
+
+        prettyInput.addEventListener('input', () => {
+            const val = prettyInput.value;
+            const id = window.VOSK_PRETTY_TO_ID.get(val);
+            if (id) realInput.value = id;
+            else realInput.value = val;
+            
+            realInput.dispatchEvent(new Event('change'));
+            realInput.dispatchEvent(new Event('input'));
+        });
+    }
+
+    // --- Filter & Sort ---
+    const filtered = list.filter((model) => {
+        const mb = sizeToMb(model?.size);
+        return (mb == null || mb <= 1042) && !/spk|tts/i.test(model.id);
+    });
+
+    const sorted = filtered.sort((a, b) => {
+        if (a.obsolete !== b.obsolete) return a.obsolete ? 1 : -1;
+        return a.id.localeCompare(b.id);
+    });
+
+    // --- Build List with Version ---
     for (const model of sorted) {
         const option = document.createElement('option');
-        option.value = model.id;
+        
+        let prettyName = model.langText || autoPrettifyVoskId(model.id);
+        
+        const extras = [];
+        
+        // NEW: Add Version first
+        if (model.version) extras.push(`v${model.version}`);
+
+        // Add Type (skip if standard small/big is obvious or redundant)
+        if (model.type && model.type !== 'small') extras.push(model.type);
+        else if (model.id.includes('small') && !model.type) extras.push('small');
+        
+        // Add Size
+        if (model.sizeText) extras.push(model.sizeText);
+        
+        // Combine: "English (v0.15, small, 50MiB)"
+        if (extras.length > 0) prettyName += ` (${extras.join(', ')})`;
+
+        if (model.obsolete) prettyName = `⚠️ [OBSOLETE] ${prettyName}`;
+
+        window.VOSK_PRETTY_TO_ID.set(prettyName, model.id);
+        window.VOSK_ID_TO_PRETTY.set(model.id, prettyName);
+
+        option.value = prettyName; 
         datalist.appendChild(option);
+    }
+
+    if (realInput.value) {
+        const pretty = window.VOSK_ID_TO_PRETTY.get(realInput.value);
+        if (pretty) prettyInput.value = pretty;
+        else prettyInput.value = realInput.value;
     }
 }
 
-function normalizeHost(host) { return (host || '').trim().toLowerCase(); }
+// Replace the existing normalizeHost function with this robust implementation:
+function normalizeHost(hostname) {
+  if (!hostname) return '';
+  let host = String(hostname).trim().toLowerCase();
+
+  // If caller passed a full URL, extract hostname
+  try {
+    if (host.includes('://') || host.includes('/')) {
+      host = new URL(host).hostname.toLowerCase();
+    }
+  } catch (_) { /* leave host as-is on parse failure */ }
+
+  // Remove optional port if present (example.com:8080 -> example.com)
+  host = host.replace(/:\d+$/, '');
+
+  // NOTE: Do NOT strip "www." — preserve exact host as entered.
+  return host;
+}
 
 function clampMicGain(val) {
     const n = parseFloat(val);
@@ -727,6 +866,7 @@ async function saveGraceSetting(statusKeys = []) {
     statusKeys.forEach(k => showSaved(k));
 }
 
+// Replace existing addOrUpdateOverride() with this version
 async function addOrUpdateOverride() {
     const hostEl = document.getElementById('override-host');
     const host = normalizeHost(hostEl?.value);
@@ -740,14 +880,36 @@ async function addOrUpdateOverride() {
     const statusEl = document.getElementById('override-status');
     const graceEl = document.getElementById('override-grace');
 
+    // Read the visible value from the Vosk override input (this can be a pretty name or an id)
     const voskModelRaw = (voskModelEl?.value || '').trim();
-    const model = voskModelRaw || (modelEl?.value || null);
+
+    // If user selected/typed the pretty display name, map it back to the canonical id
+    const mappedVoskModel = (voskModelRaw && window.VOSK_PRETTY_TO_ID && window.VOSK_PRETTY_TO_ID.has(voskModelRaw))
+        ? window.VOSK_PRETTY_TO_ID.get(voskModelRaw)
+        : voskModelRaw;
+
+    // Final model: prefer a Vosk selection, otherwise the whisper override select
+    const model = mappedVoskModel || (modelEl?.value || null);
+
+    // --- Prevent saving extremely large Vosk models if we have metadata for them ---
+    if (mappedVoskModel) {
+        const meta = voskModelIndex.get(mappedVoskModel);
+        if (meta?.size != null) {
+            const mb = sizeToMb(meta.size);
+            if (mb != null && mb > 1024) {
+                alert(`Selected Vosk model (${mappedVoskModel}) is ${Math.round(mb)} MB which exceeds the 1024 MB limit. Please choose a smaller model.`);
+                return;
+            }
+        }
+        // If no metadata available, allow saving (background will validate if possible)
+    }
+
     const language = langEl?.value || null;
     const silenceTimeout = clampTimeout(timeoutEl?.value);
     let provider = providerEl?.value || null;
     const graceMs = parseGraceOverride(graceEl?.value);
 
-    // ✅ Infer provider from model if provider not explicitly set
+    // Infer provider from model if provider not explicitly set
     if (!provider && model) {
         provider = model.startsWith('vosk-model-') ? 'vosk' : 'local-whisper';
     }
@@ -774,6 +936,7 @@ async function addOrUpdateOverride() {
 
     renderOverrides(settings.overrides, settings.disableFavicons !== true);
 
+    // Clear inputs (visible ones)
     hostEl.value = '';
     if (timeoutEl) timeoutEl.value = '';
     if (graceEl) graceEl.value = '';
@@ -782,6 +945,12 @@ async function addOrUpdateOverride() {
     if (langEl) langEl.value = '';
     if (providerEl) providerEl.value = '';
     if (statusEl) statusEl.value = '';
+
+    // If there is a pretty display input associated with the main vosk control, keep it cleared too.
+    try {
+        const prettyMain = document.getElementById('vosk-model-pretty-display');
+        if (prettyMain) prettyMain.value = '';
+    } catch (_) {}
 
     showSaved('overrides');
     await broadcastConfigChanged();
@@ -902,12 +1071,50 @@ function toggleFavicons(statusKeys = []) {
     saveDefaults(statusKeys);
 }
 
+// factory reset: clear storage and force UI to reflect defaults immediately
 async function factoryReset() {
-    await browser.storage.local.set({ settings: {} });
-    await browser.storage.local.remove('settings');
-    showSaved('save');
-    await broadcastConfigChanged();
-    await restoreOptions();
+    try {
+        // mark restoring so storage.onChanged handlers don't fight our update
+        isRestoring = true;
+
+        // Clear settings
+        await browser.storage.local.set({ settings: {} });
+        await browser.storage.local.remove('settings');
+
+        // Visual 'saved' feedback and notify other parts of the extension
+        showSaved('save');
+        await broadcastConfigChanged();
+
+        // Re-read settings (should be empty) and apply defaults to UI
+        await restoreOptions();
+
+        // Ensure Vosk pretty-display (if present) is synchronized with backing input:
+        try {
+            const voskBacking = document.getElementById('vosk-model-input') || document.getElementById('vosk-model');
+            const voskPretty = document.getElementById('vosk-model-pretty-display');
+            if (voskBacking && voskPretty) {
+                const pretty = window.VOSK_ID_TO_PRETTY?.get(voskBacking.value) || voskBacking.value || '';
+                voskPretty.value = pretty;
+            }
+        } catch (_) { /* ignore if not present */ }
+
+        // Force model-select to run its change handlers so the visual label updates
+        try {
+            const modelSelect = document.getElementById('model-select');
+            if (modelSelect) {
+                // trigger change so any size warnings / other UI updates run
+                modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } catch (_) { }
+
+        // Re-run helpers to ensure all UI pieces are up-to-date
+        try { checkModelSize(); } catch (_) { }
+        try { checkVoskModelSize(); } catch (_) { }
+        try { applyVisibility(); } catch (_) { }
+    } finally {
+        // leave restoring mode
+        isRestoring = false;
+    }
 }
 
 async function restoreOptions() {
@@ -1079,6 +1286,7 @@ function installOverridesListToggle() {
     applyOverridesListOpenState();
 }
 
+// Replace existing loadOverrideIntoInputs(...) with this version
 function loadOverrideIntoInputs(host, cfg) {
     const hostEl = document.getElementById('override-host');
     const modelEl = document.getElementById('override-model');
@@ -1091,8 +1299,10 @@ function loadOverrideIntoInputs(host, cfg) {
 
     if (hostEl) hostEl.value = host || '';
 
+    // If the override model is a Vosk id, show the pretty name in the visible override input (if we know it).
     if (cfg?.model && cfg.model.startsWith('vosk-model-')) {
-        if (voskModelEl) voskModelEl.value = cfg.model;
+        const pretty = window.VOSK_ID_TO_PRETTY?.get(cfg.model) || cfg.model;
+        if (voskModelEl) voskModelEl.value = pretty;
         if (modelEl) modelEl.value = '';
     } else {
         if (modelEl) modelEl.value = cfg?.model || '';
@@ -1335,3 +1545,24 @@ async function importSettingsFromFile(e) {
         try { input.value = ''; } catch (_) { }
     }
 }
+
+// background.js
+
+browser.runtime.onSuspend.addListener(() => {
+  console.log('[BG] Extension suspending/reloading. Forcing deep clean...');
+  
+  // 1. Kill the Whisper worker immediately
+  if (asrWorker) {
+    asrWorker.terminate();
+    asrWorker = null;
+  }
+
+  // 2. Kill all Vosk models
+  for (const [id, entry] of voskModels.entries()) {
+    if (entry.model) {
+      try { entry.model.terminate(); } catch(e) {}
+    }
+  }
+  voskModels.clear();
+  voskRecognizers.clear();
+});

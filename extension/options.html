@@ -284,11 +284,23 @@
                     <input id="override-host" type="text" data-i18n-placeholder="hostname_placeholder"
                         placeholder="example.com" />
                 </div>
+
+                            <div class="actions" style="margin-top: 8px;">
+                <div style="flex:1">
+                    <label style="margin-top:0" data-i18n="engine_label">Provider</label>
+                    <select id="override-provider">
+                        <option value="" data-i18n="override_default_option">(Default)</option>
+                        <option value="local-whisper" data-i18n="engine_local">Whisper</option>
+                        <option value="vosk" data-i18n="engine_vosk">Vosk (Streaming)</option>
+                        <option value="assemblyai" data-i18n="engine_assemblyai">Server AssemblyAI</option>
+                    </select>
+                </div>
+            </div>
+
                 <div>
                     <label style="margin-top:0" data-i18n="model_label">Model</label>
                     <select id="override-model">
                         <option value="" data-i18n="override_default_option">(Default)</option>
-                        <optgroup label="Whisper" data-i18n="group_whisper">
                             <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)
                             </option>
                             <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)
@@ -303,11 +315,6 @@
                             </option>
                             <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)
                             </option>
-                        </optgroup>
-                        <optgroup label="Vosk (quick picks)" data-i18n="group_vosk_quick">
-                            <option value="vosk-model-small-en-us-0.15">Small English (US) (~50MB)</option>
-                            <option value="vosk-model-en-us-0.22">Large English (US) (~1.8GB)</option>
-                        </optgroup>
                     </select>
                 </div>
             </div>
@@ -348,17 +355,7 @@
                 </div>
             </div>
 
-            <div class="actions" style="margin-top: 8px;">
-                <div style="flex:1">
-                    <label style="margin-top:0" data-i18n="engine_label">Provider</label>
-                    <select id="override-provider">
-                        <option value="" data-i18n="override_default_option">(Default)</option>
-                        <option value="local-whisper" data-i18n="engine_local">Whisper</option>
-                        <option value="vosk" data-i18n="engine_vosk">Vosk (Streaming)</option>
-                        <option value="assemblyai" data-i18n="engine_assemblyai">Server AssemblyAI</option>
-                    </select>
-                </div>
-            </div>
+
 
             <div class="actions" style="margin-top: 8px;">
                 <div style="flex:1">

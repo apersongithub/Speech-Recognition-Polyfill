@@ -195,10 +195,10 @@
     "message": "Configure silence detection, streaming, and other speech logic."
   },
   "enable_hardcap_label": {
-    "message": "Enable hard cap on recording length"
+    "message": "Enable 5s hard-cap"
   },
   "enable_hardcap_note": {
-    "message": "Stops recording after a fixed time limit (e.g., 30s) to prevent long recordings."
+    "message": "Stops recording after a fixed time limit 5s to prevent long recordings."
   },
   "section_vosk_title": {
     "message": "Vosk"
