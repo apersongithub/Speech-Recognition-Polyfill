@@ -8,7 +8,7 @@
 >
 > *All **local** AI Models used are free and don't require any major configuration.*
 > 
-> *Tested with Duolingo and Google Translate. May work decently with other sites that utilize the API..*
+> *Tested with Duolingo, Google Translate, and other prominent sites. Likely work decently with other sites that utilize the API.*
 
 > [!IMPORTANT]
 >
@@ -28,29 +28,31 @@
 ## Frequently Asked Questions + Model Info
 | Q | A |
 |---|---|
-| How do I make an [API Key](https://www.assemblyai.com/dashboard/api-keys)? | Click the link, create an account, and you’ll get a key right after signing up. |
-| Where are the rest of the languages? | You can add them yourself by manually editing your config and using their respected international abbreviations. Look in the local overrides folder for an example. |
-| Is the cloud model paid? | AssemblyAI provides a free tier (IIRC, 300–500 hours/month). Beyond that, you have to pay or switch to the local model. |
+| Why are my words inaccurate? | Because you...<br> 1. Are not speaking loud, clear, and somewhat slowly.<br> 2. Switched to the smallest & fastest local model.<br> 3. Didn't set your language (for VOSK you only need to set the language specified model).<br> 4. Spoke before the local model downloaded (the extension tries to compensate for this but doesn't get it every time). |
+| How do default options and site overrides work? | This is a good question and I understand the confusion. Defaults are the global settings you set in the Options page (provider, model, language, mic gain, timeouts, etc.) and they apply to every site unless a more specific rule exists. Site overrides (added via the popup or Options) target a single hostname and take priority over the defaults for that site. Only changing an override affects just that site, while changing the default in Options changes behavior everywhere without an override. |
+| How do I make an [API Key](https://www.assemblyai.com/dashboard/api-keys)? | Click the link, create an account, and you’ll get a key right after signing up. There is also info in the extension. |
+| Why are there only a few lanugages? | Alot of non-european languages are actually supported despite the extension listing only 10 pre-set languages (though, they won't have the same accuracy ratio as an English model due to training data). You can add them yourself by manually editing your config and using their respected international abbreviations. Look in the local overrides folder for an example (make sure to look for language support info on your respected engine since it varies). In a future update, I may add the ability to use an abbrivation instead of a set language.  |
+| Why would anyone use normal models compared to their continuous/streaming counterparts? | There is a trade off for everything, you get faster speed but lower accuracy when using streaming-based models. This is why I give so many customization options :) |
+| Is the cloud model paid? | AssemblyAI provides a free tier (IIRC, 300–500 hours). Beyond that, you'd have to pay or switch to the local models. |
 | Does audio leave my device? | Local (Whisper / Vosk): **No** audio stays on-device (after the model downloads). Cloud (AssemblyAI): **Yes**, audio is uploaded for transcription. |
-| Can you explain the icon indicators? | Color reflects recording/processing/error; badges show downloading/cached/done/cancel. A red/error icon often means canceled, missing API key, or unintelligible speech...Not necessarily a bad mic. Pin the icon to monitor state. |
+| Can you explain the icon indicators? | Color reflects recording/processing/error; badges show downloading/cached/done/cancel. A red/error icon often means canceled, missing API key, or unintelligible speech...Not necessarily a bad mic. It is recommended to pin the extension icon next to the New Tab icon until you get the hand of it. You can also use the toasts option if you don't want to. |
 | How do I improve accuracy? | Speak loud, slow, and clear; pick the correct mic. Use a larger local model (slower) **or switch to the cloud engine** for better speed & quality. |
 | How is silence handled? | Adaptive Voice Activity Detection plus a configurable silence timeout (global and per-site). |
-| Can I disable it on certain sites? | Yes. You can disable the extension per-site from the popup (Extension Status) or via a Site Override. |
+| Can I disable it on certain sites? | Yes. You can disable the extension per-site from the popup (Extension Status) or via Site Overrides category in the options page. |
 | Where are the prebuilt overrides? | You can find them linked here [HERE](https://github.com/apersongithub/Speech-Recognition-Polyfill/tree/main/prebuilt-overrides). For Duolingo, just choose the language you are learning, then download and import the override. |
 | How does offline functionality work? | **Vosk** models are designed to run entirely offline after the initial download. For **Whisper**, you can try the "Cache default model" option and it will work offline until you switch the model or close the browser. |
-| Why is it typing "Thanks for watching"? | The real answer is the local whisper models were mainly trained on YouTube videos. This only happens if you mumble a bit with no other intelligble audio being spoken. |
+| Why is it typing "Thanks for watching" (Whisper)? | The real answer is the local whisper models were mainly trained on YouTube videos. This only happens if you mumble a bit with no other intelligble audio being spoken. |
+| Why is my browser saying my mic is recording when I've finished the speech recogntion? Stop spying on me!!! | I've mostly fixed this in v1.5.3 (goes away after like 5s now) but its not worth the time to fix it more since its more trivial now. Before this, it would stay on intermittently until tab closure or GC times out. If it makes you feel better, this trival issue only happens on local models. |
+| Is there a [insert chromium browser] port? | No, there are zero plans for making one. |
+| What is streaming? | When you get word-to-word realtime fast speech transcription like on Chrome. I sometimes use it interchangeably with "continuous speech" but they are different. |
+| Why are there CSP errors in console? | The extension uses WASM, so unsafe-eval is required for it to function. Eval() itself or similar objects are not used, only WASM so it's safe. |
+| Why doesn't "Disable ultimatum processing timeouts" work? | It works, but only for models that actually use **processing** like whisper and assemblyai non-streaming. This is why it doesn't work for streaming models (I mean, how would it?). |
+| Why does 5s hard cap exist? | It was there before the VAD (Voice Activity Detection) was implemented. Idk why it didn't remove it, but enjoy. |
 
-| Engine | Vosk (Default) | Whisper | AssemblyAI |
-| :--- | :--- | :--- | :--- |
-| Type | Local (On-device) | Local (On-device) | Cloud (Remote Server) |
-| Offline | ✅ Fully Offline | ⚠️ Partial (Cached) | ❌ Online Only |
-| Streaming | ✅ True Streaming | ❌ Batch Processing | ✅ True Streaming |
-| Privacy | High (Device only) | High (Device only) | Equivalent to Chrome (Uploaded) |
-| Speed | Fastest | Slower | Fast |
-| Accuracy | Medicore | High | Very High |
 
 | Engine          | Model ID                       | Notes                                |
 |-----------------|--------------------------------|--------------------------------------|
+| Local Vosk      | `vosk-model-[lang]`      | Multilingual, Any model < 2GB, offline |
 | Local Whisper   | `Xenova/whisper-tiny.en`       | English-only, fastest                |
 | Local Whisper   | `Xenova/whisper-tiny`          | Multilingual, fast                   |
 | Local Whisper   | `Xenova/whisper-base.en`       | English-only, balanced               |
@@ -58,12 +60,24 @@
 | Local Whisper   | `Xenova/whisper-small.en`      | English-only, higher quality (slower)|
 | Local Whisper   | `Xenova/whisper-small`         | Multilingual, higher quality (slower)|
 | Local Whisper   | `Xenova/distil-whisper-medium.en` | English-only, distilled medium (larger/slower) |
-| Local Vosk      | `vosk-model-small-[lang]`      | Multilingual (fr, de, es, ru, etc.), offline |
 | Cloud           | `AssemblyAI` *(API key required)* | Remote transcription; model managed by AssemblyAI |
 
+**Too many [models](https://alphacephei.com/vosk/models) to list with VOSK but generally all models under 2GB are shown & supported.*
+
+## Compared Features
+| Features | Speech Recognition Polyfill | [Speechfire](https://addons.mozilla.org/en-US/firefox/addon/speechfire/) | [Voice to Text with Whisper](https://addons.mozilla.org/en-US/firefox/addon/voice-to-text-with-whisper/) | [Speech Recognition Anywhere](https://chromewebstore.google.com/detail/speech-recognition-anywhe/kdnnmhpmcakdilnofmllgcigkibjonof) |
+|----------|--------------------------------------|------------|----------------------------|------------------------------|
+| **Providers** | ✅ Whisper + Vosk (Several Models) + AssemblyAI | ⚠️ Whisper only | ⚠️ Whisper (cloud variants) | ❌ No model choice |
+| **Web Speech API Polyfill** | ✅ Yes (replaces `webkitSpeechRecognition`) | ❌ No | ❌ No | ❌ No |
+| **Local (Offline) Support** | ✅ Vosk + Whisper local | ✅ Whisper local | ❌ Cloud only | ❌ Cloud only |
+| **Realtime Streaming** | ✅ Yes (since v1.5.0) | ❌ No true streaming | ⚠️ Limited | ⚠️ Limited |
+| **Continuous Speech Mode** | ✅ Yes (configurable) | ❌ Stops after dictation | ❌ No | ⚠️ Basic continuous |
+| **Partial / Interim Results** | ✅ Yes (streaming engines) | ❌ No | ⚠️ Limited | ❌ No |
+| **Per-Site Customization** | ✅ Yes | ❌ No | ❌ No | ❌ No |
+
 ## Extra Tips
-- For learning sites (e.g., Duolingo): set the site language to the one you’re practicing for better speech recognition.
-  - For Google Translate, auto-language usually suffices since the site gives us information.
+- Set the site language/model to the one you’re practicing for better speech recognition.
+- For Google Translate, auto-language usually suffices since the site gives us information.
 - ❗Do NOT forget to remove your AssemblyAI API Key if you are sharing your config.
 
 ## Contributing
