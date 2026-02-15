@@ -941,13 +941,28 @@ if (IS_TOP_FRAME) {
   });
 }
 
-// Recommended Fix (Clean & Compliant):
-if (extensionEnabledForSite) {
-  const script = document.createElement('script');
-  script.src = browser.runtime.getURL('polyfill.js'); // Use file for EVERYONE
-  script.onload = () => script.remove();
-  (document.head || document.documentElement).appendChild(script);
-}
+// content.js - Around line 1433
+(function injectPolyfillTrulySync() {
+  if (!extensionEnabledForSite) return;
+
+  try {
+    // Synchronous XHR is the only way to block the parser in an extension
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', browser.runtime.getURL('polyfill.js'), false); 
+    xhr.send();
+
+    const script = document.createElement('script');
+    script.textContent = xhr.responseText;
+    
+    // Prepend ensures it's the very first thing in the <html> or <head>
+    (document.head || document.documentElement).prepend(script);
+    script.remove();
+    
+    dbg('polyfill_injected_truly_sync');
+  } catch (e) {
+    console.error('[Whisper] Sync polyfill injection failed:', e);
+  }
+})();
 
 function fixEncoding(text) {
   if (!text) return "";
