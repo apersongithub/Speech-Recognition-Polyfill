@@ -2301,27 +2301,31 @@ browser.tabs.onActivated.addListener(({ tabId }) => {
   ensureTabIconInitialized(tabId).catch(() => { });
 });
 
-browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === 'loading' || typeof changeInfo.url === 'string') {
-    ensureTabIconInitialized(tabId).catch(() => { });
-  }
-  if (changeInfo.discarded === true || changeInfo.status === 'unloaded') {
-    clearTabTracking(tabId);
-    scheduleModelGc();
-  }
-});
-
 browser.tabs.onRemoved.addListener((tabId) => {
   clearTabTracking(tabId);
   scheduleModelGc();
 });
 
 // In tabs.onUpdated (when URL changes)
-browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'loading' || typeof changeInfo.url === 'string') {
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  // 1. Detect when the tab starts loading a new page/redirect
+  if (changeInfo.status === 'loading') {
+    dbg('tab_navigation_detected_cleanup', { tabId, url: changeInfo.url });
+
+    // 2. Kill stale recording/processing state for this tab
+    // This clears inflightByTab, tabStateById, and stops any active Vosk/Assembly streams
+    clearTabTracking(tabId);
+
+    // 3. Reset the icon to IDLE immediately
     ensureTabIconInitialized(tabId).catch(() => { });
     updateDisabledBadgesForAllTabs().catch(() => { });
+
+    // 4. Trigger GC to unload models if no other tab is using them
+    scheduleModelGc();
+    return;
   }
+
+  // Cleanup for discarded or unloaded tabs (keep existing logic)
   if (changeInfo.discarded === true || changeInfo.status === 'unloaded') {
     clearTabTracking(tabId);
     scheduleModelGc();

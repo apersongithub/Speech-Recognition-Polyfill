@@ -1160,7 +1160,9 @@ window.addEventListener("message", async (event) => {
 
     startRecording(event.data.language, activeSessionId);
   }
- else if (event.data.type === 'WHISPER_STOP_RECORDING') {
+// content.js - inside the window.addEventListener("message", ...) block
+  else if (event.data.type === 'WHISPER_STOP_RECORDING') {
+    // Duolingo safety check
     if (streamingActive && isDuolingoHost()) {
       dbg('ignore_duolingo_stop_streaming', { elapsed: Date.now() - recordingStartTime });
       return;
@@ -1171,17 +1173,22 @@ window.addEventListener("message", async (event) => {
       setAudioActive(false);
       forceEndPageRecognition();
 
-      if (captureActive) {
-        stopRecording(false); // do NOT cancel
-      } else if (streamingSessionId) {
-        try {
-          if (streamingProvider === 'assemblyai') {
-             // ... existing code ...
-          } else if (streamingProvider === 'vosk') {
-             // ... existing code ...
-          }
-        } catch (_) { }
+      // 1. Stop the microphone
+      stopRecording(false); 
 
+      // 2. ALWAYS tell the background to stop the stream
+      if (streamingSessionId) {
+        try {
+          const type = (streamingProvider === 'assemblyai') ? 'ASSEMBLYAI_STREAM_STOP' : 'VOSK_STREAM_STOP';
+          browser.runtime.sendMessage({
+            type,
+            sessionId: streamingSessionId,
+            hostname: location.hostname,
+            pageInstanceId: PAGE_INSTANCE_ID
+          });
+        } catch (_) { }
+        
+        // 3. Clean up local streaming state
         teardownStreamingProcessor();
         streamingSessionId = null;
         clearSilenceTimer();
@@ -1191,11 +1198,10 @@ window.addEventListener("message", async (event) => {
       return;
     }
     
-    // --- ADD THIS BLOCK FOR LOCAL WHISPER ---
+    // Non-streaming fallback (Local Whisper)
     if (captureActive) {
-      stopRecording(false); // Stop immediately and Transcribe
+      stopRecording(false);
     }
-    // ----------------------------------------
   }
 
   else if (event.data.type === 'WHISPER_ABORT_RECORDING') {
@@ -1763,12 +1769,9 @@ globalRecorder.onstart = () => {
 }
 
 function stopRecording(cancel = false) {
-  dbg('stop_recording_called', { cancel, streamingActive });
-
-  // 1. IMMEDIATELY kill the gatekeeper variable.
-  // This ensures Fix #2 in the bridge logic blocks any results starting NOW.
+  // 1. Kill the gatekeeper immediately
   streamingCaptureActive = false;
-
+  
   clearSilenceTimer();
   clearStartRecordingWatchdog();
   skipTranscribe = cancel;
@@ -1777,27 +1780,20 @@ function stopRecording(cancel = false) {
   lastStreamingPartialText = null;
   lastStreamingPartialSessionId = null;
 
-  // 2. Tear down the audio hardware
+  // 2. Stop hardware
   if (globalStream) { 
     globalStream.getTracks().forEach(track => track.stop()); 
     globalStream = null; 
   }
-  
   if (globalContext && globalContext.state !== 'closed') { 
     globalContext.close(); 
     globalContext = null; 
   }
-
-  // 3. Stop the MediaRecorder (this triggers the onstop event)
   if (globalRecorder && globalRecorder.state !== 'inactive') { 
     globalRecorder.stop(); 
   }
 
-  // 4. Final state cleanup
   captureActive = false;
-  
-  // Note: We leave streamingActive as-is until the background confirms shutdown
-  // but the 'streamingCaptureActive' flag above handles the immediate UI block.
 }
 
 // Responses
