@@ -9,11 +9,11 @@
 let extensionEnabledForSite = true; // Declare this first to avoid ReferenceError
 
 (function injectPolyfill() {
-    const s = document.createElement('script');
-    s.src = browser.runtime.getURL('polyfill.js');
-    s.async = false; // Force immediate execution order
-    (document.head || document.documentElement).prepend(s);
-    s.onload = () => s.remove();
+  const s = document.createElement('script');
+  s.src = browser.runtime.getURL('polyfill.js');
+  s.async = false; // Force immediate execution order
+  (document.head || document.documentElement).prepend(s);
+  s.onload = () => s.remove();
 })();
 
 const IS_TOP_FRAME = (window.self === window.top);
@@ -760,7 +760,7 @@ async function resolveEffectiveSettings() {
     }
     if (extensionEnabledForSite && site && site.enabled === false) extensionEnabledForSite = false;
 
-} catch (_) {
+  } catch (_) {
     silenceTimeoutMs = 1000;
     shouldShowNotifications = false;
     debugLogsEnabled = false;
@@ -830,48 +830,48 @@ browser.runtime.onMessage.addListener((message) => {
     dbgSite(message.tag, message.data);
   }
 
-// Replace the existing WHISPER_CANCEL_ALL handler in the runtime.onMessage listener with this:
-if (message?.type === 'WHISPER_CANCEL_ALL') {
-  clearProcessingWatchdog();
-  processingSessionId = null;
-  captureActive = false;
-  skipTranscribe = true;
-  clearLockedInsertionTarget();
-  clearPendingPageAck();
-  clearStartRecordingWatchdog();
-  try { stopRecording(true); } catch (_) { }
+  // Replace the existing WHISPER_CANCEL_ALL handler in the runtime.onMessage listener with this:
+  if (message?.type === 'WHISPER_CANCEL_ALL') {
+    clearProcessingWatchdog();
+    processingSessionId = null;
+    captureActive = false;
+    skipTranscribe = true;
+    clearLockedInsertionTarget();
+    clearPendingPageAck();
+    clearStartRecordingWatchdog();
+    try { stopRecording(true); } catch (_) { }
 
-  // Show a more helpful toast depending on the cancel reason.
-  // Background sends reason = 'assemblyai_api_missing' when the API key is absent.
-  const reason = message?.reason || '';
-  if (reason === 'assemblyai_api_missing') {
-    showNotification("AssemblyAI API key missing. Set it in options.", "error");
-  } else if (reason === 'assemblyai_token_error') {
-    showNotification("AssemblyAI token error. Check your API key in options.", "error");
-  } else if (reason === 'vosk_model_failed') {
-    showNotification("Failed to load Vosk model. See options or try a different model.", "error");
-  } else {
-    showNotification("Canceled (settings changed)", "info");
+    // Show a more helpful toast depending on the cancel reason.
+    // Background sends reason = 'assemblyai_api_missing' when the API key is absent.
+    const reason = message?.reason || '';
+    if (reason === 'assemblyai_api_missing') {
+      showNotification("AssemblyAI API key missing. Set it in options.", "error");
+    } else if (reason === 'assemblyai_token_error') {
+      showNotification("AssemblyAI token error. Check your API key in options.", "error");
+    } else if (reason === 'vosk_model_failed') {
+      showNotification("Failed to load Vosk model. See options or try a different model.", "error");
+    } else {
+      showNotification("Canceled (settings changed)", "info");
+    }
   }
-}
 
-if (message?.type === 'WHISPER_STREAMING_STARTED') {
-  // Show listening toast for streaming providers (Vosk)
-  if (message.provider === 'vosk') {
-    showNotification("Listening...", "recording");
+  if (message?.type === 'WHISPER_STREAMING_STARTED') {
+    // Show listening toast for streaming providers (Vosk)
+    if (message.provider === 'vosk') {
+      showNotification("Listening...", "recording");
+    }
+    return;
   }
-  return;
-}
 
-if (message?.type === 'WHISPER_TOAST') {
-  // Generic background->page toast: { message, level }
-  try {
-    const m = String(message.message || '');
-    const lvl = (message.level || 'info');
-    showNotification(m, lvl);
-  } catch (_) { }
-  return;
-}
+  if (message?.type === 'WHISPER_TOAST') {
+    // Generic background->page toast: { message, level }
+    try {
+      const m = String(message.message || '');
+      const lvl = (message.level || 'info');
+      showNotification(m, lvl);
+    } catch (_) { }
+    return;
+  }
 
 });
 
@@ -957,16 +957,16 @@ if (IS_TOP_FRAME) {
   try {
     // Synchronous XHR is the only way to block the parser in an extension
     const xhr = new XMLHttpRequest();
-    xhr.open('GET', browser.runtime.getURL('polyfill.js'), false); 
+    xhr.open('GET', browser.runtime.getURL('polyfill.js'), false);
     xhr.send();
 
     const script = document.createElement('script');
     script.textContent = xhr.responseText;
-    
+
     // Prepend ensures it's the very first thing in the <html> or <head>
     (document.head || document.documentElement).prepend(script);
     script.remove();
-    
+
     dbg('polyfill_injected_truly_sync');
   } catch (e) {
     console.error('[Whisper] Sync polyfill injection failed:', e);
@@ -1184,7 +1184,7 @@ window.addEventListener("message", async (event) => {
 
     startRecording(event.data.language, activeSessionId);
   }
-// content.js - inside the window.addEventListener("message", ...) block
+  // content.js - inside the window.addEventListener("message", ...) block
   else if (event.data.type === 'WHISPER_STOP_RECORDING') {
     // Duolingo safety check
     if (streamingActive && isDuolingoHost()) {
@@ -1198,7 +1198,7 @@ window.addEventListener("message", async (event) => {
       forceEndPageRecognition();
 
       // 1. Stop the microphone
-      stopRecording(false); 
+      stopRecording(false);
 
       // 2. ALWAYS tell the background to stop the stream
       if (streamingSessionId) {
@@ -1211,7 +1211,7 @@ window.addEventListener("message", async (event) => {
             pageInstanceId: PAGE_INSTANCE_ID
           });
         } catch (_) { }
-        
+
         // 3. Clean up local streaming state
         teardownStreamingProcessor();
         streamingSessionId = null;
@@ -1221,7 +1221,7 @@ window.addEventListener("message", async (event) => {
       }
       return;
     }
-    
+
     // Non-streaming fallback (Local Whisper)
     if (captureActive) {
       stopRecording(false);
@@ -1396,10 +1396,16 @@ installDuolingoForeignObjectRemovalStopper();
 
 async function startRecording(pageLanguage, sessionId) {
   // 🔎 force-read settings at the moment recording starts
-try {
+  try {
     // Wrap getUserMedia in a specific try/catch for permission errors
     try {
       globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Permission granted — immediately release this stream's tracks.
+      // We only needed this call to check permission; the actual recording
+      // stream is acquired below. Without this, the orphaned tracks keep
+      // Firefox's "using microphone" indicator active indefinitely.
+      globalStream.getTracks().forEach(track => track.stop());
+      globalStream = null;
     } catch (permError) {
       if (permError.name === 'NotAllowedError' || permError.name === 'PermissionDeniedError') {
         showNotification("Microphone access denied. Please allow it in browser settings.", "error");
@@ -1415,7 +1421,7 @@ try {
         canceled: true,
         pageInstanceId: PAGE_INSTANCE_ID
       });
-      return; 
+      return;
     }
 
     dbg('gum_ok', { sessionId });
@@ -1456,9 +1462,12 @@ try {
 
   try {
     // Determine a more accurate display language from background (uses Vosk model metadata / overrides)
+    // Only override pageLanguage if the effective language is a specific language (not 'auto').
+    // When effective language is 'auto', keep the page-requested language (e.g. from recognition.lang)
+    // since it's more specific and helps the model produce accurate results.
     try {
       const resp = await browser.runtime.sendMessage({ type: 'GET_EFFECTIVE_LANGUAGE', hostname: location.hostname });
-      if (resp && resp.ok && resp.language) {
+      if (resp && resp.ok && resp.language && resp.language !== 'auto') {
         pageLanguage = resp.language;
       }
     } catch (_) { /* ignore */ }
@@ -1507,11 +1516,12 @@ try {
             sampleRate: STREAM_TARGET_SAMPLE_RATE
           });
         } else if (streamingProvider === 'vosk') {
-          console.log('[Whisper] sending VOSK_STREAM_START', { sessionId, host: location.hostname });
+          console.log('[Whisper] sending VOSK_STREAM_START', { sessionId, host: location.hostname, language: pageLanguage });
           browser.runtime.sendMessage({
             type: 'VOSK_STREAM_START',
             sessionId,
             hostname: location.hostname,
+            language: pageLanguage,
             pageInstanceId: PAGE_INSTANCE_ID,
             sampleRate: STREAM_TARGET_SAMPLE_RATE
           });
@@ -1543,24 +1553,24 @@ try {
     setAudioActive(true);
     setSpeechActive(false);
 
-// Inside startRecording(...), in globalRecorder.onstart = () => { ... }
-globalRecorder.onstart = () => {
-  started = true;
-  captureActive = true;
-  clearStartRecordingWatchdog();
-  // Show listening toast so users get immediate feedback
-  showNotification("Listening...", "recording");
-  dbg('mediarecorder_onstart', { sessionId, state: globalRecorder?.state, mimeType: globalRecorder?.mimeType });
+    // Inside startRecording(...), in globalRecorder.onstart = () => { ... }
+    globalRecorder.onstart = () => {
+      started = true;
+      captureActive = true;
+      clearStartRecordingWatchdog();
+      // Show listening toast so users get immediate feedback
+      showNotification("Listening...", "recording");
+      dbg('mediarecorder_onstart', { sessionId, state: globalRecorder?.state, mimeType: globalRecorder?.mimeType });
 
-  try {
-    browser.runtime.sendMessage({
-      type: 'RECORDING_START',
-      sessionId,
-      hostname: location.hostname,
-      pageInstanceId: PAGE_INSTANCE_ID
-    });
-  } catch (_) { }
-};
+      try {
+        browser.runtime.sendMessage({
+          type: 'RECORDING_START',
+          sessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      } catch (_) { }
+    };
 
     globalRecorder.onerror = (e) => {
       dbg('mediarecorder_error', { sessionId, error: e?.error?.name || e?.message || String(e) });
@@ -1795,7 +1805,7 @@ globalRecorder.onstart = () => {
 function stopRecording(cancel = false) {
   // 1. Kill the gatekeeper immediately
   streamingCaptureActive = false;
-  
+
   clearSilenceTimer();
   clearStartRecordingWatchdog();
   skipTranscribe = cancel;
@@ -1805,16 +1815,16 @@ function stopRecording(cancel = false) {
   lastStreamingPartialSessionId = null;
 
   // 2. Stop hardware
-  if (globalStream) { 
-    globalStream.getTracks().forEach(track => track.stop()); 
-    globalStream = null; 
+  if (globalStream) {
+    globalStream.getTracks().forEach(track => track.stop());
+    globalStream = null;
   }
-  if (globalContext && globalContext.state !== 'closed') { 
-    globalContext.close(); 
-    globalContext = null; 
+  if (globalContext && globalContext.state !== 'closed') {
+    globalContext.close();
+    globalContext = null;
   }
-  if (globalRecorder && globalRecorder.state !== 'inactive') { 
-    globalRecorder.stop(); 
+  if (globalRecorder && globalRecorder.state !== 'inactive') {
+    globalRecorder.stop();
   }
 
   captureActive = false;

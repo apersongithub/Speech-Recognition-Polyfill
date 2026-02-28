@@ -1406,10 +1406,11 @@ async function getAssemblyStreamingToken(apiKey) {
   return data.token;
 }
 
-function resolveAssemblyStreamingLanguage(settings) {
+function resolveAssemblyStreamingLanguage(settings, pageLanguage = null) {
+  // Prefer the user's override language; fall back to the page-requested language
   const lang = (settings.language && settings.language !== 'auto')
     ? settings.language
-    : null;
+    : (pageLanguage && pageLanguage !== 'auto' ? pageLanguage : null);
 
   if (!lang) return null;
 
@@ -1934,7 +1935,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
         return;
       }
 
-      const language = resolveAssemblyStreamingLanguage(settings);
+      const pageLang = normalizeLanguageCode(message.language || '');
+      const language = resolveAssemblyStreamingLanguage(settings, pageLang);
       const isNonEnglish = language && language !== 'en' && language !== 'auto';
       const shouldUseMultilingual = settings.assemblyaiStreamingMultilingualEnabled === true || isNonEnglish;
 
@@ -2242,7 +2244,12 @@ browser.runtime.onMessage.addListener((message, sender) => {
       if (isCanceled(tabId, sessionId)) return;
 
       const settings = await getEffectiveSettings(hostname);
-      const { enabled, model, language, graceEnabled, graceMs, provider, assemblyaiApiKey } = settings;
+      const { enabled, model, graceEnabled, graceMs, provider, assemblyaiApiKey } = settings;
+      // Use the page-requested language as fallback when the user hasn't set an override
+      const pageLang = normalizeLanguageCode(message.language || '');
+      const language = (settings.language && settings.language !== 'auto')
+        ? settings.language
+        : (pageLang || settings.language);
 
       const inflight = inflightByTab.get(tabId);
       if (inflight) inflight.provider = provider;
@@ -2292,7 +2299,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
         await ensureModelForTab(tabId, model);
 
         const isEnglishModel = currentModel.endsWith('.en');
-        const langToUse = isEnglishModel ? 'en' : (language !== 'auto' ? baseLanguageCode(language) : 'auto');
+        const langToUse = isEnglishModel ? 'en' : (language && language !== 'auto' ? baseLanguageCode(language) : 'auto');
+        dbgToTab(tabId, frameId, 'local_whisper_lang', { langToUse, settingsLang: settings.language, pageLang, isEnglishModel });
 
         const res = await callAsrWorker(
           'TRANSCRIBE_FLOAT32',
