@@ -37,20 +37,20 @@ function parseVoskModelList(payload) {
   const list = Array.isArray(payload)
     ? payload
     : (Array.isArray(payload?.models) ? payload.models : []);
-  
+
   return list.map((entry) => {
     const id = entry?.name || entry?.id || entry?.model || entry?.model_id;
     if (!id) return null;
 
-    return { 
-        id, 
-        url: entry?.url || entry?.link || entry?.download, 
-        size: entry?.size,
-        langText: entry?.lang_text,
-        sizeText: entry?.size_text,
-        type: entry?.type,
-        obsolete: (entry?.obsolete === 'true' || entry?.obsolete === true),
-        version: entry?.version // NEW
+    return {
+      id,
+      url: entry?.url || entry?.link || entry?.download,
+      size: entry?.size,
+      langText: entry?.lang_text,
+      sizeText: entry?.size_text,
+      type: entry?.type,
+      obsolete: (entry?.obsolete === 'true' || entry?.obsolete === true),
+      version: entry?.version // NEW
     };
   }).filter(Boolean);
 }
@@ -60,115 +60,115 @@ window.VOSK_PRETTY_TO_ID = new Map();
 window.VOSK_ID_TO_PRETTY = new Map();
 
 function setVoskModelDatalist(list) {
-    const datalist = document.getElementById('vosk-model-list');
-    const realInput = document.getElementById('vosk-model'); // Popup ID
-    
-    if (!datalist || !realInput) return;
-    
-    datalist.innerHTML = '';
-    window.VOSK_PRETTY_TO_ID.clear();
-    window.VOSK_ID_TO_PRETTY.clear();
+  const datalist = document.getElementById('vosk-model-list');
+  const realInput = document.getElementById('vosk-model'); // Popup ID
 
-    let prettyInput = document.getElementById('vosk-model-pretty-display');
-    if (!prettyInput) {
-        prettyInput = document.createElement('input');
-        prettyInput.id = 'vosk-model-pretty-display';
-        prettyInput.type = 'text';
-        prettyInput.className = realInput.className || ''; 
-        prettyInput.style.cssText = "width: 100%; box-sizing: border-box; margin-bottom: 8px;";
-        prettyInput.placeholder = "Select a model...";
-        
-        prettyInput.setAttribute('list', 'vosk-model-list');
-        realInput.removeAttribute('list');
-        realInput.style.display = 'none';
-        realInput.parentNode.insertBefore(prettyInput, realInput);
+  if (!datalist || !realInput) return;
 
-        prettyInput.addEventListener('input', () => {
-            const val = prettyInput.value;
-            const id = window.VOSK_PRETTY_TO_ID.get(val);
-            realInput.value = id || val;
-            realInput.dispatchEvent(new Event('change'));
-            realInput.dispatchEvent(new Event('input'));
-        });
-    }
+  datalist.innerHTML = '';
+  window.VOSK_PRETTY_TO_ID.clear();
+  window.VOSK_ID_TO_PRETTY.clear();
 
-    const filtered = list.filter((model) => {
-        const mb = sizeToMb(model?.size);
-        return (mb == null || mb <= 1042) && !/spk|tts/i.test(model.id);
+  let prettyInput = document.getElementById('vosk-model-pretty-display');
+  if (!prettyInput) {
+    prettyInput = document.createElement('input');
+    prettyInput.id = 'vosk-model-pretty-display';
+    prettyInput.type = 'text';
+    prettyInput.className = realInput.className || '';
+    prettyInput.style.cssText = "width: 100%; box-sizing: border-box; margin-bottom: 8px;";
+    prettyInput.placeholder = "Select a model...";
+
+    prettyInput.setAttribute('list', 'vosk-model-list');
+    realInput.removeAttribute('list');
+    realInput.style.display = 'none';
+    realInput.parentNode.insertBefore(prettyInput, realInput);
+
+    prettyInput.addEventListener('input', () => {
+      const val = prettyInput.value;
+      const id = window.VOSK_PRETTY_TO_ID.get(val);
+      realInput.value = id || val;
+      realInput.dispatchEvent(new Event('change'));
+      realInput.dispatchEvent(new Event('input'));
     });
+  }
 
-    const sorted = filtered.sort((a, b) => {
-        if (a.obsolete !== b.obsolete) return a.obsolete ? 1 : -1;
-        return a.id.localeCompare(b.id);
-    });
+  const filtered = list.filter((model) => {
+    const mb = sizeToMb(model?.size);
+    return (mb == null || mb <= 1042) && !/spk|tts/i.test(model.id);
+  });
 
-    for (const model of sorted) {
-        const option = document.createElement('option');
-        
-        let prettyName = model.langText || autoPrettifyVoskId(model.id);
-        
-        const extras = [];
-        
-        // NEW: Add Version
-        if (model.version) extras.push(`v${model.version}`);
+  const sorted = filtered.sort((a, b) => {
+    if (a.obsolete !== b.obsolete) return a.obsolete ? 1 : -1;
+    return a.id.localeCompare(b.id);
+  });
 
-        if (model.type && model.type !== 'small') extras.push(model.type);
-        else if (model.id.includes('small') && !model.type) extras.push('small');
-        
-        if (model.sizeText) extras.push(model.sizeText);
-        
-        if (extras.length > 0) prettyName += ` (${extras.join(', ')})`;
-        if (model.obsolete) prettyName = `⚠️ [OBSOLETE] ${prettyName}`;
+  for (const model of sorted) {
+    const option = document.createElement('option');
 
-        window.VOSK_PRETTY_TO_ID.set(prettyName, model.id);
-        window.VOSK_ID_TO_PRETTY.set(model.id, prettyName);
+    let prettyName = model.langText || autoPrettifyVoskId(model.id);
 
-        option.value = prettyName; 
-        datalist.appendChild(option);
-    }
+    const extras = [];
 
-    if (realInput.value) {
-        const pretty = window.VOSK_ID_TO_PRETTY.get(realInput.value);
-        prettyInput.value = pretty || realInput.value;
-    }
+    // NEW: Add Version
+    if (model.version) extras.push(`v${model.version}`);
+
+    if (model.type && model.type !== 'small') extras.push(model.type);
+    else if (model.id.includes('small') && !model.type) extras.push('small');
+
+    if (model.sizeText) extras.push(model.sizeText);
+
+    if (extras.length > 0) prettyName += ` (${extras.join(', ')})`;
+    if (model.obsolete) prettyName = `⚠️ [OBSOLETE] ${prettyName}`;
+
+    window.VOSK_PRETTY_TO_ID.set(prettyName, model.id);
+    window.VOSK_ID_TO_PRETTY.set(model.id, prettyName);
+
+    option.value = prettyName;
+    datalist.appendChild(option);
+  }
+
+  if (realInput.value) {
+    const pretty = window.VOSK_ID_TO_PRETTY.get(realInput.value);
+    prettyInput.value = pretty || realInput.value;
+  }
 }
 
 function autoPrettifyVoskId(id) {
-    let s = id.replace(/^vosk-model-/, '').replace(/-/g, ' ');
-    s = s.replace(/\b\w/g, l => l.toUpperCase());
+  let s = id.replace(/^vosk-model-/, '').replace(/-/g, ' ');
+  s = s.replace(/\b\w/g, l => l.toUpperCase());
 
-    const langMap = {
-        'En Us': 'English (US)',
-        'En In': 'English (India)',
-        'En':    'English',
-        'Cn':    'Chinese',
-        'Ru':    'Russian',
-        'Fr':    'French',
-        'De':    'German',
-        'Es':    'Spanish',
-        'Pt':    'Portuguese',
-        'It':    'Italian',
-        'Tr':    'Turkish',
-        'Vn':    'Vietnamese',
-        'Ja':    'Japanese',
-        'Hi':    'Hindi',
-        'Fa':    'Persian',
-        'Uk':    'Ukrainian',
-        'Kz':    'Kazakh',
-        'Sv':    'Swedish',
-        'Ca':    'Catalan',
-        'Ar':    'Arabic',
-        'Nl':    'Dutch',
-        'Ni':    'Dutch',
-        'El Gr': 'Greek'
-    };
+  const langMap = {
+    'En Us': 'English (US)',
+    'En In': 'English (India)',
+    'En': 'English',
+    'Cn': 'Chinese',
+    'Ru': 'Russian',
+    'Fr': 'French',
+    'De': 'German',
+    'Es': 'Spanish',
+    'Pt': 'Portuguese',
+    'It': 'Italian',
+    'Tr': 'Turkish',
+    'Vn': 'Vietnamese',
+    'Ja': 'Japanese',
+    'Hi': 'Hindi',
+    'Fa': 'Persian',
+    'Uk': 'Ukrainian',
+    'Kz': 'Kazakh',
+    'Sv': 'Swedish',
+    'Ca': 'Catalan',
+    'Ar': 'Arabic',
+    'Nl': 'Dutch',
+    'Ni': 'Dutch',
+    'El Gr': 'Greek'
+  };
 
-    Object.keys(langMap).sort((a, b) => b.length - a.length).forEach(code => {
-        const re = new RegExp(`\\b${code}\\b`, 'g');
-        s = s.replace(re, langMap[code]);
-    });
+  Object.keys(langMap).sort((a, b) => b.length - a.length).forEach(code => {
+    const re = new RegExp(`\\b${code}\\b`, 'g');
+    s = s.replace(re, langMap[code]);
+  });
 
-    return s;
+  return s;
 }
 
 async function ensureVoskModelIndex() {
@@ -285,7 +285,7 @@ async function saveOverride(autoText) {
     model = voskModel;
   } else if (provider === 'assemblyai') {
     // AssemblyAI handles models server-side, so we clear the local model override
-    model = null; 
+    model = null;
   } else {
     // If "Use Default" is selected, try to infer from what is typed/selected
     if (voskModel) {
@@ -309,7 +309,7 @@ async function saveOverride(autoText) {
     }
   }
 
-  const language = document.getElementById('language').value;
+  const language = (document.getElementById('language').value || '').trim();
   const timeout = clampTimeout(document.getElementById('timeout').value);
   const graceMs = clampGrace(document.getElementById('grace-ms').value);
   const siteStatus = (document.getElementById('site-status')?.value || '').trim();
@@ -329,13 +329,13 @@ async function saveOverride(autoText) {
   if (!enabled) override.enabled = false;
 
   next.overrides[host] = override;
-  
+
   await browser.storage.local.set({ settings: next });
   notifySaved(autoText || t('popup_status_saved', 'Saved'));
-  
+
   // Notify background script to refresh its settings
   browser.runtime.sendMessage({ type: 'CONFIG_CHANGED' });
-  
+
   // Update visibility of the UI sections
   const hideToggle = next.hideModelSections !== false;
   applyPopupVisibility(provider || next?.defaults?.provider || 'vosk', hideToggle);
@@ -480,7 +480,7 @@ function notifySaved(text = t('popup_status_saved', 'Saved')) {
 ['model', 'language', 'timeout', 'provider', 'site-status', 'grace-ms'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
-  const evt = (id === 'timeout' || id === 'grace-ms') ? 'input' : 'change';
+  const evt = (id === 'timeout' || id === 'grace-ms' || id === 'language') ? 'input' : 'change';
   el.addEventListener(evt, () => {
     if (id === 'provider') {
       browser.storage.local.get('settings').then(({ settings }) => {
@@ -492,10 +492,10 @@ function notifySaved(text = t('popup_status_saved', 'Saved')) {
 });
 
 function sizeToMb(size) {
-    const n = typeof size === 'number' ? size : parseFloat(size);
-    if (!Number.isFinite(n)) return null;
-    const bytes = n > 1_000_000 ? n : n * 1024 * 1024;
-    return bytes / (1024 * 1024);
+  const n = typeof size === 'number' ? size : parseFloat(size);
+  if (!Number.isFinite(n)) return null;
+  const bytes = n > 1_000_000 ? n : n * 1024 * 1024;
+  return bytes / (1024 * 1024);
 }
 
 

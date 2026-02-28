@@ -46,31 +46,23 @@
         <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)</option>
         <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)</option>
       </select>
-      <input id="vosk-model" list="vosk-model-list" type="text" placeholder="Search Vosk models (type to filter)"  type="password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true"  />
+      <input id="vosk-model" list="vosk-model-list" type="text" placeholder="Search Vosk models (type to filter)"
+        type="password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
+        data-lpignore="true" />
     </div>
 
     <div class="section-header"><span class="icon icon-globe" aria-hidden="true"></span><span
         data-i18n="language_label">Language</span></div>
-    <select id="language">
-      <option value="" data-i18n="override_use_default">Use default</option>
-      <option value="auto" data-i18n="lang_auto">Auto-Detect</option>
-      <option value="en" data-i18n="lang_en">English</option>
-      <option value="es" data-i18n="lang_es">Spanish</option>
-      <option value="fr" data-i18n="lang_fr">French</option>
-      <option value="de" data-i18n="lang_de">German</option>
-      <option value="it" data-i18n="lang_it">Italian</option>
-      <option value="pt" data-i18n="lang_pt">Portuguese</option>
-      <option value="ja" data-i18n="lang_ja">Japanese</option>
-      <option value="zh" data-i18n="lang_zh">Chinese</option>
-      <option value="ru" data-i18n="lang_ru">Russian</option>
-    </select>
+    <input id="language" list="language-list" type="text" placeholder="Use default (type a code e.g. en, es, en-us)"
+      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" />
 
     <div class="section-header"><span class="icon icon-timer" aria-hidden="true"></span><span
         data-i18n="popup_timeout_label">Silence timeout (ms)</span></div>
     <input id="timeout" type="number" min="500" max="5000" step="100" data-i18n-placeholder="popup_timeout_placeholder"
       placeholder="Use default">
 
-    <div class="section-header"><span class="icon icon-timer" aria-hidden="true"></span><span>Grace window (ms)</span></div>
+    <div class="section-header"><span class="icon icon-timer" aria-hidden="true"></span><span>Grace window (ms)</span>
+    </div>
     <input id="grace-ms" type="number" min="0" max="2000" step="50" placeholder="Use default">
 
     <button id="remove" class="danger full-width" data-i18n="popup_remove">Remove override</button>
@@ -80,6 +72,31 @@
   </div>
 
   <datalist id="vosk-model-list"></datalist>
+  <datalist id="language-list">
+    <option value="auto">Auto-Detect</option>
+    <option value="en">English</option>
+    <option value="es">Spanish</option>
+    <option value="fr">French</option>
+    <option value="de">German</option>
+    <option value="it">Italian</option>
+    <option value="pt">Portuguese</option>
+    <option value="ja">Japanese</option>
+    <option value="zh">Chinese</option>
+    <option value="ru">Russian</option>
+    <option value="ko">Korean</option>
+    <option value="ar">Arabic</option>
+    <option value="hi">Hindi</option>
+    <option value="nl">Dutch</option>
+    <option value="sv">Swedish</option>
+    <option value="tr">Turkish</option>
+    <option value="uk">Ukrainian</option>
+    <option value="vi">Vietnamese</option>
+    <option value="en-us">English (US)</option>
+    <option value="en-gb">English (UK)</option>
+    <option value="pt-br">Portuguese (Brazil)</option>
+    <option value="zh-cn">Chinese (Simplified)</option>
+    <option value="zh-tw">Chinese (Traditional)</option>
+  </datalist>
 
   <script src="popup.js"></script>
 </body>

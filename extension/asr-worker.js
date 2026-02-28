@@ -62,7 +62,7 @@ async function probeWebGPU(force = false) {
       return webgpuProbe;
     }
 
-    try { device.destroy?.(); } catch (_) {}
+    try { device.destroy?.(); } catch (_) { }
     return webgpuProbe;
   } catch (e) {
     webgpuProbe.error = e?.message || String(e);
@@ -198,7 +198,10 @@ self.onmessage = async (ev) => {
       if (!transcriber) throw new Error('Model not loaded');
 
       const isEnglishModel = (currentModel || '').endsWith('.en');
-      const langToUse = isEnglishModel ? 'en' : (language && language !== 'auto' ? language : null);
+      // Whisper only accepts base ISO 639-1 codes (e.g. "en", not "en-us")
+      // Normalize: lowercase, underscores→hyphens, extract base subtag
+      const rawLang = language && language !== 'auto' ? String(language).trim().toLowerCase().replace(/_/g, '-').split('-')[0] : null;
+      const langToUse = isEnglishModel ? 'en' : (rawLang || null);
 
       const output = await transcriber(float32, {
         chunk_length_s: 30,

@@ -252,7 +252,7 @@
     "message": "Enable AssemblyAI streaming"
   },
   "assemblyai_streaming_note": {
-    "message": "Streams partial/final results in real-time."
+    "message": "Streams partial/final results in real-time. If disabled, will use v2 API."
   },
   "assemblyai_streaming_multilingual_label": {
     "message": "AssemblyAI multilingual streaming"

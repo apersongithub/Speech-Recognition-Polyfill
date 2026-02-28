@@ -14,8 +14,8 @@
         <div class="banner" id="top-warning-banner" data-i18n="banner_text">
             ⚠️ Alert: This is not a bandaid fix to the webspeech API. You can view voice-recognition status via the
             extension icon (pin it to your menu bar). Any additional information is listed <a
-                href="https://github.com/apersongithub/Speech-Recognition-Polyfill"
-                target="_blank"><strong data-i18n="link_here">HERE!</strong></a>
+                href="https://github.com/apersongithub/Speech-Recognition-Polyfill" target="_blank"><strong
+                    data-i18n="link_here">HERE!</strong></a>
         </div>
 
         <div class="card">
@@ -35,6 +35,40 @@
             <div class="note" data-i18n="show_engine_sections_note">Choose the provider your want.
             </div>
 
+
+
+            <label data-i18n="language_label">Language</label>
+            <input id="language-input" list="language-list" type="text"
+                placeholder="Type a language code (e.g. en, es, ja) or search" autocomplete="off" autocorrect="off"
+                autocapitalize="off" spellcheck="false" data-lpignore="true" />
+            <datalist id="language-list">
+                <option value="auto">Auto-Detect</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="zh">Chinese</option>
+                <option value="ru">Russian</option>
+                <option value="ko">Korean</option>
+                <option value="ar">Arabic</option>
+                <option value="hi">Hindi</option>
+                <option value="nl">Dutch</option>
+                <option value="sv">Swedish</option>
+                <option value="tr">Turkish</option>
+                <option value="uk">Ukrainian</option>
+                <option value="vi">Vietnamese</option>
+                <option value="en-us">English (US)</option>
+                <option value="en-gb">English (UK)</option>
+                <option value="pt-br">Portuguese (Brazil)</option>
+                <option value="zh-cn">Chinese (Simplified)</option>
+                <option value="zh-tw">Chinese (Traditional)</option>
+            </datalist>
+            <div class="note" data-i18n="lang_note">The language code passed to the engine. Presets are suggested; type
+                any valid code (e.g. en-us, ko). Underscores are converted to hyphens automatically.</div>
+
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="show-model-sections-toggle" />
                 <label for="show-model-sections-toggle" class="checkbox-label"
@@ -49,6 +83,7 @@
             </div>
             <div class="note" data-i18n="cache_default_model_note">Prefetches your default local model so the
                 initial use is faster (This will take up some RAM).</div>
+
             <div class="status" id="status-engine" data-i18n="status_saved">Saved</div>
         </div>
 
@@ -57,9 +92,10 @@
                 <span class="icon icon-cpu" aria-hidden="true"></span>
                 <span data-i18n="section_local_title">Whisper</span> <span class="pill"
                     data-i18n="pill_local">Local</span>
-                    <span class="pill" data-i18n="pill_nostreaming" style="background:#fee2e2; border-color:#ef4444; color:#b91c1c;">
-                        Streaming Unsupported
-                    </span>
+                <span class="pill" data-i18n="pill_nostreaming"
+                    style="background:#fee2e2; border-color:#ef4444; color:#b91c1c;">
+                    Streaming Unsupported
+                </span>
             </div>
             <div class="note" data-i18n="local_config_note">Configure local model, language, and silence timing.</div>
             <label data-i18n="ai_model">AI Model</label>
@@ -80,20 +116,6 @@
             </select>
             <div id="size-warning" class="warning"></div>
 
-            <label data-i18n="language_label">Language</label>
-            <select id="language-select">
-                <option value="auto" data-i18n="lang_auto">Auto-Detect</option>
-                <option value="en" data-i18n="lang_en">English</option>
-                <option value="es" data-i18n="lang_es">Spanish</option>
-                <option value="fr" data-i18n="lang_fr">French</option>
-                <option value="de" data-i18n="lang_de">German</option>
-                <option value="it" data-i18n="lang_it">Italian</option>
-                <option value="pt" data-i18n="lang_pt">Portuguese</option>
-                <option value="ja" data-i18n="lang_ja">Japanese</option>
-                <option value="zh" data-i18n="lang_zh">Chinese</option>
-                <option value="ru" data-i18n="lang_ru">Russian</option>
-            </select>
-            <div class="note" data-i18n="lang_note">The language the translator will attempt to decipher.</div>
 
             <div class="status" id="status-local" data-i18n="status_saved">Saved</div>
         </div>
@@ -101,16 +123,17 @@
         <div class="card" id="card-vosk">
             <div class="section-header">
                 <span class="icon icon-cpu" aria-hidden="true"></span>
-                <span data-i18n="section_vosk_title">Vosk</span> <span class="pill"
-                    data-i18n="pill_local">Local</span>
-                    <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming Supported</span>
+                <span data-i18n="section_vosk_title">Vosk</span> <span class="pill" data-i18n="pill_local">Local</span>
+                <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming
+                    Supported</span>
             </div>
             <div class="note" data-i18n="vosk_config_note">Streaming local recognition using Vosk models.</div>
             <label data-i18n="vosk_model_label">Language Model</label>
-            <input id="vosk-model-input" list="vosk-model-list" type="text"
-                placeholder="Search Vosk models (type to filter)"  type="password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true"  />
+            <input id="vosk-model-input" list="language-list" type="text" placeholder="(Default)" autocomplete="off"
+                autocorrect="off" autocapitalize="none" spellcheck="false" data-lpignore="true" />
             <div id="vosk-size-warning" class="warning"></div>
-            <div class="note" data-i18n="vosk_streaming_note">Choose a LM, vosk streams audio in real-time for partial results.</div>
+            <div class="note" data-i18n="vosk_streaming_note">Choose a LM, vosk streams audio in real-time for partial
+                results.</div>
             <div class="status" id="status-vosk" data-i18n="status_saved">Saved</div>
         </div>
 
@@ -119,7 +142,8 @@
                 <span class="icon icon-cloud" aria-hidden="true"></span>
                 <span data-i18n="section_cloud_title">AssemblyAI</span>
                 <span class="pill" style="background:#ecfeff;border-color:#a5f3fc;" data-i18n="pill_cloud">Cloud</span>
-                <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming Supported</span>
+                <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming
+                    Supported</span>
             </div>
             <div class="note" data-i18n="cloud_key_note">Provide your AssemblyAI key to enable cloud transcription.
             </div>
@@ -138,12 +162,13 @@
             <div class="status" id="status-cloud" data-i18n="status_saved">Saved</div>
         </div>
 
-                <div class="card">
+        <div class="card">
             <div class="section-header">
                 <span class="icon icon-mic" aria-hidden="true"></span>
                 <span data-i18n="section_triggers">Speech Triggers</span>
             </div>
-            <div class="note" data-i18n="triggers_note">Configure how speech capture is triggered and how results are submitted.</div>
+            <div class="note" data-i18n="triggers_note">Configure how speech capture is triggered and how results are
+                submitted.</div>
 
             <label for="hotkey" style="margin-top:8px;" data-i18n="shortcut_hotkey_label">Keyboard shortcut</label>
             <input id="hotkey" type="text" data-i18n-placeholder="shortcut_hotkey_placeholder"
@@ -153,7 +178,8 @@
 
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="enable-shortcut" />
-                <label for="enable-shortcut" class="checkbox-label" data-i18n="disable_speech_shortcut_label">Disable speech shortcut</label>
+                <label for="enable-shortcut" class="checkbox-label" data-i18n="disable_speech_shortcut_label">Disable
+                    speech shortcut</label>
             </div>
             <div class="note" data-i18n="shortcut_enable_note">Pretty self explanatory...</div>
 
@@ -165,7 +191,7 @@
             <div class="note" data-i18n="send_enter_after_note">Automatically presses 'Enter' on the focused
                 field right after text is inserted.</div>
 
-                            <div class="checkbox-wrapper">
+            <div class="checkbox-wrapper">
                 <input type="checkbox" id="strip-trailing-period" />
                 <label for="strip-trailing-period" class="checkbox-label"
                     data-i18n="strip_trailing_period_label">Disable trailing period removal</label>
@@ -174,11 +200,13 @@
 
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="disable-space-normalization" />
-                <label for="disable-space-normalization" class="checkbox-label" data-i18n="disable_space_normalization_label">
+                <label for="disable-space-normalization" class="checkbox-label"
+                    data-i18n="disable_space_normalization_label">
                     Disable space normalization between streaming turns
                 </label>
             </div>
-            <div class="note" data-i18n="disable_space_normalization_note">Prevents auto-inserting spaces when appending streaming results.</div>
+            <div class="note" data-i18n="disable_space_normalization_note">Prevents auto-inserting spaces when appending
+                streaming results.</div>
 
             <div class="status" id="status-speech-triggers" data-i18n="status_saved">Saved</div>
         </div>
@@ -188,7 +216,8 @@
                 <span class="icon icon-logic" aria-hidden="true"></span>
                 <span data-i18n="section_logic">Speech Logic</span>
             </div>
-            <div class="note" data-i18n="logic_note">Configure audio input, recording behavior, and streaming rules.</div>
+            <div class="note" data-i18n="logic_note">Configure audio input, recording behavior, and streaming rules.
+            </div>
 
             <label data-i18n="mic_gain_label">Mic gain</label>
             <div class="range-row">
@@ -228,38 +257,47 @@
             </div>
             <div class="note" data-i18n="disable_grace_note">Grace is enabled; set grace ms above.</div>
 
-                        <div class="checkbox-wrapper">
+            <div class="checkbox-wrapper">
                 <input type="checkbox" id="assemblyai-streaming" />
-                <label for="assemblyai-streaming" class="checkbox-label" data-i18n="disable_assemblyai_streaming_label">Disable AssemblyAI realtime streaming</label>
+                <label for="assemblyai-streaming" class="checkbox-label"
+                    data-i18n="disable_assemblyai_streaming_label">Disable AssemblyAI realtime streaming</label>
             </div>
-            <div class="note" data-i18n="assemblyai_streaming_note">Streams live audio to AssemblyAI and emits partial results like Chrome.</div>
+            <div class="note" data-i18n="assemblyai_streaming_note">Streams live audio to AssemblyAI and emits partial
+                results like Chrome.</div>
 
             <div class="checkbox-wrapper" style="margin-top:6px;">
                 <input type="checkbox" id="assemblyai-streaming-multilingual" />
-                <label for="assemblyai-streaming-multilingual" class="checkbox-label" data-i18n="disable_assemblyai_multilingual_label">
+                <label for="assemblyai-streaming-multilingual" class="checkbox-label"
+                    data-i18n="disable_assemblyai_multilingual_label">
                     Disable AssemblyAI multilingual streaming model
                 </label>
             </div>
-            <div class="note" data-i18n="assemblyai_streaming_multilingual_note">Enables universal-streaming-multilingual with language detection.</div>
+            <div class="note" data-i18n="assemblyai_streaming_multilingual_note">Enables
+                universal-streaming-multilingual with language detection.</div>
 
-            <div class="notesep" style="margin-top:14px; font-weight:600; font-style: italic;" data-i18n="streaming_silence_timeout">Streaming silence timeout</div>
-            <div class="note" data-i18n="streaming_applies_note">Applies to streaming providers (Vosk + AssemblyAI).</div>
+            <div class="notesep" style="margin-top:14px; font-weight:600; font-style: italic;"
+                data-i18n="streaming_silence_timeout">Streaming silence timeout</div>
+            <div class="note" data-i18n="streaming_applies_note">Applies to streaming providers (Vosk + AssemblyAI).
+            </div>
 
             <div class="checkbox-wrapper" style="margin-top:10px;">
                 <input type="checkbox" id="assemblyai-streaming-silence-never" />
-                <label for="assemblyai-streaming-silence-never" class="checkbox-label" data-i18n="assemblyai_streaming_silence_never_label">
+                <label for="assemblyai-streaming-silence-never" class="checkbox-label"
+                    data-i18n="assemblyai_streaming_silence_never_label">
                     Never apply silence timeout for streaming
                 </label>
             </div>
             <div class="checkbox-wrapper" style="margin-top:6px;">
                 <input type="checkbox" id="assemblyai-streaming-silence-partial" />
-                <label for="assemblyai-streaming-silence-partial" class="checkbox-label" data-i18n="assemblyai_streaming_silence_partial_label">
+                <label for="assemblyai-streaming-silence-partial" class="checkbox-label"
+                    data-i18n="assemblyai_streaming_silence_partial_label">
                     Silence timeout only when started by site UI but not hotkey (Deterministic)
                 </label>
             </div>
             <div class="checkbox-wrapper" style="margin-top:6px;">
                 <input type="checkbox" id="assemblyai-streaming-silence-always" />
-                <label for="assemblyai-streaming-silence-always" class="checkbox-label" data-i18n="assemblyai_streaming_silence_always_label">
+                <label for="assemblyai-streaming-silence-always" class="checkbox-label"
+                    data-i18n="assemblyai_streaming_silence_always_label">
                     Always apply silence timeout for streaming
                 </label>
             </div>
@@ -285,36 +323,36 @@
                         placeholder="example.com" />
                 </div>
 
-                            <div class="actions" style="margin-top: 8px;">
-                <div style="flex:1">
-                    <label style="margin-top:0" data-i18n="engine_label">Provider</label>
-                    <select id="override-provider">
-                        <option value="" data-i18n="override_default_option">(Default)</option>
-                        <option value="local-whisper" data-i18n="engine_local">Whisper</option>
-                        <option value="vosk" data-i18n="engine_vosk">Vosk (Streaming)</option>
-                        <option value="assemblyai" data-i18n="engine_assemblyai">Server AssemblyAI</option>
-                    </select>
+                <div class="actions" style="margin-top: 8px;">
+                    <div style="flex:1">
+                        <label style="margin-top:0" data-i18n="engine_label">Provider</label>
+                        <select id="override-provider">
+                            <option value="" data-i18n="override_default_option">(Default)</option>
+                            <option value="local-whisper" data-i18n="engine_local">Whisper</option>
+                            <option value="vosk" data-i18n="engine_vosk">Vosk (Streaming)</option>
+                            <option value="assemblyai" data-i18n="engine_assemblyai">Server AssemblyAI</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
 
                 <div>
                     <label style="margin-top:0" data-i18n="model_label">Model</label>
                     <select id="override-model">
                         <option value="" data-i18n="override_default_option">(Default)</option>
-                            <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)
-                            </option>
-                            <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)
-                            </option>
-                            <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium
-                                English (~600MB)</option>
-                            <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)
-                            </option>
-                            <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)
-                            </option>
-                            <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)
-                            </option>
-                            <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)
-                            </option>
+                        <option value="Xenova/whisper-tiny.en" data-i18n="model_tiny_en">Tiny English (~75MB)
+                        </option>
+                        <option value="Xenova/whisper-base.en" data-i18n="model_base_en">Base English (~150MB)
+                        </option>
+                        <option value="Xenova/distil-whisper-medium.en" data-i18n="model_distil_en">Distil-Medium
+                            English (~600MB)</option>
+                        <option value="Xenova/whisper-small.en" data-i18n="model_small_en">Small English (~500MB)
+                        </option>
+                        <option value="Xenova/whisper-tiny" data-i18n="model_tiny_multi">Tiny Multilingual (~150MB)
+                        </option>
+                        <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)
+                        </option>
+                        <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)
+                        </option>
                     </select>
                 </div>
             </div>
@@ -323,26 +361,17 @@
                 <div style="flex:1">
                     <label style="margin-top:0" data-i18n="vosk_model_label_short">Vosk model (type to search)</label>
                     <input id="override-vosk-model" list="vosk-model-list" type="text"
-                        placeholder="vosk-model-small-en-us-0.15" type="password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true"  />
+                        placeholder="vosk-model-small-en-us-0.15" autocomplete="new-password" autocorrect="off"
+                        autocapitalize="off" spellcheck="false" data-lpignore="true" />
                 </div>
             </div>
 
             <div class="actions" style="margin-top: 8px;">
                 <div style="flex:1">
                     <label style="margin-top:0" data-i18n="language_label">Language</label>
-                    <select id="override-language">
-                        <option value="" data-i18n="override_default_option">(Default)</option>
-                        <option value="auto" data-i18n="lang_auto">Auto</option>
-                        <option value="en" data-i18n="lang_en">English</option>
-                        <option value="es" data-i18n="lang_es">Spanish</option>
-                        <option value="fr" data-i18n="lang_fr">French</option>
-                        <option value="de" data-i18n="lang_de">German</option>
-                        <option value="it" data-i18n="lang_it">Italian</option>
-                        <option value="pt" data-i18n="lang_pt">Portuguese</option>
-                        <option value="ja" data-i18n="lang_ja">Japanese</option>
-                        <option value="zh" data-i18n="lang_zh">Chinese</option>
-                        <option value="ru" data-i18n="lang_ru">Russian</option>
-                    </select>
+                    <input id="override-language" list="language-list" type="text" placeholder="(Default)"
+                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                        data-lpignore="true" />
                 </div>
                 <div style="flex:1">
                     <label style="margin-top:0" data-i18n="timeout_label">Silence Timeout (ms)</label>
@@ -444,7 +473,7 @@
                 Logs detailed background/content script messages to the console.
             </div>
 
- 
+
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="toast-notifications" />
                 <label for="toast-notifications" class="checkbox-label" data-i18n="toast_toggle">Enable toast
@@ -470,14 +499,16 @@
             </div>
 
             <div class="checkbox-wrapper">
-    <input type="checkbox" id="disable-processing-timeouts" />
-    <label for="disable-processing-timeouts" class="checkbox-label" data-i18n="disable_processing_timeouts_label">
-        Disable ultimatum processing timeouts
-    </label>
-</div>
-<div class="note" data-i18n="disable_processing_timeouts_note">
-    Disables the content-script watchdog and background ultimatum processing timeout checks. May make the extension unreponsive, though useful for recording long sessions.
-</div>
+                <input type="checkbox" id="disable-processing-timeouts" />
+                <label for="disable-processing-timeouts" class="checkbox-label"
+                    data-i18n="disable_processing_timeouts_label">
+                    Disable ultimatum processing timeouts
+                </label>
+            </div>
+            <div class="note" data-i18n="disable_processing_timeouts_note">
+                Disables the content-script watchdog and background ultimatum processing timeout checks. May make the
+                extension unreponsive, though useful for recording long sessions.
+            </div>
 
             <div class="status" id="status-dev" data-i18n="status_saved">Saved</div>
         </div>

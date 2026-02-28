@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     refreshBackendIndicator().catch(() => { });
     // Change 2000 (2s) to 30000 (30s) or remove it
-setInterval(() => refreshBackendIndicator().catch(() => { }), 30000);
+    setInterval(() => refreshBackendIndicator().catch(() => { }), 30000);
 });
 
 document.getElementById('open-assemblyai')?.addEventListener('click', () => {
@@ -96,6 +96,7 @@ document.getElementById('disable-grace-window')?.addEventListener('change', () =
     if (!isRestoring) saveGraceSetting(['speech-logic']);
 });
 document.getElementById('cache-default-model')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['engine']); });
+document.getElementById('language-input')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['engine']); });
 document.getElementById('strip-trailing-period')?.addEventListener('change', () => {
     if (!isRestoring) saveDefaults(['speech-triggers']);
 });
@@ -215,7 +216,7 @@ if (hotkeyInput) {
         lastHotkeyValue = combo;
         capturingHotkey = false;
         const enableChk = document.getElementById('enable-shortcut');
-if (enableChk) enableChk.checked = false;
+        if (enableChk) enableChk.checked = false;
         hotkeyInput.blur();
         saveDefaults(['speech-triggers']);
     });
@@ -384,26 +385,26 @@ function autoPrettifyVoskId(id) {
     const langMap = {
         'En Us': 'English (US)',
         'En In': 'English (India)',
-        'En':    'English',
-        'Cn':    'Chinese',
-        'Ru':    'Russian',
-        'Fr':    'French',
-        'De':    'German',
-        'Es':    'Spanish',
-        'Pt':    'Portuguese',
-        'It':    'Italian',
-        'Tr':    'Turkish',
-        'Vn':    'Vietnamese',
-        'Ja':    'Japanese',
-        'Hi':    'Hindi',
-        'Fa':    'Persian',
-        'Uk':    'Ukrainian',
-        'Kz':    'Kazakh',
-        'Sv':    'Swedish',
-        'Ca':    'Catalan',
-        'Ar':    'Arabic', // Added
-        'Nl':    'Dutch',  // Added
-        'Ni':    'Dutch',  // Added per your observation
+        'En': 'English',
+        'Cn': 'Chinese',
+        'Ru': 'Russian',
+        'Fr': 'French',
+        'De': 'German',
+        'Es': 'Spanish',
+        'Pt': 'Portuguese',
+        'It': 'Italian',
+        'Tr': 'Turkish',
+        'Vn': 'Vietnamese',
+        'Ja': 'Japanese',
+        'Hi': 'Hindi',
+        'Fa': 'Persian',
+        'Uk': 'Ukrainian',
+        'Kz': 'Kazakh',
+        'Sv': 'Swedish',
+        'Ca': 'Catalan',
+        'Ar': 'Arabic', // Added
+        'Nl': 'Dutch',  // Added
+        'Ni': 'Dutch',  // Added per your observation
         'El Gr': 'Greek'
     };
 
@@ -419,25 +420,25 @@ function autoPrettifyVoskId(id) {
 
 // 1. Update Parser to capture 'version'
 function parseVoskModelList(payload) {
-  const list = Array.isArray(payload)
-    ? payload
-    : (Array.isArray(payload?.models) ? payload.models : []);
-  
-  return list.map((entry) => {
-    const id = entry?.name || entry?.id || entry?.model || entry?.model_id;
-    if (!id) return null;
+    const list = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload?.models) ? payload.models : []);
 
-    return { 
-        id, 
-        url: entry?.url || entry?.link || entry?.download, 
-        size: entry?.size,
-        langText: entry?.lang_text,
-        sizeText: entry?.size_text,
-        type: entry?.type,
-        obsolete: (entry?.obsolete === 'true' || entry?.obsolete === true),
-        version: entry?.version // NEW: Capture version
-    };
-  }).filter(Boolean);
+    return list.map((entry) => {
+        const id = entry?.name || entry?.id || entry?.model || entry?.model_id;
+        if (!id) return null;
+
+        return {
+            id,
+            url: entry?.url || entry?.link || entry?.download,
+            size: entry?.size,
+            langText: entry?.lang_text,
+            sizeText: entry?.size_text,
+            type: entry?.type,
+            obsolete: (entry?.obsolete === 'true' || entry?.obsolete === true),
+            version: entry?.version // NEW: Capture version
+        };
+    }).filter(Boolean);
 }
 
 // 2. Update Display Logic
@@ -447,9 +448,9 @@ window.VOSK_ID_TO_PRETTY = new Map();
 function setVoskModelDatalist(list) {
     const datalist = document.getElementById('vosk-model-list');
     const realInput = document.getElementById('vosk-model-input'); // Options ID
-    
+
     if (!datalist || !realInput) return;
-    
+
     datalist.innerHTML = '';
     window.VOSK_PRETTY_TO_ID.clear();
     window.VOSK_ID_TO_PRETTY.clear();
@@ -463,7 +464,12 @@ function setVoskModelDatalist(list) {
         prettyInput.className = realInput.className;
         prettyInput.placeholder = "Select a model...";
         prettyInput.style.width = "100%";
-        
+        prettyInput.setAttribute('autocomplete', 'new-password');
+        prettyInput.setAttribute('autocorrect', 'off');
+        prettyInput.setAttribute('autocapitalize', 'none');
+        prettyInput.setAttribute('spellcheck', 'false');
+        prettyInput.setAttribute('data-lpignore', 'true');
+
         prettyInput.setAttribute('list', 'vosk-model-list');
         realInput.removeAttribute('list');
         realInput.style.display = 'none';
@@ -474,7 +480,7 @@ function setVoskModelDatalist(list) {
             const id = window.VOSK_PRETTY_TO_ID.get(val);
             if (id) realInput.value = id;
             else realInput.value = val;
-            
+
             realInput.dispatchEvent(new Event('change'));
             realInput.dispatchEvent(new Event('input'));
         });
@@ -494,21 +500,21 @@ function setVoskModelDatalist(list) {
     // --- Build List with Version ---
     for (const model of sorted) {
         const option = document.createElement('option');
-        
+
         let prettyName = model.langText || autoPrettifyVoskId(model.id);
-        
+
         const extras = [];
-        
+
         // NEW: Add Version first
         if (model.version) extras.push(`v${model.version}`);
 
         // Add Type (skip if standard small/big is obvious or redundant)
         if (model.type && model.type !== 'small') extras.push(model.type);
         else if (model.id.includes('small') && !model.type) extras.push('small');
-        
+
         // Add Size
         if (model.sizeText) extras.push(model.sizeText);
-        
+
         // Combine: "English (v0.15, small, 50MiB)"
         if (extras.length > 0) prettyName += ` (${extras.join(', ')})`;
 
@@ -517,7 +523,7 @@ function setVoskModelDatalist(list) {
         window.VOSK_PRETTY_TO_ID.set(prettyName, model.id);
         window.VOSK_ID_TO_PRETTY.set(model.id, prettyName);
 
-        option.value = prettyName; 
+        option.value = prettyName;
         datalist.appendChild(option);
     }
 
@@ -530,21 +536,21 @@ function setVoskModelDatalist(list) {
 
 // Replace the existing normalizeHost function with this robust implementation:
 function normalizeHost(hostname) {
-  if (!hostname) return '';
-  let host = String(hostname).trim().toLowerCase();
+    if (!hostname) return '';
+    let host = String(hostname).trim().toLowerCase();
 
-  // If caller passed a full URL, extract hostname
-  try {
-    if (host.includes('://') || host.includes('/')) {
-      host = new URL(host).hostname.toLowerCase();
-    }
-  } catch (_) { /* leave host as-is on parse failure */ }
+    // If caller passed a full URL, extract hostname
+    try {
+        if (host.includes('://') || host.includes('/')) {
+            host = new URL(host).hostname.toLowerCase();
+        }
+    } catch (_) { /* leave host as-is on parse failure */ }
 
-  // Remove optional port if present (example.com:8080 -> example.com)
-  host = host.replace(/:\d+$/, '');
+    // Remove optional port if present (example.com:8080 -> example.com)
+    host = host.replace(/:\d+$/, '');
 
-  // NOTE: Do NOT strip "www." — preserve exact host as entered.
-  return host;
+    // NOTE: Do NOT strip "www." — preserve exact host as entered.
+    return host;
 }
 
 function clampMicGain(val) {
@@ -754,7 +760,7 @@ async function saveDefaults(statusKeys = []) {
 
     const model = document.getElementById('model-select')?.value || 'Xenova/whisper-base';
     const voskModelInputValue = (document.getElementById('vosk-model-input')?.value || '').trim();
-    const language = document.getElementById('language-select')?.value || 'auto';
+    const language = (document.getElementById('language-input')?.value || '').trim() || 'auto';
     const silenceTimeout = clampTimeout(document.getElementById('silence-timeout')?.value) ?? 1500;
     const provider = normalizeProvider(document.getElementById('provider-select')?.value);
     const assemblyaiApiKey = (document.getElementById('assemblyai-key')?.value || '').trim();
@@ -950,7 +956,7 @@ async function addOrUpdateOverride() {
     try {
         const prettyMain = document.getElementById('vosk-model-pretty-display');
         if (prettyMain) prettyMain.value = '';
-    } catch (_) {}
+    } catch (_) { }
 
     showSaved('overrides');
     await broadcastConfigChanged();
@@ -1127,7 +1133,7 @@ async function restoreOptions() {
 
     document.getElementById('model-select').value = d.model || 'Xenova/whisper-base';
     document.getElementById('vosk-model-input').value = normalizeVoskModel(d.voskModel || DEFAULT_VOSK_MODEL);
-    document.getElementById('language-select').value = d.language || 'auto';
+    document.getElementById('language-input').value = d.language || 'auto';
     document.getElementById('silence-timeout').value = d.silenceTimeoutMs || 1500;
     document.getElementById('provider-select').value = normalizeProvider(d.provider || 'vosk');
     document.getElementById('assemblyai-key').value = settings.assemblyaiApiKey || '';
@@ -1219,6 +1225,15 @@ async function restoreOptions() {
 
     refreshBackendIndicator().catch(() => { });
 
+    // Ensure the visible Vosk model input matches the hidden real input value
+    try {
+        const voskBacking = document.getElementById('vosk-model-input');
+        const voskPretty = document.getElementById('vosk-model-pretty-display');
+        if (voskBacking && voskPretty && voskBacking.value) {
+            voskPretty.value = window.VOSK_ID_TO_PRETTY?.get(voskBacking.value) || voskBacking.value;
+        }
+    } catch (_) { }
+
     isRestoring = false;
 }
 
@@ -1228,7 +1243,7 @@ document.getElementById('model-select')?.addEventListener('change', () => {
         saveDefaults(['local']);
     }
 });
-document.getElementById('language-select')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['local']); });
+
 document.getElementById('silence-timeout')?.addEventListener('input', () => {
     if (!isRestoring) saveDefaults(['speech-logic']);
 });
@@ -1416,7 +1431,7 @@ function installLiveSettingsListener() {
                 const d = next.defaults || {};
                 const modelEl = document.getElementById('model-select');
                 const voskModelEl = document.getElementById('vosk-model-input');
-                const langEl = document.getElementById('language-select');
+                const langEl = document.getElementById('language-input');
                 const silenceEl = document.getElementById('silence-timeout');
                 if (modelEl && d.model && modelEl.value !== d.model) modelEl.value = d.model;
                 if (voskModelEl) voskModelEl.value = normalizeVoskModel(d.voskModel || DEFAULT_VOSK_MODEL);
@@ -1549,20 +1564,20 @@ async function importSettingsFromFile(e) {
 // background.js
 
 browser.runtime.onSuspend.addListener(() => {
-  console.log('[BG] Extension suspending/reloading. Forcing deep clean...');
-  
-  // 1. Kill the Whisper worker immediately
-  if (asrWorker) {
-    asrWorker.terminate();
-    asrWorker = null;
-  }
+    console.log('[BG] Extension suspending/reloading. Forcing deep clean...');
 
-  // 2. Kill all Vosk models
-  for (const [id, entry] of voskModels.entries()) {
-    if (entry.model) {
-      try { entry.model.terminate(); } catch(e) {}
+    // 1. Kill the Whisper worker immediately
+    if (asrWorker) {
+        asrWorker.terminate();
+        asrWorker = null;
     }
-  }
-  voskModels.clear();
-  voskRecognizers.clear();
+
+    // 2. Kill all Vosk models
+    for (const [id, entry] of voskModels.entries()) {
+        if (entry.model) {
+            try { entry.model.terminate(); } catch (e) { }
+        }
+    }
+    voskModels.clear();
+    voskRecognizers.clear();
 });
