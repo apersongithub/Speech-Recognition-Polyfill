@@ -4,7 +4,7 @@
 ![Firefox Extension Users](https://img.shields.io/amo/users/speech-recognition-polyfill?style=for-the-badge&label=USERS)
 ![Firefox Extension Version](https://img.shields.io/amo/v/speech-recognition-polyfill?style=for-the-badge&label=VERSION)
 
-> A Web Speech API polyfill that swaps `webkitSpeechRecognition` for local Whisper, Vosk, and cloud based AssemblyAI transcription.
+> A Web Speech API polyfill that swaps `webkitSpeechRecognition` for Whisper, Vosk, AssemblyAI, or Google (Userscript)* transcription.
 >
 > *All **local** AI Models used are free and don't require any major configuration.*
 > 
@@ -48,6 +48,7 @@
 | Why are there CSP errors in console? | The extension uses WASM, so unsafe-eval is required for it to function. Eval() itself or similar objects are not used, only WASM so it's safe. |
 | Why doesn't "Disable ultimatum processing timeouts" work? | It works, but only for models that actually use **processing** like whisper and assemblyai non-streaming. This is why it doesn't work for streaming models (I mean, how would it?). |
 | Why does 5s hard cap exist? | It was there before the VAD (Voice Activity Detection) was implemented. Idk why it didn't remove it, but enjoy. |
+| Is there a lite userscript version? | Yes, you can download it on [greasyfork](https://greasyfork.org/en/scripts/568183-speech-recognition-polyfill-userscript). It only supports Google's server-side transcription. Please note, there won't be any futhur updates to it.  |
 
 
 | Engine          | Model ID                       | Notes                                |
@@ -61,6 +62,7 @@
 | Local Whisper   | `Xenova/whisper-small`         | Multilingual, higher quality (slower)|
 | Local Whisper   | `Xenova/distil-whisper-medium.en` | English-only, distilled medium (larger/slower) |
 | Cloud           | `AssemblyAI` *(API key required)* | Remote transcription; model managed by AssemblyAI |
+| Cloud           | `Google` *(Userscript ONLY)* | Remote transcription; model managed by Google |
 
 **Too many [models](https://alphacephei.com/vosk/models) to list with VOSK but generally all models under 2GB are shown & supported.*
 
