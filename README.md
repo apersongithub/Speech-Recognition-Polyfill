@@ -32,7 +32,10 @@
 ### Userscript
 | **Browser** | **Installation Steps** |
 |-------------|------------------------|
-| 🌐 Any browser (with userscript manager, e.g. Tampermonkey/Violentmonkey/Greasemonkey) <br><br>`❗ Use at your own risk. The author of this userscript is not responsible for any service bans, misuse, abuse, or limits exceeded on the provided Google API keys or webchannel endpoints. These endpoints are not intended for use outside of their intended services and may be subject to change or discontinuation at any time. The original streaming architecture, protobuf definitions, and advanced cloud endpoints were designed and engineered entirely by Google. All voice transcription, inference models, and internal yet public APIs utilized by this polyfill belong to Google LLC. All rights are reserved to them. ❗` | - [Install from GreasyFork](https://greasyfork.org/en/scripts/568183-speech-recognition-polyfill-userscript/)<br>- Click **Install Version**<br>- ✅ Done |
+| 🌐 Any browser (with userscript manager, e.g. Tampermonkey/Violentmonkey/Greasemonkey) | - [Install from GreasyFork](https://greasyfork.org/en/scripts/568183-speech-recognition-polyfill-userscript/)<br>- Click **Install Version**<br>- ✅ Done |
+
+`❗ Use at your own risk. The author of this userscript is not responsible for any service bans, misuse, abuse, or limits exceeded on the provided Google API keys or webchannel endpoints. These endpoints are not intended for use outside of their intended services and may be subject to change or discontinuation at any time. The original streaming architecture, protobuf definitions, and advanced cloud endpoints were designed and engineered entirely by Google. All voice transcription, inference models, and internal yet public APIs utilized by this polyfill belong to Google LLC. All rights are reserved to them.`
+
 
 ## Frequently Asked Questions + Model Info
 | Q | A |
