@@ -4,9 +4,11 @@
 ![Firefox Extension Users](https://img.shields.io/amo/users/speech-recognition-polyfill?style=for-the-badge&label=USERS)
 ![Firefox Extension Version](https://img.shields.io/amo/v/speech-recognition-polyfill?style=for-the-badge&label=VERSION)
 
-> A Web Speech API polyfill that swaps `webkitSpeechRecognition` for Whisper, Vosk, AssemblyAI, or Google (Userscript)* transcription.
+> A Web Speech API polyfill that swaps `webkitSpeechRecognition` for Whisper, Vosk, AssemblyAI, or Google's transcription models.
 >
 > *All **local** AI Models used are free and don't require any major configuration.*
+>
+> *Most references within this repository unless stated otherwise are referring to the add-on and not ther userscript.*
 > 
 > *Tested with Duolingo, Google Translate, and other prominent sites. Likely work decently with other sites that utilize the API.*
 
@@ -21,9 +23,16 @@
 > | `tabs`          | Open options page on install and manage icon state with active tabs. |
 
 ## Installation Process
+
+### Extension
 | **Browser** | **Installation Steps** |
 |-------------|------------------------|
 | <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Firefox_logo%2C_2019.svg/1200px-Firefox_logo%2C_2019.svg.png" width="20px"> <img src="https://c.clc2l.com/c/thumbnail96webp/t/t/o/tor-browser-QaPeUi.png" width="20px"> <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/LibreWolf_icon.svg" width="20px"> <img src="https://www.waterfox.com/favicons/favicon-96x96.png" width="20px"> | **Recommended:** [Mozilla Add-ons Store](https://addons.mozilla.org/en-US/firefox/addon/speech-recognition-polyfill/)<br>- Click **Add to Firefox**<br>- ✅ Done<br>- ⭐ Rate the addon<br><br>**Alternative (dev build):**<br>- Download the latest ZIP from Releases<br>- Go to `about:debugging#/runtime/this-firefox`<br>- Click **Load Temporary Add-on…** and pick `manifest.json` (or the ZIP)<br>- ✅ Done |
+
+### Userscript
+| **Browser** | **Installation Steps** |
+|-------------|------------------------|
+| 🌐 Any browser (with userscript manager, e.g. Tampermonkey/Violentmonkey/Greasemonkey) <br><br>`❗ Use at your own risk. The author of this userscript is not responsible for any service bans, misuse, abuse, or limits exceeded on the provided Google API keys or webchannel endpoints. These endpoints are not intended for use outside of their intended services and may be subject to change or discontinuation at any time. The original streaming architecture, protobuf definitions, and advanced cloud endpoints were designed and engineered entirely by Google. All voice transcription, inference models, and internal yet public APIs utilized by this polyfill belong to Google LLC. All rights are reserved to them. ❗` | - [Install from GreasyFork](https://greasyfork.org/en/scripts/568183-speech-recognition-polyfill-userscript/)<br>- Click **Install Version**<br>- ✅ Done |
 
 ## Frequently Asked Questions + Model Info
 | Q | A |
@@ -49,33 +58,37 @@
 | Why doesn't "Disable ultimatum processing timeouts" work? | It works, but only for models that actually use **processing** like whisper and assemblyai non-streaming. This is why it doesn't work for streaming models (I mean, how would it?). |
 | Why does 5s hard cap exist? | It was there before the VAD (Voice Activity Detection) was implemented. Idk why it didn't remove it, but enjoy. |
 | Is there a lite userscript version? | Yes, you can download it on [greasyfork](https://greasyfork.org/en/scripts/568183-speech-recognition-polyfill-userscript). It only supports Google's server-side transcription. Please note, there won't be any futhur updates to it.  |
+| How does the userscript work? | This variant provides the fastest and most accurate speech recognition compared to the extension but has very limited customizability due to its nature (the extension is still an overall better choice lol). It features space normalization, voice activity detection, and robust solutions to work properly as a polyfill. It was created by looking into network requests (YouTube, Google, and Gemini voice search) and reverse engineering them to send and recieve data correctly, somewhat similar to the [Google Translate RE'd Public API](https://github.com/ultrafunkamsterdam/googletranslate). The APIs used in the script are all public and created by Google themselves. They are NOT random API keys from the internet and have been used by Google to provide these services for years without any rotation. One of these keys and backends are probably the exact same as what Google Chrome uses for their server-side Web Speech API implementation. This explains why they could be used cross-site without issue, otherwise this code would only be possible as an extension. |
 
-
-| Engine          | Model ID                       | Notes                                |
-|-----------------|--------------------------------|--------------------------------------|
-| Local Vosk      | `vosk-model-[lang]`      | Multilingual, Any model < 2GB, offline |
-| Local Whisper   | `Xenova/whisper-tiny.en`       | English-only, fastest                |
-| Local Whisper   | `Xenova/whisper-tiny`          | Multilingual, fast                   |
-| Local Whisper   | `Xenova/whisper-base.en`       | English-only, balanced               |
-| Local Whisper   | `Xenova/whisper-base`          | Multilingual, balanced (default)     |
-| Local Whisper   | `Xenova/whisper-small.en`      | English-only, higher quality (slower)|
-| Local Whisper   | `Xenova/whisper-small`         | Multilingual, higher quality (slower)|
-| Local Whisper   | `Xenova/distil-whisper-medium.en` | English-only, distilled medium (larger/slower) |
-| Cloud           | `AssemblyAI` *(API key required)* | Remote transcription; model managed by AssemblyAI |
-| Cloud           | `Google` *(Userscript ONLY)* | Remote transcription; model managed by Google |
+| Name | Platform | Engine | Model ID | Notes |
+|------|----------|--------|----------|-------|
+| Vosk (Language Models) | Extension | Local | `vosk-model-[lang]` | Multilingual, any model < 2GB, offline |
+| Whisper Tiny (EN) | Extension | Local | `Xenova/whisper-tiny.en` | English-only, fastest |
+| Whisper Tiny | Extension | Local | `Xenova/whisper-tiny` | Multilingual, fast |
+| Whisper Base (EN) | Extension | Local | `Xenova/whisper-base.en` | English-only, balanced |
+| Whisper Base | Extension | Local | `Xenova/whisper-base` | Multilingual, balanced (default) |
+| Whisper Small (EN) | Extension | Local | `Xenova/whisper-small.en` | English-only, higher quality (slower) |
+| Whisper Small | Extension | Local | `Xenova/whisper-small` | Multilingual, higher quality (slower) |
+| Distil-Whisper Medium (EN) | Extension | Local | `Xenova/distil-whisper-medium.en` | English-only, distilled medium (larger/slower) |
+| AssemblyAI | Extension | Server | `AssemblyAI` *(API key required)* | Remote transcription; model managed by AssemblyAI |
+| Google Cloud Speech v1 | Userscript | Server | `Google Cloud Speech v1` | Remote transcription; model managed by Google |
+| Google Cloud Speech v2 | Userscript | Server | `Google Cloud Speech v2` | Remote transcription; model managed by Google |
 
 **Too many [models](https://alphacephei.com/vosk/models) to list with VOSK but generally all models under 2GB are shown & supported.*
 
+**Uses free public API Keys created by Google, not other people.*
+
 ## Compared Features
-| Features | Speech Recognition Polyfill | [Speechfire](https://addons.mozilla.org/en-US/firefox/addon/speechfire/) | [Voice to Text with Whisper](https://addons.mozilla.org/en-US/firefox/addon/voice-to-text-with-whisper/) | [Speech Recognition Anywhere](https://chromewebstore.google.com/detail/speech-recognition-anywhe/kdnnmhpmcakdilnofmllgcigkibjonof) |
-|----------|--------------------------------------|------------|----------------------------|------------------------------|
-| **Providers** | ✅ Whisper + Vosk (Several Models) + AssemblyAI | ⚠️ Whisper only | ⚠️ Whisper (cloud variants) | ❌ No model choice |
-| **Web Speech API Polyfill** | ✅ Yes (replaces `webkitSpeechRecognition`) | ❌ No | ❌ No | ❌ No |
-| **Local (Offline) Support** | ✅ Vosk + Whisper local | ✅ Whisper local | ❌ Cloud only | ❌ Cloud only |
-| **Realtime Streaming** | ✅ Yes (since v1.5.0) | ❌ No true streaming | ⚠️ Limited | ⚠️ Limited |
-| **Continuous Speech Mode** | ✅ Yes (configurable) | ❌ Stops after dictation | ❌ No | ⚠️ Basic continuous |
-| **Partial / Interim Results** | ✅ Yes (streaming engines) | ❌ No | ⚠️ Limited | ❌ No |
-| **Per-Site Customization** | ✅ Yes | ❌ No | ❌ No | ❌ No |
+
+| Features | 🌟 SRP Extension |  ⭐ [SRP Userscript](https://greasyfork.org/en/scripts/568183-speech-recognition-polyfill-userscript) | [Speechfire](https://addons.mozilla.org/en-US/firefox/addon/speechfire/) | [Voice to Text with Whisper](https://addons.mozilla.org/en-US/firefox/addon/voice-to-text-with-whisper/) | [Speech Recognition Anywhere](https://chromewebstore.google.com/detail/speech-recognition-anywhe/kdnnmhpmcakdilnofmllgcigkibjonof) |
+|----------|------------------------------------------|------------------------------------------|--------------------------------|---------------------------------------------|-----------------------------------|
+| **Primary Backend** | ✅ Whisper + Vosk + AssemblyAI (configurable) | ✅ Google Cloud Speech-style WebChannel (`v1` / `v2`) | ⚠️ Whisper only | ⚠️ Whisper (cloud variants) | ❌ No model choice |
+| **Web Speech API Polyfill** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| **Local (Offline) Support** | ✅ Yes (Vosk + Whisper local) | ❌ No (server-side transcription) | ✅ Whisper local | ❌ Cloud only | ❌ Cloud only |
+| **Realtime Streaming** | ✅ Yes (since v1.5.0) | ✅ Yes | ❌ No true streaming | ⚠️ Limited | ⚠️ Limited |
+| **Continuous Speech Mode** | ✅ Yes (configurable) | ✅ Yes | ❌ Stops after dictation | ❌ No | ⚠️ Basic continuous |
+| **Partial / Interim Results** | ✅ Yes | ✅ Yes | ❌ No | ⚠️ Limited | ❌ No |
+| **General Customizability** | ✅ Yes | ⚠️ Basic | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited |
 
 ## Extra Tips
 - Set the site language/model to the one you’re practicing for better speech recognition.
