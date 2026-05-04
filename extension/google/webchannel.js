@@ -27,7 +27,7 @@
         // Read config from data attribute (CSP-safe, set by content.js)
         const config = JSON.parse(document.documentElement.getAttribute('data-gp-config') || '{}');
         const DEV_MODE = !!config.debugMode;
-        let SERVER_MODE = config.serverMode || "v2";
+        let SERVER_MODE = config.serverMode || "v1";
         const MIC_IDLE_TIMEOUT_MS = config.micIdleTimeoutMs || 5000;
 
         const BACKEND_PROFILES = {
@@ -1026,6 +1026,7 @@
 
                     this._dispatchEvent("start");
                     this._dispatchEvent("audiostart");
+                    window.postMessage({ type: 'GOOGLE_PROVIDER_UI_START' }, '*');
 
                     if (!preSession) await warmSession();
 
@@ -1425,6 +1426,7 @@
                 this._dbg("CLEANUP called, reason:", reason);
 
                 this._dispatchEvent("audioend");
+                window.postMessage({ type: 'GOOGLE_PROVIDER_UI_STOP' }, '*');
                 if (!this._suppressEndOnce) this._dispatchEvent("end");
                 else this._suppressEndOnce = false;
 

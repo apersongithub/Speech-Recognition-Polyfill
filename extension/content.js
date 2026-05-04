@@ -112,7 +112,7 @@ let suppressFavicons = false;
 let disableSpaceNormalization = false;
 
 // google provider runtime cache
-let googleServerMode = 'v2';
+let googleServerMode = 'v1';
 let googleProviderConfigured = false;
 let uaSpoofEnabled = true;
 
@@ -597,11 +597,24 @@ function getProviderFromSettings(settings, hostname) {
   else if (globalDefaults.provider === 'local-whisper') baseProvider = 'local-whisper';
   else if (globalDefaults.provider === 'google') baseProvider = 'google';
 
-  const o = settings?.overrides?.[hostname] || {};
-  if (o.provider === 'vosk') return 'vosk';
-  if (o.provider === 'assemblyai') return 'assemblyai';
-  if (o.provider === 'google') return 'google';
-  if (o.provider === 'local-whisper') return 'local-whisper';
+  const overrides = settings?.overrides || {};
+  let site = {};
+
+  if (hostname && overrides[hostname]) {
+    site = overrides[hostname];
+  } else if (hostname) {
+    for (const [ruleHost, cfg] of Object.entries(overrides)) {
+      if (hostMatchesRule(hostname, normalizeHost(ruleHost))) {
+        site = cfg;
+        break;
+      }
+    }
+  }
+
+  if (site.provider === 'vosk') return 'vosk';
+  if (site.provider === 'assemblyai') return 'assemblyai';
+  if (site.provider === 'google') return 'google';
+  if (site.provider === 'local-whisper') return 'local-whisper';
 
   return baseProvider;
 }
@@ -775,7 +788,7 @@ async function resolveEffectiveSettings() {
     streamingSilenceMode = normalizeStreamingSilenceMode(settings?.assemblyaiStreamingSilenceMode || 'never');
 
     googleServerMode = typeof defaults?.googleServerMode === 'string'
-      ? defaults.googleServerMode : 'v2';
+      ? defaults.googleServerMode : 'v1';
     if (site && typeof site.googleServerMode === 'string') {
       googleServerMode = site.googleServerMode;
     }
@@ -819,7 +832,7 @@ async function resolveEffectiveSettings() {
     extensionEnabledForSite = isEnabledBySettings;
 
     if (!extensionEnabledForSite) {
-      logIfDebug('Extension disabled for this site.');
+      dbg('Extension disabled for this site.');
       return;
     }
 
@@ -846,7 +859,7 @@ async function resolveEffectiveSettings() {
     streamingSilenceMode = 'partial';
     disableSpaceNormalization = false;
     disableProcessingTimeouts = false;
-    googleServerMode = 'v2';
+    googleServerMode = 'v1';
     uaSpoofEnabled = true;
   }
 
@@ -1068,7 +1081,7 @@ function injectPolyfillTrulySync() {
 
 function injectGoogleProviderSync(configObj) {
   const currentMode = document.documentElement?.getAttribute('data-whisper-google-mode') || '';
-  const newMode = configObj.serverMode || 'v2';
+  const newMode = configObj.serverMode || 'v1';
   const modeChanged = currentMode !== newMode;
   const modeTypeChanged = (currentMode === 'v1_old') !== (newMode === 'v1_old');
 
@@ -1193,7 +1206,7 @@ function showNotification(message, type = "info") {
   if (type === "recording") { bg = "rgba(37, 99, 235, 0.9)"; icon = "🎙️"; }
 
   let div = document.getElementById("whisper-pill");
-  
+
   if (div) {
     div.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
     div.style.background = bg;
@@ -1216,7 +1229,7 @@ function showNotification(message, type = "info") {
   }
 
   if (notificationTimeout) clearTimeout(notificationTimeout);
-  
+
   const duration = type === "error" ? 4000 : 2500;
   notificationTimeout = setTimeout(() => {
     if (div && div.parentNode) {
@@ -1320,7 +1333,7 @@ function replaceInterimText(el, text) {
   if (!el || !isEditableTarget(el)) return false;
 
   const tag = (el.tagName || '').toLowerCase();
-  
+
   if (tag === 'textarea' || tag === 'input') {
     let start = el.selectionStart;
     let end = el.selectionEnd;
@@ -1333,7 +1346,7 @@ function replaceInterimText(el, text) {
     el.selectionStart = el.selectionEnd = start + text.length;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    
+
     currentInterimLength = text.length;
     return true;
   }
@@ -1352,7 +1365,7 @@ function replaceInterimText(el, text) {
       currentInterimLength = text.length;
       return true;
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return false;
 }
@@ -1413,6 +1426,36 @@ window.addEventListener("message", async (event) => {
     return;
   }
 
+  // --- Google Provider UI State Sync ---
+  if (event.data.type === 'GOOGLE_PROVIDER_UI_START') {
+    captureActive = true;
+    currentStartSource = 'ui';
+    showNotification("Listening (Google Cloud)...", "recording");
+    try {
+      browser.runtime.sendMessage({
+        type: 'RECORDING_START',
+        sessionId: activeSessionId || 0,
+        hostname: location.hostname,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) {}
+    return;
+  }
+
+  if (event.data.type === 'GOOGLE_PROVIDER_UI_STOP') {
+    captureActive = false;
+    try {
+      browser.runtime.sendMessage({
+        type: 'RECORDING_STOP',
+        sessionId: activeSessionId || 0,
+        hostname: location.hostname,
+        canceled: false,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) {}
+    return;
+  }
+
   if (event.data.type === 'WHISPER_START_RECORDING') {
     if (processingSessionId !== null && !captureActive) {
       cancelProcessing('ui_restart');
@@ -1456,7 +1499,7 @@ window.addEventListener("message", async (event) => {
 
       const target = resolveInsertTarget();
       const normalizedText = normalizeInsertText(target, text);
-      
+
       if (currentInterimLength > 0) {
         replaceInterimText(target, normalizedText);
         currentInterimLength = 0;
@@ -1476,7 +1519,7 @@ window.addEventListener("message", async (event) => {
       showNotification(text, "processing");
       const target = resolveInsertTarget();
       const normalizedText = normalizeInsertText(target, text);
-      
+
       if (currentInterimLength > 0) {
         replaceInterimText(target, normalizedText);
       } else {
@@ -1750,7 +1793,7 @@ async function startRecording(pageLanguage, sessionId) {
       streamingActive = false;
     }
 
-    logIfDebug('[Whisper] provider check', {
+    dbg('[Whisper] provider check', {
       provider,
       streamingProvider,
       streamingActive,
@@ -1787,7 +1830,7 @@ async function startRecording(pageLanguage, sessionId) {
     lastStreamingPartialText = null; // NEW
     lastStreamingPartialSessionId = null; // NEW
     clearPendingStreamingFinal(); // NEW
-    
+
     currentInterimLength = 0;
 
     globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1826,7 +1869,7 @@ async function startRecording(pageLanguage, sessionId) {
             sampleRate: STREAM_TARGET_SAMPLE_RATE
           });
         } else if (streamingProvider === 'vosk') {
-          logIfDebug('[Whisper] sending VOSK_STREAM_START', { sessionId, host: location.hostname, language: pageLanguage });
+          dbg('[Whisper] sending VOSK_STREAM_START', { sessionId, host: location.hostname, language: pageLanguage });
           browser.runtime.sendMessage({
             type: 'VOSK_STREAM_START',
             sessionId,
@@ -1918,10 +1961,12 @@ async function startRecording(pageLanguage, sessionId) {
           type: 'WHISPER_START_RECORDING',
           sessionId,
           provider: 'google',
-          language: languageCode || 'auto',
-          startSource // 'hotkey' or 'click'
+          language: pageLanguage || 'auto',
+          startSource: currentStartSource // 'hotkey' or 'click'
         }, '*');
-      } catch (_) { }
+      } catch (e) {
+        console.error('[Speech Polyfill] Error starting Google provider', e);
+      }
 
       return; // Stop execution here for the Google provider
     }
@@ -2263,7 +2308,7 @@ browser.runtime.onMessage.addListener((message) => {
         if (pageHandled) return;
 
         const normalizedText = normalizeInsertText(target, finalText);
-        
+
         if (currentInterimLength > 0) {
           replaceInterimText(target, normalizedText);
           currentInterimLength = 0;
@@ -2294,7 +2339,7 @@ browser.runtime.onMessage.addListener((message) => {
         showNotification(text, "processing");
         const target = resolveInsertTarget();
         const normalizedText = normalizeInsertText(target, text);
-        
+
         if (currentInterimLength > 0) {
           replaceInterimText(target, normalizedText);
         } else {

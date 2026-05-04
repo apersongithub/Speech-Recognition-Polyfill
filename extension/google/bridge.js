@@ -24,6 +24,9 @@
     function __handleGoogleStartRecording(event) {
         const data = event.data;
         if (data.type !== 'WHISPER_START_RECORDING' || window.__googleProviderConfig?.provider !== 'google') return;
+        
+        // Ignore preliminary start events from hotkey/popup; only act on the one from startRecording()
+        if (data.sessionId === undefined) return;
 
         if (__googleProviderInstance) {
             __googleProviderInstance.stop();
@@ -78,7 +81,8 @@
 
     function __handleGoogleStopRecording(event) {
         if (event.data.type === 'WHISPER_STOP_RECORDING' || event.data.type === 'WHISPER_ABORT_RECORDING') {
-            if (__googleProviderInstance && __googleProviderActiveSessionId === event.data.sessionId) {
+            // If sessionId is undefined (e.g. from hotkey), allow it to stop the active instance
+            if (__googleProviderInstance && (event.data.sessionId === undefined || __googleProviderActiveSessionId === event.data.sessionId)) {
                 __googleProviderInstance.stop();
                 __googleProviderInstance = null;
             }

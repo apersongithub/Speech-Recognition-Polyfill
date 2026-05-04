@@ -444,6 +444,7 @@
 
                 this._dispatchEvent('start');
                 this._dispatchEvent('audiostart');
+                window.postMessage({ type: 'GOOGLE_PROVIDER_UI_START' }, '*');
 
                 dbg('Streaming started, pair:', this._pair);
 
@@ -512,6 +513,7 @@
                 this._stream = null;
             }
             this._pair = null;
+            window.postMessage({ type: 'GOOGLE_PROVIDER_UI_STOP' }, '*');
             this._dispatchEvent('end');
         }
     }
