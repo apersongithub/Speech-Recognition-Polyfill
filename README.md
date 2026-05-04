@@ -46,7 +46,7 @@
 | Why are there only a few lanugages? | Many languages are supported, you just have to use their respected abbrievation. Though, it depends on the engine: [Vosk Supported Languages](https://alphacephei.com/vosk/models/model-list.json), [Whisper Supported Languages](https://whisper-api.com/docs/languages/), [AssemblyAI Supported Languages (V3 is streaming results, V2 is not)](https://www.assemblyai.com/docs/faq/what-languages-do-you-support-). If the language is not supported it will just default to auto/english across all models. |
 | Why would anyone use normal models compared to their continuous/streaming counterparts? | There is a trade off for everything, you get faster speed but lower accuracy when using streaming-based models. This is why I give so many customization options :) |
 | Is the cloud model paid? | AssemblyAI provides a free tier (IIRC, 300–500 hours). Beyond that, you'd have to pay or switch to the local models. |
-| Does audio leave my device? | Local (Whisper / Vosk): **No** audio stays on-device (after the model downloads). Cloud (AssemblyAI): **Yes**, audio is uploaded for transcription. |
+| Does audio leave my device? | Local (Whisper / Vosk): **No** audio stays on-device (after the model downloads). Cloud (AssemblyAI / Google): **Yes**, audio is uploaded for transcription. |
 | Can you explain the icon indicators? | Color reflects recording/processing/error; badges show downloading/cached/done/cancel. A red/error icon often means canceled, missing API key, or unintelligible speech...Not necessarily a bad mic. It is recommended to pin the extension icon next to the New Tab icon until you get the hand of it. You can also use the toasts option if you don't want to. |
 | How do I improve accuracy? | Speak loud, slow, and clear; pick the correct mic. Use a larger local model (slower) **or switch to the cloud engine** for better speed & quality. |
 | How is silence handled? | Adaptive Voice Activity Detection plus a configurable silence timeout (global and per-site). |
@@ -74,8 +74,8 @@
 | Whisper Small | Extension | Local | `Xenova/whisper-small` | Multilingual, higher quality (slower) |
 | Distil-Whisper Medium (EN) | Extension | Local | `Xenova/distil-whisper-medium.en` | English-only, distilled medium (larger/slower) |
 | AssemblyAI | Extension | Server | `AssemblyAI` *(API key required)* | Remote transcription; model managed by AssemblyAI |
-| Google Cloud Speech v1 | Userscript | Server | `Google Cloud Speech v1` | Remote transcription; model managed by Google |
-| Google Cloud Speech v2 | Userscript | Server | `Google Cloud Speech v2` | Remote transcription; model managed by Google |
+| Google Cloud Speech v1 | Extension & Userscript | Server | `Google Cloud Speech v1` | Remote transcription; model managed by Google |
+| Google Cloud Speech v2 | Extension & Userscript | Server | `Google Cloud Speech v2` | Remote transcription; model managed by Google |
 
 **Too many [models](https://alphacephei.com/vosk/models) to list with VOSK but generally all models under 2GB are shown & supported.*
 
@@ -85,7 +85,7 @@
 
 | Features | 🌟 SRP Extension |  ⭐ [SRP Userscript](https://greasyfork.org/en/scripts/568183-speech-recognition-polyfill-userscript) | [Speechfire](https://addons.mozilla.org/en-US/firefox/addon/speechfire/) | [Voice to Text with Whisper](https://addons.mozilla.org/en-US/firefox/addon/voice-to-text-with-whisper/) | [Speech Recognition Anywhere](https://chromewebstore.google.com/detail/speech-recognition-anywhe/kdnnmhpmcakdilnofmllgcigkibjonof) |
 |----------|------------------------------------------|------------------------------------------|--------------------------------|---------------------------------------------|-----------------------------------|
-| **Primary Backend** | ✅ Whisper + Vosk + AssemblyAI (configurable) | ✅ Google Cloud Speech-style WebChannel (`v1` / `v2`) | ⚠️ Whisper only | ⚠️ Whisper (cloud variants) | ❌ No model choice |
+| **Primary Backend** | ✅ Whisper + Vosk + AssemblyAI + Google (configurable) | ✅ Google Cloud Speech-style WebChannel (`v1` / `v2`) | ⚠️ Whisper only | ⚠️ Whisper (cloud variants) | ❌ No model choice |
 | **Web Speech API Polyfill** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
 | **Local (Offline) Support** | ✅ Yes (Vosk + Whisper local) | ❌ No (server-side transcription) | ✅ Whisper local | ❌ Cloud only | ❌ Cloud only |
 | **Realtime Streaming** | ✅ Yes (since v1.5.0) | ✅ Yes | ❌ No true streaming | ⚠️ Limited | ⚠️ Limited |

@@ -65,6 +65,10 @@
     box-sizing: border-box;
 }
 
+html {
+    overflow-y: scroll;
+}
+
 body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: var(--bg);
@@ -76,7 +80,7 @@ body {
 
 .container {
     width: 100%;
-    max-width: 620px;
+    max-width: 680px;
 }
 
 h3 {

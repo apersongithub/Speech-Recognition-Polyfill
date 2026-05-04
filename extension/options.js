@@ -10,7 +10,7 @@ const ALLOWED_MODELS = [
 ];
 
 const DEFAULT_VOSK_MODEL = 'vosk-model-small-en-us-0.15';
-const ALLOWED_PROVIDERS = ['local-whisper', 'assemblyai', 'vosk'];
+const ALLOWED_PROVIDERS = new Set(['local-whisper', 'vosk', 'assemblyai', 'google']);
 
 const VOSK_MODEL_INDEX_URL = 'https://alphacephei.com/vosk/models/model-list.json';
 
@@ -72,6 +72,7 @@ document.getElementById('open-assemblyai')?.addEventListener('click', () => {
 });
 document.getElementById('add-override')?.addEventListener('click', addOrUpdateOverride);
 document.getElementById('remove-override')?.addEventListener('click', removeAllOverrides);
+document.getElementById('override-provider')?.addEventListener('change', (e) => applyOverrideVisibility(e.target.value));
 
 document.getElementById('debug-mode')?.addEventListener('change', () => saveDebugMode(['dev']));
 document.getElementById('disable-processing-timeouts')?.addEventListener('change', () => {
@@ -106,8 +107,8 @@ document.getElementById('assemblyai-streaming')?.addEventListener('change', () =
 document.getElementById('assemblyai-streaming-multilingual')?.addEventListener('change', () => {
     if (!isRestoring) saveDefaults(['speech-logic']);
 });
-document.getElementById('disable-space-normalization')?.addEventListener('change', () => {
-    if (!isRestoring) saveDefaults(['speech-triggers']);
+document.getElementById('google-server-mode')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['engine']);
 });
 
 document.getElementById('assemblyai-streaming-silence-always')?.addEventListener('change', (e) => {
@@ -277,7 +278,7 @@ function parseGraceOverride(val) {
     return Math.max(0, Math.min(2000, n));
 }
 function normalizeProvider(p) {
-    return ALLOWED_PROVIDERS.includes(p) ? p : 'vosk';
+    return ALLOWED_PROVIDERS.has(p) ? p : 'vosk';
 }
 
 async function ensureVoskModelIndex() {
@@ -285,9 +286,19 @@ async function ensureVoskModelIndex() {
 
     voskModelIndexPromise = (async () => {
         try {
-            const resp = await fetch(VOSK_MODEL_INDEX_URL);
-            if (!resp.ok) throw new Error(`Failed to fetch Vosk models: ${resp.status}`);
-            const data = await resp.json();
+            const cached = await browser.storage.local.get('voskModelCache');
+            const now = Date.now();
+            let data = null;
+
+            if (cached.voskModelCache && cached.voskModelCache.data && (now - cached.voskModelCache.timestamp < 7 * 24 * 60 * 60 * 1000)) {
+                data = cached.voskModelCache.data;
+            } else {
+                const resp = await fetch(VOSK_MODEL_INDEX_URL);
+                if (!resp.ok) throw new Error(`Failed to fetch Vosk models: ${resp.status}`);
+                data = await resp.json();
+                await browser.storage.local.set({ voskModelCache: { data, timestamp: now } });
+            }
+
             const list = parseVoskModelList(data);
             if (list.length > 0) {
                 voskModelIndex = new Map(list.map(m => [m.id, m]));
@@ -462,7 +473,7 @@ function setVoskModelDatalist(list) {
         prettyInput.id = 'vosk-model-pretty-display';
         prettyInput.type = 'text';
         prettyInput.className = realInput.className;
-        prettyInput.placeholder = "Select a model...";
+        prettyInput.placeholder = "Type or double click to select a model...";
         prettyInput.style.width = "100%";
         prettyInput.setAttribute('autocomplete', 'new-password');
         prettyInput.setAttribute('autocorrect', 'off');
@@ -481,6 +492,29 @@ function setVoskModelDatalist(list) {
             if (id) realInput.value = id;
             else realInput.value = val;
 
+            realInput.dispatchEvent(new Event('change'));
+            realInput.dispatchEvent(new Event('input'));
+        });
+
+        prettyInput.addEventListener('focus', () => {
+            prettyInput.dataset.previousValue = realInput.value;
+            prettyInput.value = '';
+        });
+
+        prettyInput.addEventListener('blur', () => {
+            const val = prettyInput.value.trim();
+            const isPretty = window.VOSK_PRETTY_TO_ID.has(val);
+            const isId = window.VOSK_ID_TO_PRETTY.has(val);
+
+            if (val && (isPretty || isId)) {
+                realInput.value = isPretty ? window.VOSK_PRETTY_TO_ID.get(val) : val;
+            } else {
+                realInput.value = prettyInput.dataset.previousValue || '';
+            }
+
+            const finalVal = realInput.value;
+            prettyInput.value = window.VOSK_ID_TO_PRETTY.get(finalVal) || finalVal;
+            
             realInput.dispatchEvent(new Event('change'));
             realInput.dispatchEvent(new Event('input'));
         });
@@ -601,26 +635,36 @@ function applyVisibility() {
     const cardLocal = document.getElementById('card-local');
     const cardCloud = document.getElementById('card-cloud');
     const cardVosk = document.getElementById('card-vosk');
-    if (!cardLocal || !cardCloud || !cardVosk) return;
+    const cardGoogle = document.getElementById('card-google'); // Added
+    if (!cardLocal || !cardCloud || !cardVosk || !cardGoogle) return; // Updated
 
     if (!hideModelSections) {
         cardLocal.style.display = '';
         cardCloud.style.display = '';
         cardVosk.style.display = '';
+        cardGoogle.style.display = ''; // Added
         return;
     }
     if (provider === 'assemblyai') {
         cardLocal.style.display = 'none';
         cardVosk.style.display = 'none';
+        cardGoogle.style.display = 'none'; // Added
         cardCloud.style.display = '';
     } else if (provider === 'vosk') {
         cardLocal.style.display = 'none';
-        cardVosk.style.display = '';
         cardCloud.style.display = 'none';
+        cardGoogle.style.display = 'none'; // Added
+        cardVosk.style.display = '';
+    } else if (provider === 'google') { // Added
+        cardLocal.style.display = 'none';
+        cardCloud.style.display = 'none';
+        cardVosk.style.display = 'none';
+        cardGoogle.style.display = '';
     } else {
         cardLocal.style.display = '';
         cardVosk.style.display = 'none';
         cardCloud.style.display = 'none';
+        cardGoogle.style.display = 'none'; // Added
     }
 }
 
@@ -791,6 +835,8 @@ async function saveDefaults(statusKeys = []) {
         ? 'never'
         : (streamingSilenceAlways ? 'always' : (streamingSilencePartial ? 'partial' : 'never'));
 
+    const googleServerMode = document.getElementById('google-server-mode')?.value || 'v1'; // Added
+
     const enableShortcut = document.getElementById('enable-shortcut')?.checked !== true;
     const sendEnterAfter = document.getElementById('send-enter-after')?.checked === true;
 
@@ -817,7 +863,8 @@ async function saveDefaults(statusKeys = []) {
         silenceTimeoutMs: silenceTimeout,
         provider,
         micGain,
-        silenceSensitivity
+        silenceSensitivity,
+        googleServerMode // Added
     };
 
     if (typeof settings.graceEnabled === 'undefined') settings.graceEnabled = true;
@@ -885,6 +932,7 @@ async function addOrUpdateOverride() {
     const providerEl = document.getElementById('override-provider');
     const statusEl = document.getElementById('override-status');
     const graceEl = document.getElementById('override-grace');
+    const googleServerModeEl = document.getElementById('override-google-server-mode'); // Added
 
     // Read the visible value from the Vosk override input (this can be a pretty name or an id)
     const voskModelRaw = (voskModelEl?.value || '').trim();
@@ -894,8 +942,29 @@ async function addOrUpdateOverride() {
         ? window.VOSK_PRETTY_TO_ID.get(voskModelRaw)
         : voskModelRaw;
 
-    // Final model: prefer a Vosk selection, otherwise the whisper override select
-    const model = mappedVoskModel || (modelEl?.value || null);
+    let provider = providerEl?.value || null;
+    let model = null;
+
+    if (provider === 'google' || provider === 'assemblyai') {
+        model = null;
+    } else if (provider === 'local-whisper') {
+        model = modelEl?.value || null;
+    } else if (provider === 'vosk') {
+        model = mappedVoskModel || null;
+    } else {
+        // If "Use Default" provider, infer from what is selected
+        // Only infer from the input that is currently VISIBLE to prevent hidden inputs from hijacking
+        const voskContainer = document.getElementById('override-vosk-container');
+        const whisperContainer = document.getElementById('override-whisper-container');
+
+        if (voskContainer && voskContainer.style.display !== 'none' && mappedVoskModel) {
+            model = mappedVoskModel;
+            provider = 'vosk';
+        } else if (whisperContainer && whisperContainer.style.display !== 'none' && modelEl?.value) {
+            model = modelEl.value;
+            provider = 'local-whisper';
+        }
+    }
 
     // --- Prevent saving extremely large Vosk models if we have metadata for them ---
     if (mappedVoskModel) {
@@ -912,8 +981,8 @@ async function addOrUpdateOverride() {
 
     const language = langEl?.value || null;
     const silenceTimeout = clampTimeout(timeoutEl?.value);
-    let provider = providerEl?.value || null;
     const graceMs = parseGraceOverride(graceEl?.value);
+    const googleServerMode = googleServerModeEl?.value || null; // Added
 
     // Infer provider from model if provider not explicitly set
     if (!provider && model) {
@@ -933,6 +1002,7 @@ async function addOrUpdateOverride() {
         ...(silenceTimeout ? { silenceTimeoutMs: silenceTimeout } : {}),
         ...(provider ? { provider: normalizeProvider(provider) } : {}),
         ...(typeof graceMs === 'number' ? { graceMs } : {}),
+        ...(googleServerMode ? { googleServerMode } : {}), // Added
         ...(enabled ? {} : { enabled: false })
     };
 
@@ -951,6 +1021,7 @@ async function addOrUpdateOverride() {
     if (langEl) langEl.value = '';
     if (providerEl) providerEl.value = '';
     if (statusEl) statusEl.value = '';
+    if (googleServerModeEl) googleServerModeEl.value = ''; // Added
 
     // If there is a pretty display input associated with the main vosk control, keep it cleared too.
     try {
@@ -960,6 +1031,43 @@ async function addOrUpdateOverride() {
 
     showSaved('overrides');
     await broadcastConfigChanged();
+}
+
+function applyOverrideVisibility(provider) {
+    const whisperContainer = document.getElementById('override-whisper-container');
+    const voskContainer = document.getElementById('override-vosk-container');
+    const googleContainer = document.getElementById('override-google-container');
+    if (!whisperContainer || !voskContainer || !googleContainer) return;
+
+    if (!provider) {
+        // Look up global default provider
+        browser.storage.local.get('settings').then(({ settings }) => {
+            const defaultProvider = settings?.defaults?.provider || 'local-whisper';
+            whisperContainer.style.display = defaultProvider === 'vosk' || defaultProvider === 'assemblyai' || defaultProvider === 'google' ? 'none' : '';
+            voskContainer.style.display = defaultProvider === 'vosk' ? '' : 'none';
+            googleContainer.style.display = defaultProvider === 'google' ? '' : 'none';
+        });
+        return;
+    }
+
+    if (provider === 'local-whisper') {
+        whisperContainer.style.display = '';
+        voskContainer.style.display = 'none';
+        googleContainer.style.display = 'none';
+    } else if (provider === 'vosk') {
+        whisperContainer.style.display = 'none';
+        voskContainer.style.display = '';
+        googleContainer.style.display = 'none';
+    } else if (provider === 'google') {
+        whisperContainer.style.display = 'none';
+        voskContainer.style.display = 'none';
+        googleContainer.style.display = '';
+    } else {
+        // AssemblyAI uses server models
+        whisperContainer.style.display = 'none';
+        voskContainer.style.display = 'none';
+        googleContainer.style.display = 'none';
+    }
 }
 
 async function removeAllOverrides() {
@@ -1040,11 +1148,24 @@ function renderOverrides(overrides, showFavicons) {
         };
 
         tr.appendChild(makeTd(enabled ? 'Yes' : 'No'));
-        tr.appendChild(makeTd(cfg.model || '—'));
+        let modelDisplay = cfg.model || '—';
+        if (cfg.provider === 'google' && cfg.googleServerMode) {
+            modelDisplay = cfg.googleServerMode;
+        }
+        tr.appendChild(makeTd(modelDisplay));
         tr.appendChild(makeTd(cfg.language || '—'));
         tr.appendChild(makeTd(cfg.silenceTimeoutMs ?? '—'));
         tr.appendChild(makeTd(cfg.graceMs ?? '—'));
-        tr.appendChild(makeTd(cfg.provider || '—'));
+
+        // Modified provider display logic
+        let providerDisplay = cfg.provider || '—';
+        if (cfg.provider === 'local-whisper') providerDisplay = 'Whisper';
+        else if (cfg.provider === 'assemblyai') providerDisplay = 'AssemblyAI';
+        else if (cfg.provider === 'vosk') providerDisplay = 'Vosk';
+        else if (cfg.provider === 'google') {
+            providerDisplay = 'Google';
+        }
+        tr.appendChild(makeTd(providerDisplay));
 
         // Remove button
         const tdRemove = document.createElement('td');
@@ -1138,6 +1259,10 @@ async function restoreOptions() {
     document.getElementById('provider-select').value = normalizeProvider(d.provider || 'vosk');
     document.getElementById('assemblyai-key').value = settings.assemblyaiApiKey || '';
 
+    if (document.getElementById('google-server-mode')) {
+        document.getElementById('google-server-mode').value = d.googleServerMode || 'v1';
+    }
+
     const micGain = clampMicGain(
         d.micGain ?? (settings.boostMicGain === true ? 1.8 : MIC_GAIN_DEFAULT)
     );
@@ -1157,6 +1282,9 @@ async function restoreOptions() {
     const hideBannerToggle = document.getElementById('hide-warning-banner');
     if (hideBannerToggle) hideBannerToggle.checked = settings.hideWarningBanner === true;
     applyBannerVisibility(settings.hideWarningBanner === true);
+
+    const googleServerModeEl = document.getElementById('google-server-mode'); // Added
+    if (googleServerModeEl) googleServerModeEl.value = d.googleServerMode || 'v1'; // Added
 
     const graceMs = typeof settings.graceMs === 'number' ? settings.graceMs : 450;
     document.getElementById('grace-ms').value = graceMs;
@@ -1233,6 +1361,37 @@ async function restoreOptions() {
             voskPretty.value = window.VOSK_ID_TO_PRETTY?.get(voskBacking.value) || voskBacking.value;
         }
     } catch (_) { }
+
+    // Update default texts in override dropdowns
+    const overrideProviderEl = document.getElementById('override-provider');
+    if (overrideProviderEl) {
+        const defaultProvider = settings?.defaults?.provider || 'local-whisper';
+        const defOpt = overrideProviderEl.querySelector('option[value=""]');
+        if (defOpt) {
+            const label = overrideProviderEl.querySelector(`option[value="${defaultProvider}"]`)?.textContent || defaultProvider;
+            defOpt.textContent = `(Default: ${label.split('(')[0].trim()})`;
+        }
+    }
+
+    const overrideModelEl = document.getElementById('override-model');
+    if (overrideModelEl) {
+        const defaultProvider = settings?.defaults?.provider || 'local-whisper';
+        const defaultModel = settings?.defaults?.model || '';
+        const defOpt = overrideModelEl.querySelector('option[value=""]');
+        if (defOpt) {
+            let label = 'Unknown';
+            if (defaultProvider === 'local-whisper') {
+                label = overrideModelEl.querySelector(`option[value="${defaultModel}"]`)?.textContent || defaultModel || 'Base English';
+            } else if (defaultProvider === 'vosk') {
+                label = window.VOSK_ID_TO_PRETTY?.get(defaultModel) || defaultModel || 'Default';
+            } else {
+                label = 'Server Managed';
+            }
+            defOpt.textContent = `(Default: ${label.split('(')[0].trim()})`;
+        }
+    }
+
+    applyOverrideVisibility('');
 
     isRestoring = false;
 }
@@ -1329,6 +1488,11 @@ function loadOverrideIntoInputs(host, cfg) {
     if (providerEl) providerEl.value = cfg?.provider || '';
     if (statusEl) statusEl.value = (cfg?.enabled === false) ? 'disabled' : '';
     if (graceEl) graceEl.value = (typeof cfg?.graceMs === 'number') ? String(cfg.graceMs) : '';
+
+    const googleServerModeEl = document.getElementById('override-google-server-mode');
+    if (googleServerModeEl) googleServerModeEl.value = cfg?.googleServerMode || '';
+
+    applyOverrideVisibility(cfg?.provider || '');
 }
 
 function clearOverrideInputs() {
@@ -1350,7 +1514,11 @@ function clearOverrideInputs() {
     if (statusEl) statusEl.value = '';
     if (graceEl) graceEl.value = '';
 
+    const googleServerModeEl = document.getElementById('override-google-server-mode');
+    if (googleServerModeEl) googleServerModeEl.value = '';
+
     selectedOverrideHost = null;
+    applyOverrideVisibility('');
 
     browser.storage.local.get('settings').then(({ settings }) => {
         renderOverrides(settings?.overrides || {}, settings?.disableFavicons !== true);
@@ -1496,6 +1664,36 @@ function installLiveSettingsListener() {
                 checkModelSize();
                 checkVoskModelSize();
 
+                // Update default texts in override dropdowns live
+                const overrideProviderEl = document.getElementById('override-provider');
+                const defaultProvider = next?.defaults?.provider || 'local-whisper';
+                if (overrideProviderEl) {
+                    const defOpt = overrideProviderEl.querySelector('option[value=""]');
+                    if (defOpt) {
+                        const label = overrideProviderEl.querySelector(`option[value="${defaultProvider}"]`)?.textContent || defaultProvider;
+                        defOpt.textContent = `(Default: ${label.split('(')[0].trim()})`;
+                    }
+                }
+
+                const overrideModelEl = document.getElementById('override-model');
+                if (overrideModelEl) {
+                    const defaultModel = next?.defaults?.model || '';
+                    const defOpt = overrideModelEl.querySelector('option[value=""]');
+                    if (defOpt) {
+                        let label = 'Unknown';
+                        if (defaultProvider === 'local-whisper') {
+                            label = overrideModelEl.querySelector(`option[value="${defaultModel}"]`)?.textContent || defaultModel || 'Base English';
+                        } else if (defaultProvider === 'vosk') {
+                            label = window.VOSK_ID_TO_PRETTY?.get(defaultModel) || defaultModel || 'Default';
+                        } else {
+                            label = 'Server Managed';
+                        }
+                        defOpt.textContent = `(Default: ${label.split('(')[0].trim()})`;
+                    }
+                }
+
+                applyOverrideVisibility(overrideProviderEl?.value || '');
+
                 refreshBackendIndicator().catch(() => { });
             } finally {
                 isApplyingExternalUpdate = false;
@@ -1546,7 +1744,7 @@ async function importSettingsFromFile(e) {
 
         if (incomingSettings.defaults) {
             const p = incomingSettings.defaults.provider;
-            if (p && !ALLOWED_PROVIDERS.includes(p)) incomingSettings.defaults.provider = 'vosk';
+            if (p && !ALLOWED_PROVIDERS.has(p)) incomingSettings.defaults.provider = 'vosk';
         }
 
         await browser.storage.local.set({ settings: incomingSettings });

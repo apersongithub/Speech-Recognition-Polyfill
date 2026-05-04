@@ -20,7 +20,8 @@ const ALLOWED_MODELS = new Set([
 const PROVIDERS = {
   LOCAL: 'local-whisper',
   ASSEMBLY: 'assemblyai',
-  VOSK: 'vosk'
+  VOSK: 'vosk',
+  GOOGLE: 'google'
 };
 
 const VOSK_MODELS = new Map([
@@ -233,6 +234,13 @@ async function ensureVoskModel(modelId) {
 
   // Choose final id (fall back to default if still unknown)
   const finalId = VOSK_MODELS.has(safeId) ? safeId : DEFAULT_VOSK_MODEL;
+
+  // IMPORTANT FIX: Re-check the cache using finalId to prevent duplicate WASM allocations and massive memory leaks
+  const finalExisting = voskModels.get(finalId);
+  if (finalExisting?.model?.ready) {
+    touchVoskModel(finalId);
+    return { modelId: finalId, model: finalExisting.model, cached: true };
+  }
 
   // Check size metadata and refuse if over the limit
   const meta = VOSK_MODEL_META.get(finalId);
@@ -455,7 +463,7 @@ function stopVoskStream(sessionId) {
 
   if (modelId) touchVoskModel(modelId);
   trimVoskModelCache();
-  console.log('[Vosk Direct] Stream stopped for session:', sessionId);
+  dbg('vosk_direct_stream_stop', { sessionId });
 }
 
 function dbg(tag, data = {}) {
@@ -581,7 +589,8 @@ async function refreshRuntimeFlagsFromStorage() {
     const cacheDefaultModel = settings?.cacheDefaultModel === true;
     const defaults = settings?.defaults || {};
     const provider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY
-      : (defaults.provider === PROVIDERS.VOSK ? PROVIDERS.VOSK : PROVIDERS.LOCAL);
+      : (defaults.provider === PROVIDERS.GOOGLE) ? PROVIDERS.GOOGLE
+      : (defaults.provider === PROVIDERS.LOCAL) ? PROVIDERS.LOCAL : PROVIDERS.VOSK;
 
     const model = (defaults.model && ALLOWED_MODELS.has(defaults.model))
       ? defaults.model
@@ -606,7 +615,7 @@ async function refreshRuntimeFlagsFromStorage() {
   }
 
   if (voskStreamInitPromise.size === 0 && voskRecognizers.size === 0) {
-    if (!keepModelResident && !keepVoskResident) scheduleModelGc();
+    scheduleModelGc();
   }
 }
 
@@ -999,18 +1008,6 @@ async function disposeCurrentModel() {
 }
 
 function scheduleModelGc() {
-  // Don't GC if keeping resident model
-  if (keepModelResident && residentModelId) {
-    if (modelGcTimer) { clearTimeout(modelGcTimer); modelGcTimer = null; }
-    dbg('gc_skip_resident_default', { residentModelId });
-    return;
-  }
-  if (keepVoskResident && residentVoskModelId) {
-    if (modelGcTimer) { clearTimeout(modelGcTimer); modelGcTimer = null; }
-    dbg('gc_skip_resident_vosk', { residentVoskModelId });
-    return;
-  }
-
   if (voskDownloadsInProgress > 0) {
     dbg('gc_skip_vosk_download', { count: voskDownloadsInProgress });
     return;
@@ -1021,8 +1018,6 @@ function scheduleModelGc() {
     // Don't GC if there's active processing
     if (inflightByTab.size > 0) return;
     if (modelLoadPromise) return;
-    if (keepModelResident && residentModelId) return;
-    if (keepVoskResident && residentVoskModelId) return;
     if (voskDownloadsInProgress > 0) return;
 
     // NEW: Don't GC if Vosk streams are initializing or active
@@ -1036,9 +1031,12 @@ function scheduleModelGc() {
     }
     if (voskModelLoadPromises.size > 0) return;
 
-    await disposeCurrentModel();
-    await terminateAsrWorker();
-
+    if (!(keepModelResident && residentModelId)) {
+      await disposeCurrentModel();
+      await terminateAsrWorker();
+    } else {
+      dbg('gc_skip_resident_default', { residentModelId });
+    }
 
     trimVoskModelCache({ forceIdle: true });
 
@@ -1054,7 +1052,8 @@ async function getEffectiveSettings(hostname) {
   const assemblyaiApiKey = settings?.assemblyaiApiKey || null;
 
   const baseProvider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY
-    : (defaults.provider === PROVIDERS.LOCAL ? PROVIDERS.LOCAL : PROVIDERS.VOSK);
+    : (defaults.provider === PROVIDERS.GOOGLE ? PROVIDERS.GOOGLE
+    : (defaults.provider === PROVIDERS.LOCAL ? PROVIDERS.LOCAL : PROVIDERS.VOSK));
 
   const overrides = settings?.overrides || {};
   const host = normalizeHost(hostname);
@@ -1072,9 +1071,11 @@ async function getEffectiveSettings(hostname) {
       }
     }
   }
-  const provider = (site.provider ?? baseProvider) === PROVIDERS.ASSEMBLY
+  const effProvider = site.provider ?? baseProvider;
+  const provider = effProvider === PROVIDERS.ASSEMBLY
     ? PROVIDERS.ASSEMBLY
-    : ((site.provider ?? baseProvider) === PROVIDERS.VOSK ? PROVIDERS.VOSK : PROVIDERS.LOCAL);
+    : (effProvider === PROVIDERS.GOOGLE ? PROVIDERS.GOOGLE
+    : (effProvider === PROVIDERS.VOSK ? PROVIDERS.VOSK : PROVIDERS.LOCAL));
 
   const disabled = isHostDisabled(settings, host);
   const siteGraceMs = typeof site.graceMs === 'number' ? site.graceMs : null;
@@ -1567,22 +1568,162 @@ async function cancelAllSessions(reason = 'config_changed') {
   trimVoskModelCache({ forceIdle: true });
 }
 
-// ---------------- Main message handling ----------------
+// --- Full-Duplex Continuous Streaming (v1_old) ---
+// Uses fetch() with ReadableStream (duplex: 'half') to stream audio natively
+// without batches, cuts, or overlap deduplication.
+
+const API_KEY_FD = 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw';
+const BASE_URL_FD = 'https://www.google.com/speech-api/full-duplex/v1';
+
+function _fdFlushBatch(sessionPair, session, isFinal) {
+  if (session.chunks.length === 0) {
+    if (isFinal) {
+      try {
+        browser.tabs.sendMessage(session.tabId, {
+          type: 'FULLDUPLEX_DONE', pair: sessionPair
+        }, { frameId: session.frameId });
+      } catch (_) { }
+    }
+    return;
+  }
+
+  // 8 chunks (4096 samples each) at 16kHz is ~2.0s of audio overlap. 
+  // With a 1.5s stride, this creates a rolling 3.5s window (as recommended)
+  // to ensure maximum context for Google while remaining highly responsive.
+  const combinedChunks = [...(session.overlapBuffer || []), ...session.chunks];
+  session.chunks = [];
+  session.overlapBuffer = combinedChunks.slice(-8);
+  
+  session.batchIndex++;
+
+  // Combine into one buffer
+  const totalLen = combinedChunks.reduce((s, c) => s + c.length, 0);
+  const combined = new Uint8Array(totalLen);
+  let off = 0;
+  for (const c of combinedChunks) { combined.set(c, off); off += c.length; }
+
+  // Each batch needs its own pair token
+  const batchPair = Math.floor(Math.random() * Math.pow(2, 32)).toString(16);
+  const { tabId: sTabId, frameId: sFrameId, contentType } = session;
+
+  const upParams = new URLSearchParams({
+    output: 'json', lang: session.lang || 'en-us', pfilter: '2',
+    key: API_KEY_FD, client: 'chromium', maxAlternatives: '1', pair: batchPair
+  });
+  const upUrl = `${BASE_URL_FD}/up?${upParams.toString()}&continuous&interim`;
+  const downUrl = `${BASE_URL_FD}/down?pair=${batchPair}`;
+
+  (async () => {
+    try {
+      // Start /down first, then /up
+      const downPromise = fetch(downUrl);
+      await new Promise(r => setTimeout(r, 50));
+      fetch(upUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': contentType },
+        body: combined.buffer
+      }).catch(e => console.error('[FullDuplex BG] /up error:', e));
+
+      const downResp = await downPromise;
+      if (!downResp.ok) return;
+
+      const reader = downResp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              browser.tabs.sendMessage(sTabId, {
+                type: 'FULLDUPLEX_RESULT', pair: sessionPair, line
+              }, { frameId: sFrameId });
+            } catch (_) { }
+          }
+        }
+      }
+      if (buffer.trim()) {
+        try {
+          browser.tabs.sendMessage(sTabId, {
+            type: 'FULLDUPLEX_RESULT', pair: sessionPair, line: buffer
+          }, { frameId: sFrameId });
+        } catch (_) { }
+      }
+
+      // Signal batch complete — page commits current batch text
+      try {
+        browser.tabs.sendMessage(sTabId, {
+          type: 'FULLDUPLEX_BATCH_DONE', pair: sessionPair
+        }, { frameId: sFrameId });
+      } catch (_) { }
+
+      // Signal session done on final batch
+      if (isFinal) {
+        try {
+          browser.tabs.sendMessage(sTabId, {
+            type: 'FULLDUPLEX_DONE', pair: sessionPair
+          }, { frameId: sFrameId });
+        } catch (_) { }
+      }
+    } catch (err) {
+      console.error('[FullDuplex BG] batch error:', err);
+    }
+  })();
+}
+
 browser.runtime.onMessage.addListener((message, sender) => {
 
   const tabId = sender?.tab?.id;
   const frameId = sender?.frameId;
   if (tabId == null) return;
 
-  // inside browser.runtime.onMessage.addListener(...) near the top
-  console.log('[Whisper BG] onMessage', message?.type, {
-    tabId,
-    frameId,
-    sessionId: message?.sessionId,
-    hostname: message?.hostname
-  });
+  if (message?.type === 'FULLDUPLEX_START') {
+    if (!globalThis._fdStreams) globalThis._fdStreams = new Map();
 
-  onMessageMaybeResetEpoch(tabId, frameId, message?.pageInstanceId, message?.hostname).catch(() => { });
+    const session = {
+      tabId, frameId,
+      contentType: message.contentType,
+      lang: message.lang,
+      chunks: [],
+      overlapBuffer: [],
+      batchIndex: 0,
+      timer: null
+    };
+
+    // 1.5s stride: provides much faster perceived latency for the user
+    // while the 2.0s overlap buffer prevents boundary drops.
+    session.timer = setInterval(() => {
+      _fdFlushBatch(message.pair, session, false);
+    }, 1500);
+
+    globalThis._fdStreams.set(message.pair, session);
+    dbg('fullduplex_bg_session_start', { pair: message.pair });
+    return false;
+  }
+
+  if (message?.type === 'FULLDUPLEX_AUDIO') {
+    const session = globalThis._fdStreams?.get(message.pair);
+    if (session) {
+      session.chunks.push(new Uint8Array(message.chunk));
+    }
+    return false;
+  }
+
+  if (message?.type === 'FULLDUPLEX_END') {
+    const session = globalThis._fdStreams?.get(message.pair);
+    if (session) {
+      clearInterval(session.timer);
+      _fdFlushBatch(message.pair, session, true);
+      globalThis._fdStreams.delete(message.pair);
+      dbg('fullduplex_bg_session_end_natural', { pair: message.pair });
+    }
+    return false;
+  }
 
   if (message?.type === 'GET_EFFECTIVE_LANGUAGE') {
     // Expect: { hostname }
@@ -1626,7 +1767,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     const sessionId = message.sessionId || 0;
     const key = sessionKey(tabId, sessionId);
 
-    console.log('[BG] VOSK_STREAM_START received', { tabId, sessionId, hostname });
+    dbg('vosk_bg_stream_start_received', { tabId, sessionId, hostname });
 
     voskPendingChunks.set(key, []);
 
@@ -1634,7 +1775,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     const initPromise = (async () => {
       try {
         const settings = await getEffectiveSettings(hostname);
-        console.log('[BG] Settings:', { enabled: settings.enabled, provider: settings.provider });
+        dbg('vosk_bg_settings', { enabled: settings.enabled, provider: settings.provider });
 
         if (!settings.enabled || settings.provider !== PROVIDERS.VOSK) {
           return { ok: false, reason: 'disabled' };
@@ -1733,9 +1874,9 @@ browser.runtime.onMessage.addListener((message, sender) => {
         showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
         sendTerminal(tabId, frameId, { type: 'WHISPER_TOAST', message: 'Downloading Vosk model…', level: 'processing' });
 
-        console.log('[BG] Loading Vosk model directly...', { modelId });
+        dbg('vosk_bg_loading_model', { modelId });
         const res = await ensureVoskModel(modelId);
-        console.log('[BG] Model loaded, starting stream...');
+        dbg('vosk_bg_model_loaded', {});
 
         if (res.cached) {
           showBadgeForTab(tabId, { type: 'cached', color: colors.cached }, BADGE_MS.cached);
@@ -1744,7 +1885,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
         }
 
         startVoskStream(sessionId, tabId, frameId, sampleRate, settings.graceEnabled, settings.graceMs, res.modelId, res.model);
-        console.log('[BG] Stream started');
+        dbg('vosk_bg_stream_started', {});
 
         // Inform page that streaming is ready (so it can show recording toast immediately)
         sendTerminal(tabId, frameId, { type: 'WHISPER_STREAMING_STARTED', provider: 'vosk', sessionId });
@@ -1767,7 +1908,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
         // Flush buffered chunks
         const pending = voskPendingChunks.get(key) || [];
-        console.log('[BG] Flushing buffered chunks:', pending.length);
+        dbg('vosk_bg_flushing_chunks', { count: pending.length });
 
         for (const chunk of pending) {
           sendVoskChunk(sessionId, chunk);
@@ -1779,6 +1920,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
         console.error('[BG] VOSK init error:', err);
         voskPendingChunks.delete(key);
         voskStreamReady.delete(key);
+        voskStreamInitPromise.delete(key); // CRITICAL FIX: allow GC to run if init fails
         // Provide a clearer, actionable message to the page
         const msg = (err && err.message) ? `Failed to load Vosk model: ${err.message}` : 'Failed to load Vosk model';
         showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
@@ -1823,15 +1965,15 @@ browser.runtime.onMessage.addListener((message, sender) => {
     const sessionId = message.sessionId || 0;
     const key = sessionKey(tabId, sessionId);
 
-    console.log('[BG] VOSK_STREAM_STOP received', { tabId, sessionId });
+    dbg('vosk_bg_stream_stop_received', { tabId, sessionId });
 
     (async () => {
       const initPromise = voskStreamInitPromise.get(key);
 
       if (initPromise) {
-        console.log('[BG] Waiting for init promise...');
+        dbg('vosk_bg_waiting_init_promise', {});
         await initPromise;
-        console.log('[BG] Init complete, stopping stream...');
+        dbg('vosk_bg_init_complete_stopping', {});
       }
 
       // Cleanup
@@ -1842,7 +1984,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
       // Stop the recognizer
       stopVoskStream(sessionId);
-      console.log('[BG] Stream stopped');
+      dbg('vosk_bg_stream_stopped', {});
       scheduleModelGc();
     })();
 
@@ -2358,6 +2500,10 @@ browser.runtime.onMessage.addListener((message, sender) => {
       scheduleModelGc();
     }
   })();
+
+  // Return false for message types that don't need a response.
+  // This prevents Firefox's "Promised response from onMessage listener went out of scope" warning.
+  return false;
 });
 
 // Startup hooks

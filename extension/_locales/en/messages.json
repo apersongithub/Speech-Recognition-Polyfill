@@ -3,7 +3,7 @@
     "message": "Speech Recognition Polyfill"
   },
   "ext_desc": {
-    "message": "Speech recognition polyfill with local Whisper, Vosk, and optional cloud transcription (AssemblyAI)."
+    "message": "Speech recognition polyfill with local Whisper, Vosk, and optional cloud transcription (AssemblyAI, Google)."
   },
   "browser_action_title": {
     "message": "Speech Recognition"
@@ -21,7 +21,7 @@
     "message": "Engine"
   },
   "engine_note": {
-    "message": "Whisper and Vosk both run locally; AssemblyAI sends audio to the cloud (requires API key)."
+    "message": "Whisper and Vosk run locally. Google and AssemblyAI send audio to the cloud."
   },
   "engine_label": {
     "message": "Provider"
@@ -573,7 +573,7 @@
     "message": "Silence Timeout (ms)"
   },
   "streaming_applies_note": {
-    "message": "Applies to streaming providers (Vosk + AssemblyAI)."
+    "message": "Applies to streaming providers (Vosk, Google, AssemblyAI)."
   },
   "streaming_silence_timeout": {
     "message": "Streaming silence timeout"

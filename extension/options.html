@@ -24,13 +24,14 @@
                 <span data-i18n="section_engine">Engine</span>
             </div>
             <div class="note" data-i18n="engine_note">
-                Whisper and Vosk both run locally; AssemblyAI sends audio to the cloud (requires API key).
+                Whisper and Vosk run locally. Google and AssemblyAI send audio to the cloud.
             </div>
             <label data-i18n="engine_label">Provider</label>
             <select id="provider-select">
-                <option value="local-whisper" data-i18n="engine_local">Whisper</option>
                 <option value="vosk" data-i18n="engine_vosk">Vosk</option>
+                <option value="google" data-i18n="engine_google">Google</option>
                 <option value="assemblyai" data-i18n="engine_assemblyai">AssemblyAI</option>
+                <option value="local-whisper" data-i18n="engine_local">Whisper</option>
             </select>
             <div class="note" data-i18n="show_engine_sections_note">Choose the provider your want.
             </div>
@@ -129,8 +130,8 @@
             </div>
             <div class="note" data-i18n="vosk_config_note">Streaming local recognition using Vosk models.</div>
             <label data-i18n="vosk_model_label">Language Model</label>
-            <input id="vosk-model-input" list="language-list" type="text" placeholder="(Default)" autocomplete="off"
-                autocorrect="off" autocapitalize="none" spellcheck="false" data-lpignore="true" />
+            <input id="vosk-model-input" list="language-list" type="text" placeholder="Search (type or double-click)"
+                autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" data-lpignore="true" />
             <div id="vosk-size-warning" class="warning"></div>
             <div class="note" data-i18n="vosk_streaming_note">Choose a LM, vosk streams audio in real-time for partial
                 results.</div>
@@ -160,6 +161,28 @@
             </div>
 
             <div class="status" id="status-cloud" data-i18n="status_saved">Saved</div>
+        </div>
+
+        <div class="card" id="card-google">
+            <div class="section-header">
+                <span class="icon icon-cloud" aria-hidden="true"></span>
+                <span data-i18n="section_google_title">Google</span>
+                <span class="pill" style="background:#ecfeff;border-color:#a5f3fc;" data-i18n="pill_cloud">Cloud</span>
+                <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming
+                    Supported</span>
+            </div>
+            <div class="note" data-i18n="google_key_note">Uses public Google API keys seamlessly.</div>
+            <label data-i18n="google_server_mode_label">Server Mode</label>
+            <select id="google-server-mode">
+                <option value="v2">v2</option>
+                <option value="v1">v1</option>
+                <option value="v1_old">v1_old</option>
+            </select>
+            <div class="note" data-i18n="google_server_mode_note">
+                v2 offers better accuracy and punctuation via Cloud Speech v2.
+                v1 uses the older Assistant API and is slightly faster. Both auto-detect spoken languages.
+            </div>
+            <div class="status" id="status-google" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card">
@@ -277,7 +300,7 @@
 
             <div class="notesep" style="margin-top:14px; font-weight:600; font-style: italic;"
                 data-i18n="streaming_silence_timeout">Streaming silence timeout</div>
-            <div class="note" data-i18n="streaming_applies_note">Applies to streaming providers (Vosk + AssemblyAI).
+            <div class="note" data-i18n="streaming_applies_note">Applies to streaming providers (Vosk, Google, AssemblyAI).
             </div>
 
             <div class="checkbox-wrapper" style="margin-top:10px;">
@@ -331,11 +354,12 @@
                             <option value="local-whisper" data-i18n="engine_local">Whisper</option>
                             <option value="vosk" data-i18n="engine_vosk">Vosk (Streaming)</option>
                             <option value="assemblyai" data-i18n="engine_assemblyai">Server AssemblyAI</option>
+                            <option value="google" data-i18n="engine_google">Google</option>
                         </select>
                     </div>
                 </div>
 
-                <div>
+                <div id="override-whisper-container">
                     <label style="margin-top:0" data-i18n="model_label">Model</label>
                     <select id="override-model">
                         <option value="" data-i18n="override_default_option">(Default)</option>
@@ -357,12 +381,24 @@
                 </div>
             </div>
 
-            <div class="actions" style="margin-top: 8px;">
+            <div class="actions" style="margin-top: 8px;" id="override-vosk-container">
                 <div style="flex:1">
                     <label style="margin-top:0" data-i18n="vosk_model_label_short">Vosk model (type to search)</label>
                     <input id="override-vosk-model" list="vosk-model-list" type="text"
-                        placeholder="vosk-model-small-en-us-0.15" autocomplete="new-password" autocorrect="off"
+                        placeholder="Search (type or double-click)" autocomplete="new-password" autocorrect="off"
                         autocapitalize="off" spellcheck="false" data-lpignore="true" />
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top: 8px;" id="override-google-container">
+                <div style="flex:1">
+                    <label style="margin-top:0" data-i18n="model_label">Model</label>
+                    <select id="override-google-server-mode">
+                        <option value="">(Default)</option>
+                        <option value="v2">v2</option>
+                        <option value="v1">v1</option>
+                        <option value="v1_old">v1_old</option>
+                    </select>
                 </div>
             </div>
 

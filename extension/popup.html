@@ -27,9 +27,10 @@
         data-i18n="engine_label">Engine</span></div>
     <select id="provider">
       <option value="" data-i18n="override_use_default">Use default</option>
-      <option value="local-whisper" data-i18n="engine_local">Whisper</option>
       <option value="vosk" data-i18n="engine_vosk">Vosk</option>
+      <option value="google" data-i18n="engine_google">Google</option>
       <option value="assemblyai" data-i18n="engine_assemblyai">AssemblyAI</option>
+      <option value="local-whisper" data-i18n="engine_local">Whisper</option>
     </select>
 
     <div class="section-header" id="model-section-header"><span class="icon icon-cpu" aria-hidden="true"></span><span
@@ -46,9 +47,14 @@
         <option value="Xenova/whisper-base" data-i18n="model_base_multi">Base Multilingual (~290MB)</option>
         <option value="Xenova/whisper-small" data-i18n="model_small_multi">Small Multilingual (~1GB)</option>
       </select>
-      <input id="vosk-model" list="vosk-model-list" type="text" placeholder="Search Vosk models (type to filter)"
-        type="password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
-        data-lpignore="true" />
+      <input id="vosk-model" list="vosk-model-list" type="text" placeholder="Search (type or double-click)"
+        autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" />
+      <select id="google-server-mode">
+        <option value="" data-i18n="override_use_default">Use default</option>
+        <option value="v2">v2</option>
+        <option value="v1">v1</option>
+        <option value="v1_old">v1_old</option>
+      </select>
     </div>
 
     <div class="section-header"><span class="icon icon-globe" aria-hidden="true"></span><span

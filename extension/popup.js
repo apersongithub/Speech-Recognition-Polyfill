@@ -8,7 +8,7 @@ const ALLOWED_MODELS = new Set([
   'Xenova/distil-whisper-medium.en'
 ]);
 
-const ALLOWED_PROVIDERS = new Set(['local-whisper', 'assemblyai', 'vosk']);
+const ALLOWED_PROVIDERS = new Set(['local-whisper', 'assemblyai', 'vosk', 'google']);
 const VOSK_MODEL_INDEX_URL = 'https://alphacephei.com/vosk/models/model-list.json';
 
 let voskModelIndex = new Map();
@@ -76,7 +76,7 @@ function setVoskModelDatalist(list) {
     prettyInput.type = 'text';
     prettyInput.className = realInput.className || '';
     prettyInput.style.cssText = "width: 100%; box-sizing: border-box; margin-bottom: 8px;";
-    prettyInput.placeholder = "Select a model...";
+    prettyInput.placeholder = "Type or double click to select a model...";
 
     prettyInput.setAttribute('list', 'vosk-model-list');
     realInput.removeAttribute('list');
@@ -87,6 +87,29 @@ function setVoskModelDatalist(list) {
       const val = prettyInput.value;
       const id = window.VOSK_PRETTY_TO_ID.get(val);
       realInput.value = id || val;
+      realInput.dispatchEvent(new Event('change'));
+      realInput.dispatchEvent(new Event('input'));
+    });
+
+    prettyInput.addEventListener('focus', () => {
+      prettyInput.dataset.previousValue = realInput.value;
+      prettyInput.value = '';
+    });
+
+    prettyInput.addEventListener('blur', () => {
+      const val = prettyInput.value.trim();
+      const isPretty = window.VOSK_PRETTY_TO_ID.has(val);
+      const isId = window.VOSK_ID_TO_PRETTY.has(val);
+
+      if (val && (isPretty || isId)) {
+        realInput.value = isPretty ? window.VOSK_PRETTY_TO_ID.get(val) : val;
+      } else {
+        realInput.value = prettyInput.dataset.previousValue || '';
+      }
+
+      const finalVal = realInput.value;
+      prettyInput.value = window.VOSK_ID_TO_PRETTY.get(finalVal) || finalVal;
+      
       realInput.dispatchEvent(new Event('change'));
       realInput.dispatchEvent(new Event('input'));
     });
@@ -176,9 +199,19 @@ async function ensureVoskModelIndex() {
 
   voskModelIndexPromise = (async () => {
     try {
-      const resp = await fetch(VOSK_MODEL_INDEX_URL);
-      if (!resp.ok) throw new Error(`Failed to fetch Vosk models: ${resp.status}`);
-      const data = await resp.json();
+      const cached = await browser.storage.local.get('voskModelCache');
+      const now = Date.now();
+      let data = null;
+
+      if (cached.voskModelCache && cached.voskModelCache.data && (now - cached.voskModelCache.timestamp < 7 * 24 * 60 * 60 * 1000)) {
+        data = cached.voskModelCache.data;
+      } else {
+        const resp = await fetch(VOSK_MODEL_INDEX_URL);
+        if (!resp.ok) throw new Error(`Failed to fetch Vosk models: ${resp.status}`);
+        data = await resp.json();
+        await browser.storage.local.set({ voskModelCache: { data, timestamp: now } });
+      }
+
       const list = parseVoskModelList(data);
       if (list.length > 0) {
         voskModelIndex = new Map(list.map(m => [m.id, m]));
@@ -232,13 +265,19 @@ function applyPopupVisibility(provider, hideToggle) {
   const whisperSelect = document.getElementById('model');
   const voskInput = document.getElementById('vosk-model');          // original (hidden) input
   const prettyVosk = document.getElementById('vosk-model-pretty-display'); // pretty visible input (created by setVoskModelDatalist)
+  const googleServerMode = document.getElementById('google-server-mode');
 
   if (!modelSection || !modelHeader || !whisperSelect || !voskInput) return;
+
+  const showVosk = provider === 'vosk';
+  const showGoogle = provider === 'google';
+  const showWhisper = provider === 'local-whisper';
 
   if (!hideToggle) {
     modelSection.style.display = '';
     modelHeader.style.display = '';
   } else if (provider === 'assemblyai') {
+    // AssemblyAI doesn't use local models
     modelSection.style.display = 'none';
     modelHeader.style.display = 'none';
   } else {
@@ -246,18 +285,11 @@ function applyPopupVisibility(provider, hideToggle) {
     modelHeader.style.display = '';
   }
 
-  const showVosk = provider === 'vosk';
-
-  // Whisper select should be hidden when Vosk selected
-  whisperSelect.style.display = showVosk ? 'none' : '';
-
-  // Make sure only the pretty Vosk input is visible (if present).
-  // The real input (vosk-model) is kept hidden (it's the backing field).
-  if (prettyVosk) {
-    prettyVosk.style.display = showVosk ? '' : 'none';
-  }
-  // Keep the real input hidden so it doesn't show up alongside the pretty input.
-  voskInput.style.display = 'none';
+  // Toggle internal model controls based on provider
+  if (whisperSelect) whisperSelect.style.display = showWhisper || !provider ? '' : 'none';
+  if (prettyVosk) prettyVosk.style.display = showVosk ? '' : 'none';
+  if (voskInput) voskInput.style.display = 'none';
+  if (googleServerMode) googleServerMode.style.display = showGoogle ? '' : 'none';
 }
 
 
@@ -284,14 +316,19 @@ async function saveOverride(autoText) {
   } else if (provider === 'vosk') {
     model = voskModel;
   } else if (provider === 'assemblyai') {
-    // AssemblyAI handles models server-side, so we clear the local model override
+    model = null;
+  } else if (provider === 'google') {
     model = null;
   } else {
     // If "Use Default" is selected, try to infer from what is typed/selected
-    if (voskModel) {
+    // Only infer from the input that is currently VISIBLE to prevent hidden inputs from hijacking
+    const prettyVosk = document.getElementById('vosk-model-pretty-display');
+    const whisperSelectEl = document.getElementById('model');
+
+    if (prettyVosk && prettyVosk.style.display !== 'none' && voskModel) {
       model = voskModel;
       provider = 'vosk';
-    } else if (whisperModel) {
+    } else if (whisperSelectEl && whisperSelectEl.style.display !== 'none' && whisperModel) {
       model = whisperModel;
       provider = 'local-whisper';
     }
@@ -328,6 +365,10 @@ async function saveOverride(autoText) {
   if (graceMs != null) override.graceMs = graceMs;
   if (!enabled) override.enabled = false;
 
+  // Save Google Server Mode if Google provider is selected
+  const googleServerMode = (document.getElementById('google-server-mode')?.value || '').trim();
+  if (googleServerMode) override.googleServerMode = googleServerMode;
+
   next.overrides[host] = override;
 
   await browser.storage.local.set({ settings: next });
@@ -338,7 +379,7 @@ async function saveOverride(autoText) {
 
   // Update visibility of the UI sections
   const hideToggle = next.hideModelSections !== false;
-  applyPopupVisibility(provider || next?.defaults?.provider || 'vosk', hideToggle);
+  applyPopupVisibility(provider || next?.defaults?.provider || 'local-whisper', hideToggle);
 }
 
 // normalizeHost: same normalization used elsewhere
@@ -421,16 +462,52 @@ async function loadState() {
     if (prettyVosk) prettyVosk.value = '';
   }
 
+  // Update default dropdown labels visually
+  const defaultProvider = settings?.defaults?.provider || 'vosk';
+  const providerEl = document.getElementById('provider');
+  const providerDefaultOpt = providerEl?.querySelector('option[value=""]');
+  if (providerDefaultOpt) {
+    const label = providerEl.querySelector(`option[value="${defaultProvider}"]`)?.textContent || defaultProvider;
+    providerDefaultOpt.textContent = `Use default (${label.split('(')[0].trim()})`;
+  }
+
+  const defaultModel = settings?.defaults?.model || '';
+  const modelEl = document.getElementById('model');
+  const modelDefaultOpt = modelEl?.querySelector('option[value=""]');
+  if (modelDefaultOpt) {
+    let label = 'Unknown';
+    if (defaultProvider === 'local-whisper') {
+      label = modelEl.querySelector(`option[value="${defaultModel}"]`)?.textContent || defaultModel || 'Base English';
+    } else if (defaultProvider === 'vosk') {
+      label = window.VOSK_ID_TO_PRETTY?.get(defaultModel) || defaultModel || 'Default';
+    } else {
+      label = 'Server Managed';
+    }
+    modelDefaultOpt.textContent = `Use default (${label.split('(')[0].trim()})`;
+  }
+
+  const defaultGoogleMode = settings?.defaults?.googleServerMode || 'v1';
+  const googleModeEl = document.getElementById('google-server-mode');
+  const googleModeDefaultOpt = googleModeEl?.querySelector('option[value=""]');
+  if (googleModeDefaultOpt) {
+    const label = googleModeEl.querySelector(`option[value="${defaultGoogleMode}"]`)?.textContent || defaultGoogleMode;
+    googleModeDefaultOpt.textContent = `Use default (${label.split('—')[0].trim()})`;
+  }
+
   document.getElementById('language').value = o.language || '';
   document.getElementById('timeout').value = o.silenceTimeoutMs ?? '';
   document.getElementById('provider').value = provider;
   document.getElementById('grace-ms').value = o.graceMs ?? '';
 
+  // Load Google Server Mode
+  const googleServerModeEl = document.getElementById('google-server-mode');
+  if (googleServerModeEl) googleServerModeEl.value = o.googleServerMode || '';
+
   const siteStatus = document.getElementById('site-status');
   if (siteStatus) siteStatus.value = (o.enabled === false) ? 'disabled' : '';
 
   const hideToggle = settings?.hideModelSections !== false;
-  applyPopupVisibility(provider || settings?.defaults?.provider || 'vosk', hideToggle);
+  applyPopupVisibility(provider || settings?.defaults?.provider || 'local-whisper', hideToggle);
 }
 
 async function removeOverride() {
@@ -477,14 +554,14 @@ function notifySaved(text = t('popup_status_saved', 'Saved')) {
   setTimeout(() => s.classList.remove('show'), 1200);
 }
 
-['model', 'language', 'timeout', 'provider', 'site-status', 'grace-ms'].forEach(id => {
+['model', 'language', 'timeout', 'provider', 'site-status', 'grace-ms', 'google-server-mode'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   const evt = (id === 'timeout' || id === 'grace-ms' || id === 'language') ? 'input' : 'change';
   el.addEventListener(evt, () => {
     if (id === 'provider') {
       browser.storage.local.get('settings').then(({ settings }) => {
-        applyPopupVisibility(el.value || settings?.defaults?.provider || 'vosk', settings?.hideModelSections !== false);
+        applyPopupVisibility(el.value || settings?.defaults?.provider || 'local-whisper', settings?.hideModelSections !== false);
       });
     }
     saveOverride();

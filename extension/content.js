@@ -8,13 +8,54 @@
 // content.js - ABSOLUTE TOP
 let extensionEnabledForSite = true; // Declare this first to avoid ReferenceError
 
-(function injectPolyfill() {
+let polyfillInjected = false;
+function injectPolyfill(asyncFallback = false) {
+  if (polyfillInjected) return;
+  polyfillInjected = true;
+  let inlineAllowed = false;
+  try {
+    const testS = document.createElement('script');
+    testS.textContent = 'document.documentElement.dataset.inlineTest = "1";';
+    (document.head || document.documentElement).prepend(testS);
+    if (document.documentElement.dataset.inlineTest === "1") {
+      inlineAllowed = true;
+      delete document.documentElement.dataset.inlineTest;
+    }
+    testS.remove();
+  } catch (e) { }
+
+  if (!asyncFallback && inlineAllowed) {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', browser.runtime.getURL('polyfill.js'), false); // synchronous
+      xhr.send(null);
+      if (xhr.status === 200 || xhr.responseText) {
+        const s = document.createElement('script');
+        s.textContent = xhr.responseText;
+        (document.head || document.documentElement).prepend(s);
+        s.remove();
+        return;
+      }
+    } catch (e) {
+      console.warn('[Speech Polyfill] Synchronous injection failed, falling back to async', e);
+    }
+  }
   const s = document.createElement('script');
   s.src = browser.runtime.getURL('polyfill.js');
-  s.async = false; // Force immediate execution order
+  s.async = false;
   (document.head || document.documentElement).prepend(s);
   s.onload = () => s.remove();
-})();
+}
+
+try {
+  if (window.localStorage.getItem('__speech_polyfill_disabled_flag__') === '1') {
+    extensionEnabledForSite = false;
+  }
+} catch (e) { }
+
+if (extensionEnabledForSite) {
+  injectPolyfill();
+}
 
 const IS_TOP_FRAME = (window.self === window.top);
 if (!IS_TOP_FRAME) {
@@ -67,7 +108,13 @@ let stripTrailingPeriod = false;
 let micGain = MIC_GAIN_DEFAULT;
 let silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
 let streamingSilenceMode = 'partial';
+let suppressFavicons = false;
 let disableSpaceNormalization = false;
+
+// google provider runtime cache
+let googleServerMode = 'v2';
+let googleProviderConfigured = false;
+let uaSpoofEnabled = true;
 
 // NEW: disable processing timeouts
 let disableProcessingTimeouts = false;
@@ -94,6 +141,8 @@ const PROCESSING_WATCHDOG_MS = 22000;
 // NEW: lock insertion target per session
 let lockedInsertTarget = null;
 let lockedInsertTargetInfo = null;
+
+let currentInterimLength = 0;
 
 // NEW: page-bridge ack tracking (duplicate-text fix)
 let pendingPageAck = null; // { sessionId, timer, resolve }
@@ -191,7 +240,10 @@ function getPrevCharFromTarget(target) {
   if (tag === 'textarea' || tag === 'input') {
     try {
       const pos = typeof target.selectionStart === 'number' ? target.selectionStart : null;
-      if (pos && pos > 0) return target.value?.charAt(pos - 1) || '';
+      if (pos && pos > 0) {
+        const checkPos = pos - currentInterimLength;
+        if (checkPos > 0) return target.value?.charAt(checkPos - 1) || '';
+      }
     } catch (_) { }
     return '';
   }
@@ -205,7 +257,8 @@ function getPrevCharFromTarget(target) {
         const offset = range.startOffset;
         if (node && node.nodeType === Node.TEXT_NODE) {
           const text = node.textContent || '';
-          if (offset > 0) return text.charAt(offset - 1);
+          const checkPos = offset - currentInterimLength;
+          if (checkPos > 0) return text.charAt(checkPos - 1) || '';
         }
       }
     } catch (_) { }
@@ -538,35 +591,19 @@ function hostMatchesRule(host, ruleHost) {
 
 // Robust provider lookup: handles normalized hosts and rule matches (www/ports, wildcard subhosts)
 function getProviderFromSettings(settings, hostname) {
-  const defaults = settings?.defaults || {};
-  const overrides = settings?.overrides || {};
+  const globalDefaults = settings?.defaults || {};
+  let baseProvider = 'vosk';
+  if (globalDefaults.provider === 'assemblyai') baseProvider = 'assemblyai';
+  else if (globalDefaults.provider === 'local-whisper') baseProvider = 'local-whisper';
+  else if (globalDefaults.provider === 'google') baseProvider = 'google';
 
-  // Accept either a full hostname or a value that may already be normalized
-  const host = normalizeHost(hostname);
+  const o = settings?.overrides?.[hostname] || {};
+  if (o.provider === 'vosk') return 'vosk';
+  if (o.provider === 'assemblyai') return 'assemblyai';
+  if (o.provider === 'google') return 'google';
+  if (o.provider === 'local-whisper') return 'local-whisper';
 
-  // Resolve site override using exact match first, then rule matching (example.com → matches www.example.com)
-  let site = {};
-  if (host && overrides[host]) {
-    site = overrides[host];
-  } else if (host) {
-    for (const [ruleHost, cfg] of Object.entries(overrides)) {
-      if (hostMatchesRule(host, normalizeHost(ruleHost))) {
-        site = cfg;
-        break;
-      }
-    }
-  }
-
-  const baseProvider = (defaults.provider === 'assemblyai')
-    ? 'assemblyai'
-    : (defaults.provider === 'local-whisper')
-      ? 'local-whisper'
-      : 'vosk';
-
-  const chosen = (site?.provider ?? baseProvider);
-  if (chosen === 'assemblyai') return 'assemblyai';
-  if (chosen === 'vosk') return 'vosk';
-  return 'local-whisper';
+  return baseProvider;
 }
 
 function normalizeStreamingSilenceMode(mode) {
@@ -737,28 +774,57 @@ async function resolveEffectiveSettings() {
     assemblyaiStreamingEnabled = settings?.assemblyaiStreamingEnabled !== false;
     streamingSilenceMode = normalizeStreamingSilenceMode(settings?.assemblyaiStreamingSilenceMode || 'never');
 
+    googleServerMode = typeof defaults?.googleServerMode === 'string'
+      ? defaults.googleServerMode : 'v2';
+    if (site && typeof site.googleServerMode === 'string') {
+      googleServerMode = site.googleServerMode;
+    }
+
+    uaSpoofEnabled = typeof defaults?.uaSpoofEnabled === 'boolean' ? defaults.uaSpoofEnabled : true;
+
     const provider = getProviderFromSettings(settings, hostname);
 
     if (provider === 'assemblyai') {
       streamingProvider = assemblyaiStreamingEnabled ? 'assemblyai' : null;
     } else if (provider === 'vosk') {
       streamingProvider = 'vosk';
+    } else if (provider === 'google') {
+      streamingProvider = 'google';
     } else {
       streamingProvider = null;
     }
 
     streamingActive = !!streamingProvider;
 
-    extensionEnabledForSite = true;
+    let isEnabledBySettings = true;
 
     const disabledSites = settings?.disabledSites || {};
     for (const [k, v] of Object.entries(disabledSites)) {
       if (v === true && hostMatchesRule(hostname, normalizeHost(k))) {
-        extensionEnabledForSite = false;
+        isEnabledBySettings = false;
         break;
       }
     }
-    if (extensionEnabledForSite && site && site.enabled === false) extensionEnabledForSite = false;
+    if (isEnabledBySettings && site && site.enabled === false) isEnabledBySettings = false;
+
+    // Synchronously cache the disabled flag for the next page load
+    try {
+      if (!isEnabledBySettings) {
+        window.localStorage.setItem('__speech_polyfill_disabled_flag__', '1');
+      } else {
+        window.localStorage.removeItem('__speech_polyfill_disabled_flag__');
+      }
+    } catch (e) { }
+
+    extensionEnabledForSite = isEnabledBySettings;
+
+    if (!extensionEnabledForSite) {
+      logIfDebug('Extension disabled for this site.');
+      return;
+    }
+
+    // If it was skipped at startup because of a stale cache, inject it asynchronously now
+    injectPolyfill(true);
 
   } catch (_) {
     silenceTimeoutMs = 1000;
@@ -780,6 +846,8 @@ async function resolveEffectiveSettings() {
     streamingSilenceMode = 'partial';
     disableSpaceNormalization = false;
     disableProcessingTimeouts = false;
+    googleServerMode = 'v2';
+    uaSpoofEnabled = true;
   }
 
   pushPageConfig();
@@ -805,6 +873,29 @@ async function resolveEffectiveSettings() {
       processingSessionId = null;
     }
   }
+
+  // NEW: Inject the correct provider bridge script
+  if (extensionEnabledForSite) {
+    if (streamingProvider === 'google') {
+      injectGoogleProviderSync({
+        serverMode: googleServerMode,
+        debugMode: debugLogsEnabled,
+        uaSpoofEnabled: uaSpoofEnabled, // Extension context default
+        disableSpaceNormalization: disableSpaceNormalization,
+        micGainMultiplier: micGain,
+        micIdleTimeoutMs: 5000,
+        provider: 'google'
+      });
+    } else {
+      if (document.documentElement?.hasAttribute('data-whisper-google-injected')) {
+        document.documentElement.removeAttribute('data-whisper-google-injected');
+        document.documentElement.removeAttribute('data-whisper-google-mode');
+        document.documentElement.removeAttribute('data-gp-config');
+        window.postMessage({ type: 'WHISPER_CLEAR_GOOGLE_PROVIDER' }, '*');
+      }
+      injectPolyfillTrulySync(); // the existing script
+    }
+  }
 }
 resolveEffectiveSettings();
 
@@ -824,6 +915,8 @@ const PAGE_INSTANCE_ID = (() => {
 })();
 
 browser.runtime.onMessage.addListener((message) => {
+  if (!IS_TOP_FRAME) return;
+
   if (message?.type === 'CONFIG_CHANGED') resolveEffectiveSettings();
 
   if (message?.type === 'WHISPER_DEBUG_LOG') {
@@ -951,11 +1044,11 @@ if (IS_TOP_FRAME) {
 }
 
 // content.js - Around line 1433
-(function injectPolyfillTrulySync() {
+function injectPolyfillTrulySync() {
   if (!extensionEnabledForSite) return;
+  if (document.documentElement?.hasAttribute('data-whisper-polyfill-injected')) return;
 
   try {
-    // Synchronous XHR is the only way to block the parser in an extension
     const xhr = new XMLHttpRequest();
     xhr.open('GET', browser.runtime.getURL('polyfill.js'), false);
     xhr.send();
@@ -963,15 +1056,109 @@ if (IS_TOP_FRAME) {
     const script = document.createElement('script');
     script.textContent = xhr.responseText;
 
-    // Prepend ensures it's the very first thing in the <html> or <head>
     (document.head || document.documentElement).prepend(script);
     script.remove();
+    document.documentElement.setAttribute('data-whisper-polyfill-injected', '1');
 
     dbg('polyfill_injected_truly_sync');
   } catch (e) {
     console.error('[Whisper] Sync polyfill injection failed:', e);
   }
-})();
+}
+
+function injectGoogleProviderSync(configObj) {
+  const currentMode = document.documentElement?.getAttribute('data-whisper-google-mode') || '';
+  const newMode = configObj.serverMode || 'v2';
+  const modeChanged = currentMode !== newMode;
+  const modeTypeChanged = (currentMode === 'v1_old') !== (newMode === 'v1_old');
+
+  if (document.documentElement?.hasAttribute('data-whisper-google-injected') && !modeTypeChanged) {
+    // Same provider type — just update config (handles v1↔v2 seamlessly)
+    try {
+      document.documentElement.setAttribute('data-gp-config', JSON.stringify(configObj));
+      if (modeChanged) {
+        document.documentElement.setAttribute('data-whisper-google-mode', newMode);
+      }
+      window.postMessage({ type: 'WHISPER_UPDATE_GOOGLE_CONFIG', config: configObj }, '*');
+    } catch (_) { }
+    return;
+  }
+
+  // If switching provider type (webchannel ↔ fullduplex), clear old injection
+  if (modeTypeChanged && document.documentElement?.hasAttribute('data-whisper-google-injected')) {
+    document.documentElement.removeAttribute('data-whisper-google-injected');
+    // Notify page to clear old SpeechRecognition class
+    window.postMessage({ type: 'WHISPER_CLEAR_GOOGLE_PROVIDER' }, '*');
+    dbg('google_provider_mode_type_changed', { from: currentMode, to: newMode });
+  }
+
+  try {
+    // Set config as a data attribute on <html> — avoids CSP inline-script blocks.
+    // The google/*.js files read this with: JSON.parse(document.documentElement.getAttribute('data-gp-config'))
+    document.documentElement.setAttribute('data-gp-config', JSON.stringify(configObj));
+
+    const isV1Old = configObj.serverMode === 'v1_old';
+
+    // Build the injection chain based on server mode
+    // v1/v2: ua-spoof → protobuf → webchannel → bridge
+    // v1_old: ua-spoof → fullduplex → bridge
+    const scripts = ['google/ua-spoof.js'];
+    if (isV1Old) {
+      scripts.push('google/fullduplex.js');
+    } else {
+      scripts.push('google/protobuf.js', 'google/webchannel.js');
+    }
+    scripts.push('google/bridge.js');
+
+    // Inject scripts synchronously to block page execution and guarantee polyfill presence
+    // We use inline textContent because it executes synchronously. However, some sites
+    // use strict CSPs that block inline scripts. We detect CSP blocks and fallback to async src.
+    for (const src of scripts) {
+      try {
+        const url = browser.runtime.getURL(src);
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', url, false);
+        xhr.send(null);
+
+        if (xhr.status === 200 || xhr.status === 0) {
+          const script = document.createElement('script');
+          // We add a flag to detect if the script actually ran or was blocked by CSP
+          script.textContent = xhr.responseText + `\nwindow.__whisper_injected_${src.replace(/[^a-z0-9]/g, '')} = true;\n//# sourceURL=${url}`;
+
+          // Try to steal a nonce if one exists
+          const nonceScript = document.querySelector('script[nonce]');
+          if (nonceScript) script.setAttribute('nonce', nonceScript.nonce);
+
+          (document.head || document.documentElement).prepend(script);
+          script.remove();
+
+          // Detect CSP block using Firefox's wrappedJSObject
+          const flagName = `__whisper_injected_${src.replace(/[^a-z0-9]/g, '')}`;
+          const isBlocked = typeof window.wrappedJSObject !== 'undefined' && !window.wrappedJSObject[flagName];
+
+          if (isBlocked) {
+            console.warn(`[Whisper] Inline injection of ${src} was blocked by CSP. Falling back to async src.`);
+            const fallback = document.createElement('script');
+            fallback.src = url;
+            (document.head || document.documentElement).prepend(fallback);
+          }
+        } else {
+          console.error(`[Whisper] Failed to load ${src}: HTTP ${xhr.status}`);
+        }
+      } catch (e) {
+        console.error(`[Whisper] Exception loading ${src}:`, e);
+      }
+    }
+
+    document.documentElement.setAttribute('data-whisper-google-injected', '1');
+    document.documentElement.setAttribute('data-whisper-google-mode', newMode);
+
+    // Send the initial config to the polyfill once it spins up
+    window.postMessage({ type: 'WHISPER_UPDATE_GOOGLE_CONFIG', config: configObj }, '*');
+  } catch (e) {
+    console.error('[Whisper] Sync google provider injection failed:', e);
+  }
+}
 
 function fixEncoding(text) {
   if (!text) return "";
@@ -995,10 +1182,9 @@ function applyOutputPostProcessing(text) {
   return text;
 }
 
+let notificationTimeout = null;
 function showNotification(message, type = "info") {
   if (!shouldShowNotifications) return;
-  const existing = document.getElementById("whisper-pill");
-  if (existing) existing.remove();
 
   let bg = "rgba(15, 23, 42, 0.85)", icon = "✨";
   if (type === "processing") { bg = "rgba(245, 158, 11, 0.9)"; icon = "⚡"; }
@@ -1006,26 +1192,37 @@ function showNotification(message, type = "info") {
   if (type === "error") { bg = "rgba(220, 38, 38, 0.9)"; icon = "⚠️"; }
   if (type === "recording") { bg = "rgba(37, 99, 235, 0.9)"; icon = "🎙️"; }
 
-  const div = document.createElement("div");
-  div.id = "whisper-pill";
-  div.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
-  div.style.cssText = `
-    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
-    display: flex; align-items: center; gap: 10px; padding: 10px 20px;
-    background: ${bg}; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    color: white; border-radius: 50px; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    font-size: 14px; font-weight: 500; box-shadow: 0 10px 25px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,255,255,0.1);
-    z-index: 2147483647; opacity: 0; transition: all .3s cubic-bezier(.16,1,.3,1); pointer-events: none;
-  `;
-  document.body.appendChild(div);
-  requestAnimationFrame(() => { div.style.opacity = "1"; div.style.transform = "translateX(-50%) translateY(0)"; });
+  let div = document.getElementById("whisper-pill");
+  
+  if (div) {
+    div.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+    div.style.background = bg;
+    div.style.opacity = "1";
+    div.style.transform = "translateX(-50%) translateY(0)";
+  } else {
+    div = document.createElement("div");
+    div.id = "whisper-pill";
+    div.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+    div.style.cssText = `
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+      display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+      background: ${bg}; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      color: white; border-radius: 50px; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      font-size: 14px; font-weight: 500; box-shadow: 0 10px 25px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,255,255,0.1);
+      z-index: 2147483647; opacity: 0; transition: all .3s cubic-bezier(.16,1,.3,1); pointer-events: none;
+    `;
+    document.body.appendChild(div);
+    requestAnimationFrame(() => { div.style.opacity = "1"; div.style.transform = "translateX(-50%) translateY(0)"; });
+  }
 
+  if (notificationTimeout) clearTimeout(notificationTimeout);
+  
   const duration = type === "error" ? 4000 : 2500;
-  setTimeout(() => {
-    if (div) {
+  notificationTimeout = setTimeout(() => {
+    if (div && div.parentNode) {
       div.style.opacity = "0";
       div.style.transform = "translateX(-50%) translateY(10px)";
-      setTimeout(() => div.remove(), 300);
+      setTimeout(() => { if (div.parentNode) div.remove(); }, 300);
     }
   }, duration);
 }
@@ -1119,6 +1316,47 @@ function trySubmitClosestFormForElement(el) {
   return false;
 }
 
+function replaceInterimText(el, text) {
+  if (!el || !isEditableTarget(el)) return false;
+
+  const tag = (el.tagName || '').toLowerCase();
+  
+  if (tag === 'textarea' || tag === 'input') {
+    let start = el.selectionStart;
+    let end = el.selectionEnd;
+
+    if (currentInterimLength > 0 && end >= currentInterimLength) {
+      start = end - currentInterimLength;
+    }
+
+    el.value = el.value.substring(0, start) + text + el.value.substring(end);
+    el.selectionStart = el.selectionEnd = start + text.length;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    currentInterimLength = text.length;
+    return true;
+  }
+
+  // Experimental contentEditable support
+  try {
+    el.focus?.();
+    const sel = window.getSelection();
+    if (sel && currentInterimLength > 0) {
+      for (let i = 0; i < currentInterimLength; i++) {
+        sel.modify("extend", "backward", "character");
+      }
+    }
+    const success = document.execCommand('insertText', false, text);
+    if (success) {
+      currentInterimLength = text.length;
+      return true;
+    }
+  } catch (_) {}
+
+  return false;
+}
+
 function fallbackSendEnterKeyForElement(el) {
   if (!el || !isEditableTarget(el)) return;
 
@@ -1162,6 +1400,18 @@ window.addEventListener("message", async (event) => {
   if (!IS_TOP_FRAME) return;
   if (!extensionEnabledForSite) return;
   if (!event.data) return;
+  // --- Full-Duplex Streaming Relay ---
+  // Relay streaming messages from page script (fullduplex.js) to background script
+  if (event.data.type === 'FULLDUPLEX_START' ||
+    event.data.type === 'FULLDUPLEX_AUDIO' ||
+    event.data.type === 'FULLDUPLEX_END') {
+    try {
+      browser.runtime.sendMessage(event.data);
+    } catch (err) {
+      dbg('fullduplex_relay_error', { type: event.data.type, error: err.message });
+    }
+    return;
+  }
 
   if (event.data.type === 'WHISPER_START_RECORDING') {
     if (processingSessionId !== null && !captureActive) {
@@ -1183,6 +1433,58 @@ window.addEventListener("message", async (event) => {
     });
 
     startRecording(event.data.language, activeSessionId);
+  }
+  // Handle results coming directly from the Google Provider bridge (e.g. when hotkey is used)
+  else if (event.data.type === 'WHISPER_RESULT_TO_PAGE' && event.data.source === 'google-provider') {
+    // We only insert if the extension explicitly initiated the recording (via hotkey or UI).
+    // If currentStartSource is null, it means the website naturally triggered recognition.start(),
+    // so we let the website handle the insertion natively.
+    if (currentStartSource !== 'hotkey' && currentStartSource !== 'ui') return;
+
+    clearProcessingWatchdog();
+
+    let text = fixEncoding(event.data.text);
+    text = applyOutputPostProcessing(text);
+    const isFinal = event.data.isFinal !== false;
+
+    if (isFinal) {
+      const now = Date.now();
+      if (text === lastText && (now - lastTextTime < 2000)) return;
+      lastText = text; lastTextTime = now;
+
+      showNotification(text, "success");
+
+      const target = resolveInsertTarget();
+      const normalizedText = normalizeInsertText(target, text);
+      
+      if (currentInterimLength > 0) {
+        replaceInterimText(target, normalizedText);
+        currentInterimLength = 0;
+      } else {
+        insertIntoElement(target, normalizedText);
+      }
+
+      if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
+        sendEnterAfterInsertForTarget(target || document.activeElement);
+      }
+
+      // Wait to clear the lock until the microphone is totally stopped
+      if (!captureActive) {
+        clearLockedInsertionTarget();
+      }
+    } else if (text.trim()) {
+      showNotification(text, "processing");
+      const target = resolveInsertTarget();
+      const normalizedText = normalizeInsertText(target, text);
+      
+      if (currentInterimLength > 0) {
+        replaceInterimText(target, normalizedText);
+      } else {
+        insertIntoElement(target, normalizedText);
+        currentInterimLength = normalizedText.length;
+      }
+    }
+    return;
   }
   // content.js - inside the window.addEventListener("message", ...) block
   else if (event.data.type === 'WHISPER_STOP_RECORDING') {
@@ -1386,10 +1688,13 @@ function installDuolingoForeignObjectRemovalStopper() {
     }
   });
 
-  observer.observe(document.documentElement || document.body, {
-    childList: true,
-    subtree: true
-  });
+  const target = document.documentElement || document.body;
+  if (target) {
+    observer.observe(target, {
+      childList: true,
+      subtree: true
+    });
+  }
 }
 
 installDuolingoForeignObjectRemovalStopper();
@@ -1431,7 +1736,10 @@ async function startRecording(pageLanguage, sessionId) {
     const provider = getProviderFromSettings(settings, hostname);
     const assemblyEnabled = settings?.assemblyaiStreamingEnabled !== false;
 
-    if (provider === 'vosk') {
+    if (provider === 'google') {
+      streamingProvider = 'google';
+      streamingActive = true;
+    } else if (provider === 'vosk') {
       streamingProvider = 'vosk';
       streamingActive = true;
     } else if (provider === 'assemblyai' && assemblyEnabled) {
@@ -1442,7 +1750,7 @@ async function startRecording(pageLanguage, sessionId) {
       streamingActive = false;
     }
 
-    console.log('[Whisper] provider check', {
+    logIfDebug('[Whisper] provider check', {
       provider,
       streamingProvider,
       streamingActive,
@@ -1479,6 +1787,8 @@ async function startRecording(pageLanguage, sessionId) {
     lastStreamingPartialText = null; // NEW
     lastStreamingPartialSessionId = null; // NEW
     clearPendingStreamingFinal(); // NEW
+    
+    currentInterimLength = 0;
 
     globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     dbg('gum_ok', { sessionId });
@@ -1516,7 +1826,7 @@ async function startRecording(pageLanguage, sessionId) {
             sampleRate: STREAM_TARGET_SAMPLE_RATE
           });
         } else if (streamingProvider === 'vosk') {
-          console.log('[Whisper] sending VOSK_STREAM_START', { sessionId, host: location.hostname, language: pageLanguage });
+          logIfDebug('[Whisper] sending VOSK_STREAM_START', { sessionId, host: location.hostname, language: pageLanguage });
           browser.runtime.sendMessage({
             type: 'VOSK_STREAM_START',
             sessionId,
@@ -1578,6 +1888,43 @@ async function startRecording(pageLanguage, sessionId) {
         showNotification("Failed to start recording. Click again.", "error");
       }
     };
+
+    // Google provider bypasses MediaRecorder and AudioContext capturing in content.js
+    if (streamingProvider === 'google') {
+      started = true;
+      captureActive = true;
+      clearStartRecordingWatchdog();
+      showNotification("Listening (Google Cloud)...", "recording");
+      try {
+        browser.runtime.sendMessage({
+          type: 'RECORDING_START',
+          sessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
+      } catch (_) { }
+
+      // Stop the global stream we spun up just for permissions since the Google provider uses its own
+      if (globalStream) {
+        globalStream.getTracks().forEach(track => track.stop());
+        globalStream = null;
+      }
+      if (globalContext && globalContext.state !== 'closed') {
+        globalContext.close();
+      }
+
+      try {
+        window.postMessage({
+          type: 'WHISPER_START_RECORDING',
+          sessionId,
+          provider: 'google',
+          language: languageCode || 'auto',
+          startSource // 'hotkey' or 'click'
+        }, '*');
+      } catch (_) { }
+
+      return; // Stop execution here for the Google provider
+    }
 
     startRecordingWatchdog = setTimeout(() => {
       startRecordingWatchdog = null;
@@ -1802,13 +2149,32 @@ async function startRecording(pageLanguage, sessionId) {
   }
 }
 
-function stopRecording(cancel = false) {
+function stopRecording(abandonAudio = false) {
+  dbg('stopRecording', { captureActive, abandonAudio });
+
+  // If streaming google provider, it handles its own MediaRecorder
+  if (streamingProvider === 'google') {
+    captureActive = false;
+    try {
+      browser.runtime.sendMessage({
+        type: 'RECORDING_STOP',
+        sessionId: activeSessionId,
+        hostname: location.hostname,
+        canceled: abandonAudio,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) { }
+    return;
+  }
+
+  if (!globalRecorder) return;
+
   // 1. Kill the gatekeeper immediately
   streamingCaptureActive = false;
 
   clearSilenceTimer();
   clearStartRecordingWatchdog();
-  skipTranscribe = cancel;
+  skipTranscribe = abandonAudio;
 
   clearPendingStreamingFinal();
   lastStreamingPartialText = null;
@@ -1836,6 +2202,15 @@ let lastText = "";
 
 browser.runtime.onMessage.addListener((message) => {
   if (!IS_TOP_FRAME) return;
+
+  // Relay full-duplex streaming results from background.js to page script
+  if (message.type === 'FULLDUPLEX_RESULT' ||
+    message.type === 'FULLDUPLEX_BATCH_DONE' ||
+    message.type === 'FULLDUPLEX_DONE' ||
+    message.type === 'FULLDUPLEX_ERROR') {
+    window.postMessage(message, '*');
+    return;
+  }
 
   if (message.type === 'WHISPER_RESULT_TO_PAGE_BRIDGE') {
     const sid = message.sessionId || activeSessionId || 0;
@@ -1888,7 +2263,13 @@ browser.runtime.onMessage.addListener((message) => {
         if (pageHandled) return;
 
         const normalizedText = normalizeInsertText(target, finalText);
-        insertIntoElement(target, normalizedText);
+        
+        if (currentInterimLength > 0) {
+          replaceInterimText(target, normalizedText);
+          currentInterimLength = 0;
+        } else {
+          insertIntoElement(target, normalizedText);
+        }
 
         if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
           sendEnterAfterInsertForTarget(target || document.activeElement);
@@ -1909,6 +2290,18 @@ browser.runtime.onMessage.addListener((message) => {
     }
 
     if (!isFinal) {
+      if (text.trim()) {
+        showNotification(text, "processing");
+        const target = resolveInsertTarget();
+        const normalizedText = normalizeInsertText(target, text);
+        
+        if (currentInterimLength > 0) {
+          replaceInterimText(target, normalizedText);
+        } else {
+          insertIntoElement(target, normalizedText);
+          currentInterimLength = normalizedText.length;
+        }
+      }
       window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text, isFinal: false, streaming: isStreaming }, "*");
       return;
     }

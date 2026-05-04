@@ -1,4 +1,5 @@
 (function () {
+  if (window.__googleProviderConfig) return; // Google provider uses its own polyfill engine
   console.log(" >>> GTranslate Polyfill: Initializing...");
 
   const isDocsOrSlides = /(^|\.)docs\.google\.com$|(^|\.)slides\.google\.com$/i.test(location.hostname);
