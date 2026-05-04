@@ -74,6 +74,7 @@
 | Whisper Small | Extension | Local | `Xenova/whisper-small` | Multilingual, higher quality (slower) |
 | Distil-Whisper Medium (EN) | Extension | Local | `Xenova/distil-whisper-medium.en` | English-only, distilled medium (larger/slower) |
 | AssemblyAI | Extension | Server | `AssemblyAI` *(API key required)* | Remote transcription; model managed by AssemblyAI |
+| Google Cloud Speech v1_old | Extension | Server | `Google Cloud Speech v1` | Remote transcription; model managed by Google |
 | Google Cloud Speech v1 | Extension & Userscript | Server | `Google Cloud Speech v1` | Remote transcription; model managed by Google |
 | Google Cloud Speech v2 | Extension & Userscript | Server | `Google Cloud Speech v2` | Remote transcription; model managed by Google |
 
