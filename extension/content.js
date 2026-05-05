@@ -1032,27 +1032,30 @@ function handleHotkeyTrigger(e) {
 }
 
 // hotkey start/stop (top frame)
-document.addEventListener('keydown', (e) => {
+window.addEventListener('keydown', (e) => {
   if (!IS_TOP_FRAME) return;
   if (!isHotkeyEvent(e)) return;
   handleHotkeyTrigger(e);
 }, true);
 
-// NEW: forward hotkey from Docs iframe -> top frame
-if (!IS_TOP_FRAME && isDocsHost()) {
-  document.addEventListener('keydown', (e) => {
+// NEW: forward hotkey from ANY iframe -> top frame
+if (!IS_TOP_FRAME) {
+  window.addEventListener('keydown', (e) => {
     if (!isHotkeyEvent(e)) return;
     e.preventDefault();
-    window.top.postMessage({ type: 'WHISPER_DOCS_HOTKEY' }, "*");
+    e.stopPropagation();
+    try {
+      window.top.postMessage({ type: 'WHISPER_FORWARDED_HOTKEY' }, "*");
+    } catch (_) { }
   }, true);
 }
 
 // NEW: receive forwarded hotkey in top frame
 if (IS_TOP_FRAME) {
   window.addEventListener('message', (e) => {
-    if (e?.data?.type !== 'WHISPER_DOCS_HOTKEY') return;
-    if (!isDocsHost()) return;
-    handleHotkeyTrigger();
+    if (e?.data?.type === 'WHISPER_DOCS_HOTKEY' || e?.data?.type === 'WHISPER_FORWARDED_HOTKEY') {
+      handleHotkeyTrigger();
+    }
   });
 }
 
@@ -1426,6 +1429,17 @@ window.addEventListener("message", async (event) => {
     return;
   }
 
+  // --- WebChannel Proxy Relay (v1/v2 CSP bypass) ---
+  // Relay webchannel.js fetch requests from page to background script
+  if (event.data.type === 'WEBCHANNEL_FETCH' || event.data.type === 'WEBCHANNEL_ABORT') {
+    try {
+      browser.runtime.sendMessage(event.data);
+    } catch (err) {
+      dbg('webchannel_proxy_relay_error', { type: event.data.type, error: err.message });
+    }
+    return;
+  }
+
   // --- Google Provider UI State Sync ---
   if (event.data.type === 'GOOGLE_PROVIDER_UI_START') {
     captureActive = true;
@@ -1438,7 +1452,7 @@ window.addEventListener("message", async (event) => {
         hostname: location.hostname,
         pageInstanceId: PAGE_INSTANCE_ID
       });
-    } catch (_) {}
+    } catch (_) { }
     return;
   }
 
@@ -1452,7 +1466,21 @@ window.addEventListener("message", async (event) => {
         canceled: false,
         pageInstanceId: PAGE_INSTANCE_ID
       });
-    } catch (_) {}
+    } catch (_) { }
+    return;
+  }
+
+  if (event.data.type === 'GOOGLE_PROVIDER_UI_ERROR') {
+    captureActive = false;
+    showNotification(event.data.error, "error");
+    try {
+      browser.runtime.sendMessage({
+        type: 'EXTENSION_ERROR_BADGE',
+        sessionId: activeSessionId || 0,
+        hostname: location.hostname,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) { }
     return;
   }
 
@@ -2253,6 +2281,16 @@ browser.runtime.onMessage.addListener((message) => {
     message.type === 'FULLDUPLEX_BATCH_DONE' ||
     message.type === 'FULLDUPLEX_DONE' ||
     message.type === 'FULLDUPLEX_ERROR') {
+    window.postMessage(message, '*');
+    return;
+  }
+
+  // Relay WebChannel proxy responses from background.js to page script
+  if (message.type === 'WEBCHANNEL_FETCH_RESPONSE' ||
+    message.type === 'WEBCHANNEL_STREAM_START' ||
+    message.type === 'WEBCHANNEL_STREAM_CHUNK' ||
+    message.type === 'WEBCHANNEL_STREAM_END' ||
+    message.type === 'WEBCHANNEL_STREAM_ERROR') {
     window.postMessage(message, '*');
     return;
   }

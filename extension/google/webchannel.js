@@ -106,6 +106,124 @@
             credentials: "omit",
             referrer: API_ENDPOINTS[currentEndpointIndex].referrer
         });
+
+        // =========================================================================
+        // Proxy fetch infrastructure — routes fetch() through background script
+        // to bypass strict page Content-Security-Policy connect-src rules.
+        // =========================================================================
+        let _proxyReqCounter = 0;
+        const _proxyPending = new Map();
+
+        window.addEventListener('message', (ev) => {
+            if (!ev.data || !ev.data._wcProxyId) return;
+            const id = ev.data._wcProxyId;
+            const entry = _proxyPending.get(id);
+            if (!entry) return;
+
+            if (ev.data.type === 'WEBCHANNEL_FETCH_RESPONSE') {
+                _proxyPending.delete(id);
+                if (ev.data.error && ev.data.name === 'AbortError') {
+                    entry.reject(new DOMException('Aborted', 'AbortError'));
+                } else {
+                    entry.resolve({
+                        ok: ev.data.ok,
+                        status: ev.data.status,
+                        headers: { get: (name) => (ev.data.headers || {})[name.toLowerCase()] || null },
+                        text: () => Promise.resolve(ev.data.body || '')
+                    });
+                }
+            } else if (ev.data.type === 'WEBCHANNEL_STREAM_START') {
+                entry.streamStarted = true;
+                entry.resolve({
+                    ok: ev.data.ok,
+                    status: ev.data.status,
+                    headers: { get: (name) => (ev.data.headers || {})[name.toLowerCase()] || null },
+                    body: entry.body
+                });
+            } else if (ev.data.type === 'WEBCHANNEL_STREAM_CHUNK') {
+                if (entry.controller) {
+                    try { entry.controller.enqueue(new Uint8Array(ev.data.chunk)); } catch { }
+                }
+            } else if (ev.data.type === 'WEBCHANNEL_STREAM_END') {
+                _proxyPending.delete(id);
+                if (entry.controller) {
+                    try { entry.controller.close(); } catch { }
+                }
+            } else if (ev.data.type === 'WEBCHANNEL_STREAM_ERROR') {
+                _proxyPending.delete(id);
+                const err = ev.data.name === 'AbortError'
+                    ? new DOMException('Aborted', 'AbortError')
+                    : new Error(ev.data.error || 'Proxy stream error');
+                if (entry.streamStarted && entry.controller) {
+                    try { entry.controller.error(err); } catch { }
+                } else {
+                    entry.reject(err);
+                }
+            }
+        });
+
+        function _proxyFetch(url, options = {}) {
+            const id = ++_proxyReqCounter;
+            return new Promise((resolve, reject) => {
+                if (options.signal?.aborted) {
+                    reject(new DOMException('Aborted', 'AbortError'));
+                    return;
+                }
+                _proxyPending.set(id, { resolve, reject });
+                if (options.signal) {
+                    options.signal.addEventListener('abort', () => {
+                        if (_proxyPending.has(id)) {
+                            _proxyPending.delete(id);
+                            reject(new DOMException('Aborted', 'AbortError'));
+                            window.postMessage({ type: 'WEBCHANNEL_ABORT', _wcProxyId: id }, '*');
+                        }
+                    }, { once: true });
+                }
+                window.postMessage({
+                    type: 'WEBCHANNEL_FETCH', _wcProxyId: id,
+                    url, method: options.method || 'GET',
+                    headers: options.headers || {},
+                    body: options.body || null,
+                    referrer: options.referrer || null,
+                    stream: false
+                }, '*');
+            });
+        }
+
+        function _proxyFetchStream(url, options = {}) {
+            const id = ++_proxyReqCounter;
+            let streamController;
+            const body = new ReadableStream({
+                start(controller) { streamController = controller; }
+            });
+            return new Promise((resolve, reject) => {
+                _proxyPending.set(id, {
+                    resolve, reject,
+                    controller: streamController,
+                    body, streamStarted: false
+                });
+                window.postMessage({
+                    type: 'WEBCHANNEL_FETCH', _wcProxyId: id,
+                    url, method: options.method || 'GET',
+                    headers: options.headers || {},
+                    body: options.body || null,
+                    referrer: options.referrer || null,
+                    stream: true
+                }, '*');
+            });
+        }
+
+        function _proxyAbort(id) {
+            window.postMessage({ type: 'WEBCHANNEL_ABORT', _wcProxyId: id }, '*');
+            const entry = _proxyPending.get(id);
+            if (entry) {
+                _proxyPending.delete(id);
+                if (entry.controller) {
+                    try { entry.controller.error(new DOMException('Aborted', 'AbortError')); } catch { }
+                }
+            }
+        }
+
         const getApiKey = () => API_KEYS[currentKeyIndex];
 
         let preSession = null;
@@ -217,23 +335,9 @@
         }
 
         function showPolyfillNotification(messageHtml) {
-            const container = document.createElement("div");
-            Object.assign(container.style, {
-                position: "fixed", top: "20px", right: "20px", zIndex: "999999",
-                background: "#fef2f2", color: "#991b1b", border: "1px solid #ef4444",
-                padding: "16px", borderRadius: "8px", boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-                fontFamily: "system-ui, -apple-system, sans-serif", fontSize: "14px",
-                maxWidth: "350px", display: "flex", flexDirection: "column", gap: "8px"
-            });
-            container.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                    <div>${messageHtml}</div>
-                    <button style="background: none; border: none; font-size: 18px; cursor: pointer; color: #991b1b; padding: 0; line-height: 1;">&times;</button>
-                </div>
-            `;
-            container.querySelector("button").onclick = () => container.remove();
-            document.body.appendChild(container);
-            setTimeout(() => container.remove(), 15000);
+            const plainText = messageHtml.replace(/<br\s*\/?>/gi, ' ').replace(/<\/?[^>]+(>|$)/g, "");
+            window.postMessage({ type: 'GOOGLE_PROVIDER_UI_ERROR', error: plainText }, '*');
+            if (DEV_MODE) console.error("[Google Provider Error]", plainText);
         }
 
         let apiKeyInvalidCount = 0;
@@ -261,11 +365,11 @@
                         : `${getBaseUrl()}?VER=8&RID=${ridCounter}&CVER=22&X-HTTP-Session-Id=gsessionid&%24httpHeaders=x-goog-api-key%3A${getApiKey()}%0D%0A&zx=${Date.now()}&t=1`;
 
                 try {
-                    const bindRes = await fetch(bindUrl, {
-                        ...getFetchOpts(),
+                    const bindRes = await _proxyFetch(bindUrl, {
                         method: "POST",
                         headers: getSessionHeaders(),
-                        body: "count=0"
+                        body: "count=0",
+                        referrer: getFetchOpts().referrer
                     });
 
                     if (bindRes.ok) {
@@ -1112,10 +1216,11 @@
                     this._lastMeaningfulFrameTs = Date.now();
                     this._noopFrameStreak = 0;
 
-                    fetch(backchannelUrl, {
-                        ...getFetchOpts(),
+                    this._backchannelProxyId = _proxyReqCounter + 1;
+                    _proxyFetchStream(backchannelUrl, {
                         method: "GET",
                         headers: { ...getHeaders(), "content-type": undefined },
+                        referrer: getFetchOpts().referrer,
                         signal: this._abortController.signal
                     })
                         .then(async (bcRes) => {
@@ -1151,7 +1256,7 @@
                             }
                         };
                         const configPayload = `count=1&ofs=0&req0___data__=${encodeURIComponent(JSON.stringify(assistConfig))}`;
-                        fetch(configUrl, { ...getFetchOpts(), method: "POST", headers: getHeaders(), body: configPayload });
+                        _proxyFetch(configUrl, { method: "POST", headers: getHeaders(), body: configPayload, referrer: getFetchOpts().referrer });
                     } else {
                         const configProto = buildStreamingConfigProto(this.lang, this.interimResults);
                         const configB64 = uint8ToBase64(configProto);
@@ -1163,7 +1268,7 @@
                         this._dbg("data headers", JSON.stringify(Object.keys(getHeaders())));
 
                         const configPayload = `count=1&ofs=0&req0___data__=${encodeURIComponent(configB64)}`;
-                        fetch(configUrl, { ...getFetchOpts(), method: "POST", headers: getHeaders(), body: configPayload });
+                        _proxyFetch(configUrl, { method: "POST", headers: getHeaders(), body: configPayload, referrer: getFetchOpts().referrer });
                     }
 
                     this._currentSid = sid;
@@ -1236,11 +1341,11 @@
                             : `count=1&ofs=${cOfs}&req0___data__=${encodeURIComponent(audioBase64)}`;
 
                         try {
-                            const res = await fetch(chunkUrl, {
-                                ...getFetchOpts(),
+                            const res = await _proxyFetch(chunkUrl, {
                                 method: "POST",
                                 headers: getHeaders(),
                                 body: chunkPayload,
+                                referrer: getFetchOpts().referrer,
                                 signal: this._abortController.signal
                             });
 
@@ -1293,6 +1398,7 @@
 
                 this._restartPromise = (async () => {
                     if (this._abortController) this._abortController.abort();
+                    if (this._backchannelProxyId) { _proxyAbort(this._backchannelProxyId); this._backchannelProxyId = null; }
                     this._abortController = new AbortController();
                     this._switchingSession = true;
 
@@ -1393,6 +1499,7 @@
                 }
 
                 if (this._abortController) this._abortController.abort();
+                if (this._backchannelProxyId) { _proxyAbort(this._backchannelProxyId); this._backchannelProxyId = null; }
                 if (!this.continuous && this._latestInterimTranscript) this._suppressEndOnce = true;
                 this._cleanup("stop() called");
             }
@@ -1402,6 +1509,7 @@
                 if (this._aborting || !this._sessionActive) return;
                 this._aborting = true;
                 if (this._abortController) this._abortController.abort();
+                if (this._backchannelProxyId) { _proxyAbort(this._backchannelProxyId); this._backchannelProxyId = null; }
                 this._cleanup("abort() called");
             }
 

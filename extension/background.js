@@ -1568,6 +1568,135 @@ async function cancelAllSessions(reason = 'config_changed') {
   trimVoskModelCache({ forceIdle: true });
 }
 
+// --- WebChannel Proxy (v1/v2 CSP bypass) ---
+// Routes webchannel.js fetch() calls through the background script so they
+// are not blocked by strict page Content-Security-Policy connect-src rules.
+
+const _wcProxyControllers = new Map(); // requestId -> AbortController
+
+browser.runtime.onMessage.addListener((message, sender) => {
+  const tabId = sender?.tab?.id;
+  const frameId = sender?.frameId;
+  if (tabId == null) return;
+
+  if (message?.type === 'WEBCHANNEL_ABORT') {
+    const ac = _wcProxyControllers.get(message._wcProxyId);
+    if (ac) {
+      ac.abort();
+      _wcProxyControllers.delete(message._wcProxyId);
+    }
+    return;
+  }
+
+  if (message?.type === 'EXTENSION_ERROR_BADGE') {
+    setTabErrorHold(tabId, ERROR_HOLD_MS).catch(() => { });
+    return;
+  }
+
+  if (message?.type !== 'WEBCHANNEL_FETCH') return;
+
+  const { _wcProxyId, url, method, headers, body, referrer, stream } = message;
+
+  const ac = new AbortController();
+  _wcProxyControllers.set(_wcProxyId, ac);
+
+  // Build clean headers, injecting Referer from the page's referrer config
+  const cleanHeaders = {};
+  for (const [k, v] of Object.entries(headers || {})) {
+    if (v !== undefined && v !== null) cleanHeaders[k] = v;
+  }
+  if (referrer) cleanHeaders['Referer'] = referrer;
+
+  const fetchOpts = {
+    method: method || 'GET',
+    headers: cleanHeaders,
+    signal: ac.signal
+  };
+  if (body && method !== 'GET') fetchOpts.body = body;
+
+  if (stream) {
+    // Streaming response (backchannel GET)
+    fetch(url, fetchOpts)
+      .then(async (res) => {
+        const rh = {};
+        res.headers.forEach((v, k) => { rh[k] = v; });
+
+        try {
+          browser.tabs.sendMessage(tabId, {
+            type: 'WEBCHANNEL_STREAM_START', _wcProxyId,
+            ok: res.ok, status: res.status, headers: rh
+          }, { frameId });
+        } catch (_) { }
+
+        if (!res.ok || !res.body) {
+          _wcProxyControllers.delete(_wcProxyId);
+          try {
+            browser.tabs.sendMessage(tabId, {
+              type: 'WEBCHANNEL_STREAM_END', _wcProxyId
+            }, { frameId });
+          } catch (_) { }
+          return;
+        }
+
+        const reader = res.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          try {
+            browser.tabs.sendMessage(tabId, {
+              type: 'WEBCHANNEL_STREAM_CHUNK', _wcProxyId,
+              chunk: Array.from(value)
+            }, { frameId });
+          } catch (_) { break; }
+        }
+
+        _wcProxyControllers.delete(_wcProxyId);
+        try {
+          browser.tabs.sendMessage(tabId, {
+            type: 'WEBCHANNEL_STREAM_END', _wcProxyId
+          }, { frameId });
+        } catch (_) { }
+      })
+      .catch((err) => {
+        _wcProxyControllers.delete(_wcProxyId);
+        try {
+          browser.tabs.sendMessage(tabId, {
+            type: 'WEBCHANNEL_STREAM_ERROR', _wcProxyId,
+            error: err.message, name: err.name
+          }, { frameId });
+        } catch (_) { }
+      });
+  } else {
+    // Non-streaming response (session bind, config POST, chunk POST)
+    fetch(url, fetchOpts)
+      .then(async (res) => {
+        const rh = {};
+        res.headers.forEach((v, k) => { rh[k] = v; });
+        const bodyText = await res.text();
+
+        _wcProxyControllers.delete(_wcProxyId);
+        try {
+          browser.tabs.sendMessage(tabId, {
+            type: 'WEBCHANNEL_FETCH_RESPONSE', _wcProxyId,
+            ok: res.ok, status: res.status, headers: rh, body: bodyText
+          }, { frameId });
+        } catch (_) { }
+      })
+      .catch((err) => {
+        _wcProxyControllers.delete(_wcProxyId);
+        try {
+          browser.tabs.sendMessage(tabId, {
+            type: 'WEBCHANNEL_FETCH_RESPONSE', _wcProxyId,
+            ok: false, status: 0, headers: {}, body: '',
+            error: err.message, name: err.name
+          }, { frameId });
+        } catch (_) { }
+      });
+  }
+
+  return false;
+});
+
 // --- Full-Duplex Continuous Streaming (v1_old) ---
 // Uses fetch() with ReadableStream (duplex: 'half') to stream audio natively
 // without batches, cuts, or overlap deduplication.
