@@ -4,6 +4,9 @@
 ![Firefox Extension Users](https://img.shields.io/amo/users/speech-recognition-polyfill?style=for-the-badge&label=USERS)
 ![Firefox Extension Version](https://img.shields.io/amo/v/speech-recognition-polyfill?style=for-the-badge&label=VERSION)
 
+<img width="700" height="400" alt="fx" src="https://github.com/user-attachments/assets/1d0ac78e-c617-4d00-9ccb-80051e14b861" />
+<br>
+
 > A Web Speech API polyfill that swaps `webkitSpeechRecognition` for Whisper, Vosk, AssemblyAI, or Google's transcription models.
 >
 > *All **local** AI Models used are free and don't require any major configuration.*
