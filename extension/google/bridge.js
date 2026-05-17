@@ -18,6 +18,20 @@
     if (window.__googleProviderBridgeInstalled) return;
     window.__googleProviderBridgeInstalled = true;
 
+    // Bootstrap config from data attribute. On strict-CSP sites (e.g. TikTok),
+    // bridge.js loads asynchronously via fallback <script src> and may miss the
+    // WHISPER_UPDATE_GOOGLE_CONFIG postMessage that content.js fires synchronously
+    // right after injection. The data attribute is set before injection, so it's
+    // always available.
+    if (!window.__googleProviderConfig) {
+        try {
+            const attrConfig = JSON.parse(document.documentElement.getAttribute('data-gp-config') || '{}');
+            if (attrConfig && attrConfig.provider) {
+                window.__googleProviderConfig = attrConfig;
+            }
+        } catch (_) {}
+    }
+
     let __googleProviderActiveSessionId = null;
     let __googleProviderInstance = null;
 

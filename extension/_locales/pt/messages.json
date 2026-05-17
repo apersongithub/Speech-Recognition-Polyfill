@@ -3,7 +3,7 @@
     "message": "Polyfill de Reconhecimento de Fala"
   },
   "ext_desc": {
-    "message": "Polyfill de reconhecimento de fala com Whisper e Vosk locais, e transcrição em nuvem opcional (AssemblyAI)."
+    "message": "Polyfill de reconhecimento de fala com Whisper e Vosk locais, e transcrição em nuvem opcional (AssemblyAI, Google)."
   },
   "browser_action_title": {
     "message": "Reconhecimento de Fala"
@@ -21,7 +21,7 @@
     "message": "Motor"
   },
   "engine_note": {
-    "message": "Whisper e Vosk rodam localmente; AssemblyAI envia áudio para a nuvem (requer chave de API)."
+    "message": "Whisper e Vosk rodam localmente; Google e AssemblyAI enviam áudio para a nuvem."
   },
   "engine_label": {
     "message": "Provedor"
@@ -573,7 +573,7 @@
     "message": "Tempo limite de silêncio (ms)"
   },
   "streaming_applies_note": {
-    "message": "Aplica-se a provedores de streaming (Vosk + AssemblyAI)."
+    "message": "Aplica-se a provedores de streaming (Vosk, Google, AssemblyAI)."
   },
   "streaming_silence_timeout": {
     "message": "Tempo limite de silêncio de streaming"

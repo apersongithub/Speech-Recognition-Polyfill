@@ -2,20 +2,7 @@
   if (window.__googleProviderConfig) return; // Google provider uses its own polyfill engine
   console.log(" >>> GTranslate Polyfill: Initializing...");
 
-  const isDocsOrSlides = /(^|\.)docs\.google\.com$|(^|\.)slides\.google\.com$/i.test(location.hostname);
 
-  try {
-    if (!isDocsOrSlides) {
-      const CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-      Object.defineProperty(navigator, 'userAgent', { get: () => CHROME_UA });
-      Object.defineProperty(navigator, 'vendor', { get: () => "Google Inc." });
-      if (!navigator.userAgentData) {
-        Object.defineProperty(navigator, 'userAgentData', {
-          get: () => ({ brands: [{ brand: "Chromium", version: "120" }], mobile: false, platform: "Windows" })
-        });
-      }
-    }
-  } catch (e) { }
 
   if (window.webkitSpeechRecognition) return;
 

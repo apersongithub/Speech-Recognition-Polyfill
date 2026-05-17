@@ -1094,7 +1094,11 @@
 
                             // The v1 and v1_old backends accept raw 16-bit PCM Audio generated via the ScriptProcessor
                             if (ACTIVE_BACKEND.name === "v1" || ACTIVE_BACKEND.name === "v1_old") {
-                                if (this._aborting || this._cleanupCalled || this._switchingSession || this._bcDone) return;
+                                // Note: we intentionally do NOT block on _switchingSession here.
+                                // During a restart, _currentSid is null so _enqueueChunk() routes
+                                // chunks to preSessionBuffer instead of the (dead) sendQueue.
+                                // This eliminates the audio dropout window during session switches.
+                                if (this._aborting || this._cleanupCalled || this._bcDone) return;
 
                                 // Keep sending a short tail of silence so the server can correctly endpoint/finalize
                                 // ~8192 samples per frame; at 48kHz that's ~170ms/frame (~2 seconds max tail = 12 frames)
@@ -1397,6 +1401,19 @@
                 });
 
                 this._restartPromise = (async () => {
+                    // Pre-warm the next session BEFORE tearing down the old one.
+                    // This overlaps the network RTT with the old session's final moments,
+                    // minimizing the gap where no session exists to receive audio.
+                    preSession = null;
+                    preSessionPromise = null;
+                    let nextSession;
+                    try {
+                        nextSession = await createSession();
+                    } catch (err) {
+                        this._dbg("pre-warm session failed, proceeding with teardown", err.message);
+                        nextSession = null;
+                    }
+
                     if (this._abortController) this._abortController.abort();
                     if (this._backchannelProxyId) { _proxyAbort(this._backchannelProxyId); this._backchannelProxyId = null; }
                     this._abortController = new AbortController();
@@ -1442,22 +1459,31 @@
                             this._preSessionBuffer.unshift(uint8ToBase64(headerProto));
                         }
                     } else {
-                        this._preSessionBuffer.push(...carryOver);
+                        // Cap carry-over to the most recent ~2 seconds of audio.
+                        // At 8192 samples / ~48kHz ≈ 170ms per chunk, 12 chunks ≈ 2s.
+                        // This prevents flooding the new session with a burst of stale
+                        // audio that could cause recognition artifacts or lag.
+                        const MAX_CARRY_CHUNKS = 12;
+                        const trimmed = carryOver.length > MAX_CARRY_CHUNKS
+                            ? carryOver.slice(-MAX_CARRY_CHUNKS)
+                            : carryOver;
+                        this._preSessionBuffer.push(...trimmed);
                     }
 
                     this._dbg("queued carry-over for restart", {
                         backend: ACTIVE_BACKEND.name,
                         carriedChunks: carryOver.length,
+                        trimmedTo: this._preSessionBuffer.length,
                         totalBuffered: this._preSessionBuffer.length
                     });
 
                     try {
-                        preSession = null;
-                        preSessionPromise = null;
-                        const session = await createSession();
-                        if (!session) throw new Error("Failed to create session");
+                        if (!nextSession) {
+                            nextSession = await createSession();
+                        }
+                        if (!nextSession) throw new Error("Failed to create session");
 
-                        await this._setupSession(session);
+                        await this._setupSession(nextSession);
 
                         this._lastMeaningfulFrameTs = Date.now();
                         this._noopFrameStreak = 0;

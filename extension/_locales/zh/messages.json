@@ -3,7 +3,7 @@
     "message": "语音识别 Polyfill"
   },
   "ext_desc": {
-    "message": "语音识别 polyfill，支持本地 Whisper、Vosk，以及可选的云端转录（AssemblyAI）。"
+    "message": "语音识别 polyfill，支持本地 Whisper、Vosk，以及可选的云端转录（AssemblyAI、Google）。"
   },
   "browser_action_title": {
     "message": "语音识别"
@@ -21,7 +21,7 @@
     "message": "引擎"
   },
   "engine_note": {
-    "message": "Whisper 和 Vosk 在本地运行；AssemblyAI 会将音频发送到云端（需要 API 密钥）。"
+    "message": "Whisper 和 Vosk 在本地运行；Google 和 AssemblyAI 会将音频发送到云端。"
   },
   "engine_label": {
     "message": "提供者"
@@ -573,7 +573,7 @@
     "message": "静默超时 (ms)"
   },
   "streaming_applies_note": {
-    "message": "适用于流式提供者 (Vosk + AssemblyAI)。"
+    "message": "适用于流式提供者 (Vosk、Google、AssemblyAI)。"
   },
   "streaming_silence_timeout": {
     "message": "流式静默超时"

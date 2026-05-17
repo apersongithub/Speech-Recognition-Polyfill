@@ -3,7 +3,7 @@
     "message": "Polyfill распознавания речи"
   },
   "ext_desc": {
-    "message": "Polyfill распознавания речи с локальными Whisper и Vosk, а также опциональной облачной транскрипцией (AssemblyAI)."
+    "message": "Polyfill распознавания речи с локальными Whisper и Vosk, а также опциональной облачной транскрипцией (AssemblyAI, Google)."
   },
   "browser_action_title": {
     "message": "Распознавание речи"
@@ -21,7 +21,7 @@
     "message": "Движок"
   },
   "engine_note": {
-    "message": "Whisper и Vosk работают локально; AssemblyAI отправляет аудио в облако (требуется API-ключ)."
+    "message": "Whisper и Vosk работают локально; Google и AssemblyAI отправляют аудио в облако."
   },
   "engine_label": {
     "message": "Поставщик"
@@ -573,7 +573,7 @@
     "message": "Таймаут молчания (мс)"
   },
   "streaming_applies_note": {
-    "message": "Применимо к стрим-провайдерам (Vosk + AssemblyAI)."
+    "message": "Применимо к стрим-провайдерам (Vosk, Google, AssemblyAI)."
   },
   "streaming_silence_timeout": {
     "message": "Таймаут молчания для стрима"

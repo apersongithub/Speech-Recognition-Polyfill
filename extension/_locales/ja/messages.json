@@ -3,7 +3,7 @@
     "message": "Speech Recognition Polyfill"
   },
   "ext_desc": {
-    "message": "ローカルの Whisper、Vosk とオプションのクラウド文字起こし（AssemblyAI）を備えた音声認識ポリフィル。"
+    "message": "ローカルの Whisper、Vosk とオプションのクラウド文字起こし（AssemblyAI、Google）を備えた音声認識ポリフィル。"
   },
   "browser_action_title": {
     "message": "音声認識"
@@ -21,7 +21,7 @@
     "message": "エンジン"
   },
   "engine_note": {
-    "message": "Whisper と Vosk はローカルで動作します。AssemblyAI は音声をクラウドに送信します（APIキーが必要）。"
+    "message": "Whisper と Vosk はローカルで動作します。Google と AssemblyAI は音声をクラウドに送信します。"
   },
   "engine_label": {
     "message": "プロバイダ"
@@ -573,7 +573,7 @@
     "message": "無音タイムアウト（ms）"
   },
   "streaming_applies_note": {
-    "message": "ストリーミングプロバイダ（Vosk + AssemblyAI）に適用されます。"
+    "message": "ストリーミングプロバイダ（Vosk、Google、AssemblyAI）に適用されます。"
   },
   "streaming_silence_timeout": {
     "message": "ストリーミング無音タイムアウト"

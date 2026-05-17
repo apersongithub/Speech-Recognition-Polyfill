@@ -114,7 +114,6 @@ let disableSpaceNormalization = false;
 // google provider runtime cache
 let googleServerMode = 'v1';
 let googleProviderConfigured = false;
-let uaSpoofEnabled = true;
 
 // NEW: disable processing timeouts
 let disableProcessingTimeouts = false;
@@ -793,8 +792,6 @@ async function resolveEffectiveSettings() {
       googleServerMode = site.googleServerMode;
     }
 
-    uaSpoofEnabled = typeof defaults?.uaSpoofEnabled === 'boolean' ? defaults.uaSpoofEnabled : true;
-
     const provider = getProviderFromSettings(settings, hostname);
 
     if (provider === 'assemblyai') {
@@ -860,7 +857,6 @@ async function resolveEffectiveSettings() {
     disableSpaceNormalization = false;
     disableProcessingTimeouts = false;
     googleServerMode = 'v1';
-    uaSpoofEnabled = true;
   }
 
   pushPageConfig();
@@ -893,7 +889,6 @@ async function resolveEffectiveSettings() {
       injectGoogleProviderSync({
         serverMode: googleServerMode,
         debugMode: debugLogsEnabled,
-        uaSpoofEnabled: uaSpoofEnabled, // Extension context default
         disableSpaceNormalization: disableSpaceNormalization,
         micGainMultiplier: micGain,
         micIdleTimeoutMs: 5000,
@@ -1116,9 +1111,9 @@ function injectGoogleProviderSync(configObj) {
     const isV1Old = configObj.serverMode === 'v1_old';
 
     // Build the injection chain based on server mode
-    // v1/v2: ua-spoof → protobuf → webchannel → bridge
-    // v1_old: ua-spoof → fullduplex → bridge
-    const scripts = ['google/ua-spoof.js'];
+    // v1/v2: protobuf → webchannel → bridge
+    // v1_old: fullduplex → bridge
+    const scripts = [];
     if (isV1Old) {
       scripts.push('google/fullduplex.js');
     } else {
@@ -1156,7 +1151,8 @@ function injectGoogleProviderSync(configObj) {
             console.warn(`[Whisper] Inline injection of ${src} was blocked by CSP. Falling back to async src.`);
             const fallback = document.createElement('script');
             fallback.src = url;
-            (document.head || document.documentElement).prepend(fallback);
+            fallback.async = false;
+            (document.head || document.documentElement).appendChild(fallback);
           }
         } else {
           console.error(`[Whisper] Failed to load ${src}: HTTP ${xhr.status}`);
