@@ -307,6 +307,8 @@ async function ensureVoskModelIndex() {
             }
         } catch (e) {
             console.warn('[Options] Failed to load Vosk model list', e);
+            const errBanner = document.getElementById('vosk-error-banner');
+            if (errBanner) errBanner.style.display = 'block';
         }
         return false;
     })();
