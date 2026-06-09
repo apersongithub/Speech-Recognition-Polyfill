@@ -217,8 +217,13 @@
             </div>
             <div class="note" data-i18n="parakeet_note">Nvidia Parakeet ONNX models running directly in your browser.</div>
 
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="parakeet-prewarm" />
+                <label for="parakeet-prewarm" class="checkbox-label" data-i18n="parakeet_prewarm_label">Enable Nvidia Parakeet prewarm</label>
+            </div>
+            <div class="note" data-i18n="parakeet_prewarm_note">Preloads the selected Parakeet model and runs one idle warmup inference. Uses more memory/GPU time, and only runs when no Parakeet stream is active.</div>
 
-            <label data-i18n="parakeet_model_version_label">Model Version</label>
+            <label style="margin-top:8px;" data-i18n="parakeet_model_version_label">Model Version</label>
             <select id="parakeet-model-version">
                 <option value="parakeet-tdt-0.6b-v3" selected data-i18n="parakeet_model_v3">Parakeet TDT 0.6b v3 (Multilingual, default)</option>
                 <option value="parakeet-tdt-0.6b-v2" data-i18n="parakeet_model_v2">Parakeet TDT 0.6b v2 (English only)</option>
@@ -293,11 +298,6 @@
             </div>
             <div class="note" data-i18n="parakeet_streaming_note">Parakeet streaming is enabled by default. Disable it to transcribe only after recording stops.</div>
 
-            <div class="checkbox-wrapper" style="margin-top:8px;">
-                <input type="checkbox" id="parakeet-prewarm" />
-                <label for="parakeet-prewarm" class="checkbox-label" data-i18n="parakeet_prewarm_label">Enable Nvidia Parakeet prewarm</label>
-            </div>
-            <div class="note" data-i18n="parakeet_prewarm_note">Preloads the selected Parakeet model and runs one idle warmup inference. Uses more memory/GPU time, and only runs when no Parakeet stream is active.</div>
 
             <div class="status" id="status-parakeet" data-i18n="status_saved">Saved</div>
         </div>
