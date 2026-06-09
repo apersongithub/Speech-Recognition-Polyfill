@@ -8,7 +8,7 @@ const ALLOWED_MODELS = new Set([
   'Xenova/distil-whisper-medium.en'
 ]);
 
-const ALLOWED_PROVIDERS = new Set(['local-whisper', 'assemblyai', 'vosk', 'google']);
+const ALLOWED_PROVIDERS = new Set(['local-whisper', 'assemblyai', 'vosk', 'google', 'nvidia-parakeet']);
 const VOSK_MODEL_INDEX_URL = 'https://alphacephei.com/vosk/models/model-list.json';
 
 let voskModelIndex = new Map();
@@ -272,12 +272,13 @@ function applyPopupVisibility(provider, hideToggle) {
   const showVosk = provider === 'vosk';
   const showGoogle = provider === 'google';
   const showWhisper = provider === 'local-whisper';
+  const showParakeet = provider === 'nvidia-parakeet';
 
   if (!hideToggle) {
     modelSection.style.display = '';
     modelHeader.style.display = '';
-  } else if (provider === 'assemblyai') {
-    // AssemblyAI doesn't use local models
+  } else if (provider === 'assemblyai' || showParakeet) {
+    // AssemblyAI and Nvidia Parakeet don't use local model selectors
     modelSection.style.display = 'none';
     modelHeader.style.display = 'none';
   } else {
@@ -318,6 +319,8 @@ async function saveOverride(autoText) {
   } else if (provider === 'assemblyai') {
     model = null;
   } else if (provider === 'google') {
+    model = null;
+  } else if (provider === 'nvidia-parakeet') {
     model = null;
   } else {
     // If "Use Default" is selected, try to infer from what is typed/selected

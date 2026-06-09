@@ -1,4 +1,9 @@
 // options.js
+import {
+    applyParakeetConfig,
+    normalizeParakeetConfig,
+    readParakeetConfig
+} from './parakeet-config.js';
 const ALLOWED_MODELS = [
     'Xenova/whisper-tiny.en',
     'Xenova/whisper-tiny',
@@ -10,7 +15,7 @@ const ALLOWED_MODELS = [
 ];
 
 const DEFAULT_VOSK_MODEL = 'vosk-model-small-en-us-0.15';
-const ALLOWED_PROVIDERS = new Set(['local-whisper', 'vosk', 'assemblyai', 'google']);
+const ALLOWED_PROVIDERS = new Set(['local-whisper', 'vosk', 'assemblyai', 'google', 'nvidia-parakeet']);
 
 const VOSK_MODEL_INDEX_URL = 'https://alphacephei.com/vosk/models/model-list.json';
 
@@ -99,16 +104,59 @@ document.getElementById('disable-grace-window')?.addEventListener('change', () =
 document.getElementById('cache-default-model')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['engine']); });
 document.getElementById('language-input')?.addEventListener('change', () => { if (!isRestoring) saveDefaults(['engine']); });
 document.getElementById('strip-trailing-period')?.addEventListener('change', () => {
-    if (!isRestoring) saveDefaults(['speech-triggers']);
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+document.getElementById('disable-space-normalization')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-logic']);
+});
+document.getElementById('finalize-text-cleanup')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['speech-logic']);
 });
 document.getElementById('assemblyai-streaming')?.addEventListener('change', () => {
-    if (!isRestoring) saveDefaults(['speech-logic']);
+    if (!isRestoring) saveDefaults(['cloud']);
 });
 document.getElementById('assemblyai-streaming-multilingual')?.addEventListener('change', () => {
-    if (!isRestoring) saveDefaults(['speech-logic']);
+    if (!isRestoring) saveDefaults(['cloud']);
+});
+document.getElementById('parakeet-streaming')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-prewarm')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
 });
 document.getElementById('google-server-mode')?.addEventListener('change', () => {
     if (!isRestoring) saveDefaults(['engine']);
+});
+
+document.getElementById('parakeet-model-version')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-backend-mode')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-encoder-quant')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-decoder-quant')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-inference-interval')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-silence-flush')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-vad-threshold')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-ten-vad-threshold')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-frame-stride')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
+});
+document.getElementById('parakeet-wasm-threads')?.addEventListener('change', () => {
+    if (!isRestoring) saveDefaults(['parakeet']);
 });
 
 document.getElementById('assemblyai-streaming-silence-always')?.addEventListener('change', (e) => {
@@ -637,36 +685,48 @@ function applyVisibility() {
     const cardLocal = document.getElementById('card-local');
     const cardCloud = document.getElementById('card-cloud');
     const cardVosk = document.getElementById('card-vosk');
-    const cardGoogle = document.getElementById('card-google'); // Added
-    if (!cardLocal || !cardCloud || !cardVosk || !cardGoogle) return; // Updated
+    const cardGoogle = document.getElementById('card-google');
+    const cardParakeet = document.getElementById('card-parakeet'); // Added
+    if (!cardLocal || !cardCloud || !cardVosk || !cardGoogle || !cardParakeet) return; // Updated
 
     if (!hideModelSections) {
         cardLocal.style.display = '';
         cardCloud.style.display = '';
         cardVosk.style.display = '';
-        cardGoogle.style.display = ''; // Added
+        cardGoogle.style.display = '';
+        cardParakeet.style.display = ''; // Added
         return;
     }
     if (provider === 'assemblyai') {
         cardLocal.style.display = 'none';
         cardVosk.style.display = 'none';
-        cardGoogle.style.display = 'none'; // Added
+        cardGoogle.style.display = 'none';
+        cardParakeet.style.display = 'none';
         cardCloud.style.display = '';
     } else if (provider === 'vosk') {
         cardLocal.style.display = 'none';
         cardCloud.style.display = 'none';
-        cardGoogle.style.display = 'none'; // Added
+        cardGoogle.style.display = 'none';
+        cardParakeet.style.display = 'none';
         cardVosk.style.display = '';
-    } else if (provider === 'google') { // Added
+    } else if (provider === 'google') {
         cardLocal.style.display = 'none';
         cardCloud.style.display = 'none';
         cardVosk.style.display = 'none';
+        cardParakeet.style.display = 'none';
         cardGoogle.style.display = '';
+    } else if (provider === 'nvidia-parakeet') {
+        cardLocal.style.display = 'none';
+        cardCloud.style.display = 'none';
+        cardVosk.style.display = 'none';
+        cardGoogle.style.display = 'none';
+        cardParakeet.style.display = '';
     } else {
         cardLocal.style.display = '';
         cardVosk.style.display = 'none';
         cardCloud.style.display = 'none';
-        cardGoogle.style.display = 'none'; // Added
+        cardGoogle.style.display = 'none';
+        cardParakeet.style.display = 'none';
     }
 }
 
@@ -823,10 +883,25 @@ async function saveDefaults(statusKeys = []) {
 
     const cacheDefaultModel = document.getElementById('cache-default-model')?.checked === true;
 
-    const stripTrailingPeriod = document.getElementById('strip-trailing-period')?.checked !== true;
+    const stripTrailingPeriod = document.getElementById('strip-trailing-period')?.checked === true;
     const disableSpaceNormalization = document.getElementById('disable-space-normalization')?.checked === true;
+    const finalizeTextCleanup = document.getElementById('finalize-text-cleanup')?.checked === true;
 
     const assemblyaiStreamingEnabled = document.getElementById('assemblyai-streaming')?.checked !== true;
+    const parakeetConfig = normalizeParakeetConfig({
+        streamingEnabled: document.getElementById('parakeet-streaming')?.checked !== true,
+        prewarmEnabled: document.getElementById('parakeet-prewarm')?.checked === true,
+        modelId: document.getElementById('parakeet-model-version')?.value || 'parakeet-tdt-0.6b-v3',
+        backendMode: document.getElementById('parakeet-backend-mode')?.value || 'webgpu-hybrid',
+        encoderQuant: document.getElementById('parakeet-encoder-quant')?.value || 'int8',
+        decoderQuant: document.getElementById('parakeet-decoder-quant')?.value || 'int8',
+        inferenceIntervalMs: document.getElementById('parakeet-inference-interval')?.value,
+        silenceFlushSec: document.getElementById('parakeet-silence-flush')?.value,
+        energyThreshold: document.getElementById('parakeet-vad-threshold')?.value,
+        tenVadThreshold: document.getElementById('parakeet-ten-vad-threshold')?.value,
+        frameStride: document.getElementById('parakeet-frame-stride')?.value,
+        wasmThreads: document.getElementById('parakeet-wasm-threads')?.value
+    });
     const assemblyaiStreamingMultilingualEnabled =
         document.getElementById('assemblyai-streaming-multilingual')?.checked !== true;
 
@@ -866,8 +941,9 @@ async function saveDefaults(statusKeys = []) {
         provider,
         micGain,
         silenceSensitivity,
-        googleServerMode // Added
+        googleServerMode
     };
+    applyParakeetConfig(settings, parakeetConfig);
 
     if (typeof settings.graceEnabled === 'undefined') settings.graceEnabled = true;
     if (typeof settings.graceMs === 'undefined') settings.graceMs = 450;
@@ -880,6 +956,7 @@ async function saveDefaults(statusKeys = []) {
     settings.cacheDefaultModel = cacheDefaultModel;
     settings.stripTrailingPeriod = stripTrailingPeriod;
     settings.disableSpaceNormalization = disableSpaceNormalization;
+    settings.finalizeTextCleanup = finalizeTextCleanup;
     settings.assemblyaiStreamingEnabled = assemblyaiStreamingEnabled;
     settings.assemblyaiStreamingMultilingualEnabled = assemblyaiStreamingMultilingualEnabled;
     settings.assemblyaiStreamingSilenceMode = assemblyaiStreamingSilenceMode;
@@ -947,7 +1024,7 @@ async function addOrUpdateOverride() {
     let provider = providerEl?.value || null;
     let model = null;
 
-    if (provider === 'google' || provider === 'assemblyai') {
+    if (provider === 'google' || provider === 'assemblyai' || provider === 'nvidia-parakeet') {
         model = null;
     } else if (provider === 'local-whisper') {
         model = modelEl?.value || null;
@@ -1045,7 +1122,7 @@ function applyOverrideVisibility(provider) {
         // Look up global default provider
         browser.storage.local.get('settings').then(({ settings }) => {
             const defaultProvider = settings?.defaults?.provider || 'local-whisper';
-            whisperContainer.style.display = defaultProvider === 'vosk' || defaultProvider === 'assemblyai' || defaultProvider === 'google' ? 'none' : '';
+            whisperContainer.style.display = defaultProvider === 'vosk' || defaultProvider === 'assemblyai' || defaultProvider === 'google' || defaultProvider === 'nvidia-parakeet' ? 'none' : '';
             voskContainer.style.display = defaultProvider === 'vosk' ? '' : 'none';
             googleContainer.style.display = defaultProvider === 'google' ? '' : 'none';
         });
@@ -1167,6 +1244,7 @@ function renderOverrides(overrides, showFavicons) {
         else if (cfg.provider === 'google') {
             providerDisplay = 'Google';
         }
+        else if (cfg.provider === 'nvidia-parakeet') providerDisplay = 'Parakeet';
         tr.appendChild(makeTd(providerDisplay));
 
         // Remove button
@@ -1288,6 +1366,38 @@ async function restoreOptions() {
     const googleServerModeEl = document.getElementById('google-server-mode'); // Added
     if (googleServerModeEl) googleServerModeEl.value = d.googleServerMode || 'v1'; // Added
 
+    const parakeetConfig = readParakeetConfig(settings);
+
+    const parakeetModelEl = document.getElementById('parakeet-model-version');
+    if (parakeetModelEl) parakeetModelEl.value = parakeetConfig.modelId;
+
+    const parakeetBackendModeEl = document.getElementById('parakeet-backend-mode');
+    if (parakeetBackendModeEl) parakeetBackendModeEl.value = parakeetConfig.backendMode;
+
+    const parakeetEncoderQuantEl = document.getElementById('parakeet-encoder-quant');
+    if (parakeetEncoderQuantEl) parakeetEncoderQuantEl.value = parakeetConfig.encoderQuant;
+
+    const parakeetDecoderQuantEl = document.getElementById('parakeet-decoder-quant');
+    if (parakeetDecoderQuantEl) parakeetDecoderQuantEl.value = parakeetConfig.decoderQuant;
+
+    const parakeetInferenceIntervalEl = document.getElementById('parakeet-inference-interval');
+    if (parakeetInferenceIntervalEl) parakeetInferenceIntervalEl.value = parakeetConfig.inferenceIntervalMs;
+
+    const parakeetSilenceFlushEl = document.getElementById('parakeet-silence-flush');
+    if (parakeetSilenceFlushEl) parakeetSilenceFlushEl.value = parakeetConfig.silenceFlushSec;
+
+    const parakeetVadThresholdEl = document.getElementById('parakeet-vad-threshold');
+    if (parakeetVadThresholdEl) parakeetVadThresholdEl.value = parakeetConfig.energyThreshold;
+
+    const parakeetTenVadThresholdEl = document.getElementById('parakeet-ten-vad-threshold');
+    if (parakeetTenVadThresholdEl) parakeetTenVadThresholdEl.value = parakeetConfig.tenVadThreshold;
+
+    const parakeetFrameStrideEl = document.getElementById('parakeet-frame-stride');
+    if (parakeetFrameStrideEl) parakeetFrameStrideEl.value = parakeetConfig.frameStride;
+
+    const parakeetWasmThreadsEl = document.getElementById('parakeet-wasm-threads');
+    if (parakeetWasmThreadsEl) parakeetWasmThreadsEl.value = parakeetConfig.wasmThreads;
+
     const graceMs = typeof settings.graceMs === 'number' ? settings.graceMs : 450;
     document.getElementById('grace-ms').value = graceMs;
 
@@ -1310,14 +1420,24 @@ async function restoreOptions() {
 
     const stripTrailing = settings.stripTrailingPeriod !== false;
     const stripToggle = document.getElementById('strip-trailing-period');
-    if (stripToggle) stripToggle.checked = !stripTrailing;
+    if (stripToggle) stripToggle.checked = stripTrailing;
 
     const disableSpaceNormalization = settings.disableSpaceNormalization === true;
     const disableSpaceToggle = document.getElementById('disable-space-normalization');
     if (disableSpaceToggle) disableSpaceToggle.checked = disableSpaceNormalization;
 
+    const finalizeTextCleanup = settings.finalizeTextCleanup === true;
+    const finalizeTextToggle = document.getElementById('finalize-text-cleanup');
+    if (finalizeTextToggle) finalizeTextToggle.checked = finalizeTextCleanup;
+
     const assemblyStreamingToggle = document.getElementById('assemblyai-streaming');
     if (assemblyStreamingToggle) assemblyStreamingToggle.checked = settings.assemblyaiStreamingEnabled === false;
+
+    const parakeetStreamingToggle = document.getElementById('parakeet-streaming');
+    if (parakeetStreamingToggle) parakeetStreamingToggle.checked = parakeetConfig.streamingEnabled === false;
+
+    const parakeetPrewarmToggle = document.getElementById('parakeet-prewarm');
+    if (parakeetPrewarmToggle) parakeetPrewarmToggle.checked = parakeetConfig.prewarmEnabled === true;
 
     const assemblyStreamingMultiToggle = document.getElementById('assemblyai-streaming-multilingual');
     if (assemblyStreamingMultiToggle) {
@@ -1416,6 +1536,7 @@ function showSaved(area = 'save') {
         'local': 'status-local',
         'vosk': 'status-vosk',
         'cloud': 'status-cloud',
+        'parakeet': 'status-parakeet',
         'dev': 'status-dev',
         'overrides': 'status-overrides',
         'speech-triggers': 'status-speech-triggers',
@@ -1562,6 +1683,8 @@ function installLiveSettingsListener() {
 
             isApplyingExternalUpdate = true;
             try {
+                const parakeetConfig = readParakeetConfig(next);
+
                 renderOverrides(next.overrides || {}, next.disableFavicons !== true);
 
                 const hideModelSections = next.hideModelSections !== false;
@@ -1577,13 +1700,22 @@ function installLiveSettingsListener() {
                 if (favToggle) favToggle.checked = next.disableFavicons === true;
 
                 const stripToggle = document.getElementById('strip-trailing-period');
-                if (stripToggle) stripToggle.checked = next.stripTrailingPeriod === false;
+                if (stripToggle) stripToggle.checked = next.stripTrailingPeriod !== false;
 
                 const disableSpaceToggle = document.getElementById('disable-space-normalization');
                 if (disableSpaceToggle) disableSpaceToggle.checked = next.disableSpaceNormalization === true;
 
+                const finalizeTextToggle = document.getElementById('finalize-text-cleanup');
+                if (finalizeTextToggle) finalizeTextToggle.checked = next.finalizeTextCleanup === true;
+
                 const assemblyStreamingToggle = document.getElementById('assemblyai-streaming');
                 if (assemblyStreamingToggle) assemblyStreamingToggle.checked = next.assemblyaiStreamingEnabled === false;
+
+                const parakeetStreamingToggle = document.getElementById('parakeet-streaming');
+                if (parakeetStreamingToggle) parakeetStreamingToggle.checked = parakeetConfig.streamingEnabled === false;
+
+                const parakeetPrewarmToggle = document.getElementById('parakeet-prewarm');
+                if (parakeetPrewarmToggle) parakeetPrewarmToggle.checked = parakeetConfig.prewarmEnabled === true;
 
                 const assemblyStreamingMultiToggle = document.getElementById('assemblyai-streaming-multilingual');
                 if (assemblyStreamingMultiToggle) {
@@ -1608,6 +1740,48 @@ function installLiveSettingsListener() {
                 if (langEl && d.language && langEl.value !== d.language) langEl.value = d.language;
                 if (silenceEl && typeof d.silenceTimeoutMs === 'number' && String(silenceEl.value) !== String(d.silenceTimeoutMs)) {
                     silenceEl.value = d.silenceTimeoutMs;
+                }
+
+                const parakeetModelEl = document.getElementById('parakeet-model-version');
+                if (parakeetModelEl && parakeetModelEl.value !== parakeetConfig.modelId) parakeetModelEl.value = parakeetConfig.modelId;
+
+                const parakeetBackendModeEl = document.getElementById('parakeet-backend-mode');
+                if (parakeetBackendModeEl && parakeetBackendModeEl.value !== parakeetConfig.backendMode) parakeetBackendModeEl.value = parakeetConfig.backendMode;
+
+                const parakeetEncoderQuantEl = document.getElementById('parakeet-encoder-quant');
+                if (parakeetEncoderQuantEl && parakeetEncoderQuantEl.value !== parakeetConfig.encoderQuant) parakeetEncoderQuantEl.value = parakeetConfig.encoderQuant;
+
+                const parakeetDecoderQuantEl = document.getElementById('parakeet-decoder-quant');
+                if (parakeetDecoderQuantEl && parakeetDecoderQuantEl.value !== parakeetConfig.decoderQuant) parakeetDecoderQuantEl.value = parakeetConfig.decoderQuant;
+
+                const parakeetInferenceIntervalEl = document.getElementById('parakeet-inference-interval');
+                if (parakeetInferenceIntervalEl && String(parakeetInferenceIntervalEl.value) !== String(parakeetConfig.inferenceIntervalMs)) {
+                    parakeetInferenceIntervalEl.value = parakeetConfig.inferenceIntervalMs;
+                }
+
+                const parakeetSilenceFlushEl = document.getElementById('parakeet-silence-flush');
+                if (parakeetSilenceFlushEl && String(parakeetSilenceFlushEl.value) !== String(parakeetConfig.silenceFlushSec)) {
+                    parakeetSilenceFlushEl.value = parakeetConfig.silenceFlushSec;
+                }
+
+                const parakeetVadThresholdEl = document.getElementById('parakeet-vad-threshold');
+                if (parakeetVadThresholdEl && String(parakeetVadThresholdEl.value) !== String(parakeetConfig.energyThreshold)) {
+                    parakeetVadThresholdEl.value = parakeetConfig.energyThreshold;
+                }
+
+                const parakeetTenVadThresholdEl = document.getElementById('parakeet-ten-vad-threshold');
+                if (parakeetTenVadThresholdEl && String(parakeetTenVadThresholdEl.value) !== String(parakeetConfig.tenVadThreshold)) {
+                    parakeetTenVadThresholdEl.value = parakeetConfig.tenVadThreshold;
+                }
+
+                const parakeetFrameStrideEl = document.getElementById('parakeet-frame-stride');
+                if (parakeetFrameStrideEl && String(parakeetFrameStrideEl.value) !== String(parakeetConfig.frameStride)) {
+                    parakeetFrameStrideEl.value = parakeetConfig.frameStride;
+                }
+
+                const parakeetWasmThreadsEl = document.getElementById('parakeet-wasm-threads');
+                if (parakeetWasmThreadsEl && String(parakeetWasmThreadsEl.value) !== String(parakeetConfig.wasmThreads)) {
+                    parakeetWasmThreadsEl.value = parakeetConfig.wasmThreads;
                 }
 
                 const micGainEl = document.getElementById('mic-gain');
@@ -1704,10 +1878,60 @@ function installLiveSettingsListener() {
     } catch (_) { }
 }
 
+function normalizeSettingsForExport(rawSettings = {}) {
+    const settings = JSON.parse(JSON.stringify(rawSettings && typeof rawSettings === 'object' ? rawSettings : {}));
+    settings.defaults = settings.defaults || {};
+    if (!settings.defaults.model) settings.defaults.model = 'Xenova/whisper-base';
+    if (!settings.defaults.voskModel) settings.defaults.voskModel = DEFAULT_VOSK_MODEL;
+    if (!settings.defaults.language) settings.defaults.language = 'auto';
+    if (!settings.defaults.provider) settings.defaults.provider = 'vosk';
+    if (typeof settings.defaults.silenceTimeoutMs === 'undefined') settings.defaults.silenceTimeoutMs = 1500;
+    if (typeof settings.defaults.googleServerMode === 'undefined') settings.defaults.googleServerMode = 'v1';
+    if (typeof settings.cacheDefaultModel === 'undefined') settings.cacheDefaultModel = false;
+    if (typeof settings.stripTrailingPeriod === 'undefined') settings.stripTrailingPeriod = true;
+    if (typeof settings.disableSpaceNormalization === 'undefined') settings.disableSpaceNormalization = false;
+    if (typeof settings.finalizeTextCleanup === 'undefined') settings.finalizeTextCleanup = false;
+    if (typeof settings.assemblyaiStreamingEnabled === 'undefined') settings.assemblyaiStreamingEnabled = true;
+    if (typeof settings.assemblyaiStreamingMultilingualEnabled === 'undefined') settings.assemblyaiStreamingMultilingualEnabled = true;
+    if (typeof settings.assemblyaiStreamingSilenceMode === 'undefined') settings.assemblyaiStreamingSilenceMode = 'never';
+    applyParakeetConfig(settings, readParakeetConfig(settings));
+    return settings;
+}
+
+function showParakeetModelProgress(progress = {}, state = 'progress') {
+    const root = document.getElementById('parakeet-model-progress');
+    const bar = document.getElementById('parakeet-model-progress-bar');
+    const text = document.getElementById('parakeet-model-progress-text');
+    if (!root || !bar || !text) return;
+
+    root.hidden = false;
+    const pct = Number.isFinite(Number(progress.progress))
+        ? Math.max(0, Math.min(100, Math.round(Number(progress.progress))))
+        : null;
+    bar.style.width = pct == null ? '8%' : `${pct}%`;
+
+    const suffix = pct == null ? '' : ` ${pct}%`;
+    const file = progress.file ? ` - ${progress.file}` : '';
+    text.textContent = `${progress.message || 'Loading Parakeet model'}${suffix}${file}`;
+
+    if (state === 'ready' || pct === 100) {
+        setTimeout(() => {
+            if (root) root.hidden = true;
+        }, 3000);
+    }
+}
+
+try {
+    browser.runtime.onMessage.addListener((message) => {
+        if (message?.type !== 'PARAKEET_MODEL_PROGRESS') return;
+        showParakeetModelProgress(message.progress || {}, message.state || 'progress');
+    });
+} catch (_) { }
+
 async function exportSettingsToFile() {
     try {
         const stored = await browser.storage.local.get('settings');
-        const settings = stored.settings || {};
+        const settings = normalizeSettingsForExport(stored.settings || {});
         const payload = { version: browser.runtime.getManifest().version, exportedAt: new Date().toISOString(), settings };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -1749,7 +1973,9 @@ async function importSettingsFromFile(e) {
             if (p && !ALLOWED_PROVIDERS.has(p)) incomingSettings.defaults.provider = 'vosk';
         }
 
-        await browser.storage.local.set({ settings: incomingSettings });
+        const normalizedSettings = normalizeSettingsForExport(incomingSettings);
+
+        await browser.storage.local.set({ settings: normalizedSettings });
         await broadcastConfigChanged();
         await restoreOptions();
         showSaved('save');

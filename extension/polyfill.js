@@ -2,8 +2,6 @@
   if (window.__googleProviderConfig) return; // Google provider uses its own polyfill engine
   console.log(" >>> GTranslate Polyfill: Initializing...");
 
-
-
   if (window.webkitSpeechRecognition) return;
 
   window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {
@@ -34,6 +32,9 @@
       this._interimActive = false;
       this._disableSpaceNormalization = false;
       this._streamingActive = false;
+      this._pendingEnd = false;
+      this._endTimer = null;
+      this._ended = false;
 
       window.addEventListener("message", (e) => {
         if (e.data && e.data.type === 'WHISPER_CONFIG') {
@@ -42,22 +43,40 @@
         }
 
         if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {
+          if (e.data.stopFinal === true) {
+            if (e.data.ackId) window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, "*");
+            this._pendingEnd = false;
+            if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }
+            this._interimActive = false;
+            this._ended = true;
+            if (this.onend) this.onend();
+            this.isRecording = false;
+            return;
+          }
+
           if (!this.onresult) return;
+          if (this._ended) return;
 
           const isFinal = e.data.isFinal !== false;
+          const isCommit = e.data.commit === true;
+          const isResultFinal = isFinal || isCommit;
+          if (!isFinal && !isCommit && !this.interimResults) {
+            if (e.data.ackId) window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, "*");
+            return;
+          }
 
           const rawText = e.data.text || '';
           const prevIndex = this._interimActive ? (this._results.length - 2) : (this._results.length - 1);
           const prev = (prevIndex >= 0 && this._results[prevIndex]) ? this._results[prevIndex].transcript : '';
           const needsSpace = !this._disableSpaceNormalization && !!prev &&
-            !/[\\s\\(\\[\\{'"“‘]$/.test(prev) &&
-            !/^[\\s\\.,!?;:\\)\\]\\}'"”’]/.test(rawText);
+            !/[\s\(\[\{'"“‘]$/.test(prev) &&
+            !/^[\s\.,!?;:\)\]\}'"”’]/.test(rawText);
 
           const text = needsSpace ? (' ' + rawText) : rawText;
 
-          const resultObj = { transcript: text, confidence: 0.98, isFinal };
+          const resultObj = { transcript: text, confidence: 0.98, isFinal: isResultFinal };
 
-          if (isFinal) {
+          if (isResultFinal) {
             if (this._interimActive) {
               this._results[this._results.length - 1] = resultObj;
             } else {
@@ -84,61 +103,83 @@
             resultIndex: resultsList.length - 1
           });
 
-          resultEvent.results[resultEvent.resultIndex].isFinal = isFinal;
-          this.onresult?.(resultEvent);
+          resultEvent.results[resultEvent.resultIndex].isFinal = isResultFinal;
+          if (this.onresult) this.onresult(resultEvent);
+          window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, "*");
 
           if (isFinal) {
             if (!e.data.streaming) {
-              this.onend?.();
+              this._ended = true;
+              if (this.onend) this.onend();
               this.isRecording = false;
-              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
-            } else {
-              window.postMessage({ type: 'WHISPER_PAGE_HANDLED' }, "*");
+            } else if (this._pendingEnd) {
+              this._pendingEnd = false;
+              if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }
+              this._ended = true;
+              if (this.onend) this.onend();
+              this.isRecording = false;
             }
           }
         }
 
         if (e.data && e.data.type === 'WHISPER_AUDIO_START') {
-          this.onaudiostart?.();
+          if (this.onaudiostart) this.onaudiostart();
           this.dispatchEvent(new Event('audiostart'));
-          this.onsoundstart?.();
+          if (this.onsoundstart) this.onsoundstart();
           this.dispatchEvent(new Event('soundstart'));
         }
 
         if (e.data && e.data.type === 'WHISPER_AUDIO_END') {
-          this.onaudioend?.();
+          if (this.onaudioend) this.onaudioend();
           this.dispatchEvent(new Event('audioend'));
-          this.onsoundend?.();
+          if (this.onsoundend) this.onsoundend();
           this.dispatchEvent(new Event('soundend'));
         }
 
         if (e.data && e.data.type === 'WHISPER_SPEECH_START') {
-          this.onspeechstart?.();
+          if (this.onspeechstart) this.onspeechstart();
           this.dispatchEvent(new Event('speechstart'));
         }
 
         if (e.data && e.data.type === 'WHISPER_SPEECH_END') {
-          this.onspeechend?.();
+          if (this.onspeechend) this.onspeechend();
           this.dispatchEvent(new Event('speechend'));
         }
 
         if (e.data && e.data.type === 'WHISPER_FORCE_END') {
-          this.onend?.();
-          this.isRecording = false;
+          if (this._streamingActive && !this._pendingEnd) {
+            this._pendingEnd = true;
+            this._endTimer = setTimeout(() => {
+              if (this._pendingEnd) {
+                this._pendingEnd = false;
+                this._ended = true;
+                if (this.onend) this.onend();
+                this.isRecording = false;
+              }
+            }, 5000);
+          } else if (!this._streamingActive) {
+            this._ended = true;
+            if (this.onend) this.onend();
+            this.isRecording = false;
+          }
         }
       });
     }
 
     start() {
-      if (this.isRecording) {
-        if (this._streamingActive) {
-          this.isRecording = false; // allow restart during streaming sessions
-        } else {
-          return;
-        }
+      if (this.isRecording || this._pendingEnd) {
+        if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }
+        this._pendingEnd = false;
+        this._ended = true;
+        if (this.onend) this.onend();
+        this.isRecording = false;
+
+        if (!this._streamingActive) return;
       }
       this.isRecording = true;
-      this.onstart?.();
+      this._pendingEnd = false;
+      this._ended = false;
+      if (this.onstart) this.onstart();
       this._results = [];
       this._interimActive = false;
 
@@ -160,15 +201,31 @@
       window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, "*");
       this.dispatchEvent(new Event('audioend'));
       this.dispatchEvent(new Event('soundend'));
-      this.onend?.();
+
+      if (this._streamingActive) {
+        this._pendingEnd = true;
+        this._endTimer = setTimeout(() => {
+          if (this._pendingEnd) {
+            this._pendingEnd = false;
+            this._ended = true;
+            if (this.onend) this.onend();
+          }
+        }, 5000);
+      } else {
+        this._ended = true;
+        if (this.onend) this.onend();
+      }
     }
 
     abort() {
       this.isRecording = false;
+      this._pendingEnd = false;
+      if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }
       window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, "*");
       this.dispatchEvent(new Event('audioend'));
       this.dispatchEvent(new Event('soundend'));
-      this.onend?.();
+      this._ended = true;
+      if (this.onend) this.onend();
     }
 
     dispatchEvent(event) { if (this["on" + event.type]) this["on" + event.type](event); }

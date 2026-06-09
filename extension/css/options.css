@@ -212,6 +212,36 @@ button:active {
     line-height: 1.4;
 }
 
+.model-progress {
+    margin: 8px 0 14px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--input-bg);
+}
+
+.model-progress-track {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.22);
+}
+
+.model-progress-bar {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary), #0ea5e9);
+    transition: width 180ms ease;
+}
+
+.model-progress-text {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
 .status {
     text-align: left;
     font-size: 12px;
@@ -317,6 +347,11 @@ button:active {
 .icon-save {
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z'/%3E%3Cpath d='M17 21v-8H7v8'/%3E%3Cpath d='M7 3v5h8'/%3E%3C/svg%3E");
     -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z'/%3E%3Cpath d='M17 21v-8H7v8'/%3E%3Cpath d='M7 3v5h8'/%3E%3C/svg%3E");
+}
+
+.icon-check {
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
 }
 
 .icon-layers {
@@ -636,4 +671,40 @@ button:active {
     max-height: 260px;
     overflow-y: auto;
     border-radius: 10px;
+}
+
+.button-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.button-row button {
+    margin-top: 0;
+}
+
+.update-notes {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.update-notes p {
+    margin: 0 0 10px;
+}
+
+.update-notes ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.update-notes li {
+    margin: 5px 0;
+}
+
+@media (max-width: 520px) {
+    .button-row {
+        grid-template-columns: 1fr;
+    }
 }

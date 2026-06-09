@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Speech Recognition Polyfill Updated</title>
+    <link rel="stylesheet" href="css/options.css">
+</head>
+
+<body>
+    <div class="container update-page">
+        <h3>Speech Recognition Polyfill Updated</h3>
+
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-check" aria-hidden="true"></span>
+                <span id="update-version">Version</span>
+                <span class="pill">Update</span>
+            </div>
+            <div class="note" id="update-summary">Loading release notes...</div>
+
+            <div id="update-notes" class="update-notes" aria-live="polite"></div>
+
+            <div class="button-row">
+                <button id="open-options" type="button">Open Settings</button>
+                <button id="open-amo" class="btn-secondary" type="button">View AMO Notes</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="update.js"></script>
+</body>
+
+</html>

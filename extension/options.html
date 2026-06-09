@@ -36,6 +36,7 @@
                 <option value="google" data-i18n="engine_google">Google</option>
                 <option value="assemblyai" data-i18n="engine_assemblyai">AssemblyAI</option>
                 <option value="local-whisper" data-i18n="engine_local">Whisper</option>
+                <option value="nvidia-parakeet" data-i18n="engine_parakeet">Nvidia Parakeet</option>
             </select>
             <div class="note" data-i18n="show_engine_sections_note">Choose the provider your want.
             </div>
@@ -159,6 +160,24 @@
                 Stored locally; used only when the cloud engine is selected. It is free but requires an account since
                 speech data is sent to AssemblyAI for processing.
             </div>
+            <div class="checkbox-wrapper" style="margin-top:8px;">
+                <input type="checkbox" id="assemblyai-streaming" />
+                <label for="assemblyai-streaming" class="checkbox-label"
+                    data-i18n="disable_assemblyai_streaming_label">Disable AssemblyAI realtime streaming</label>
+            </div>
+            <div class="note" data-i18n="assemblyai_streaming_note">Streams live audio to AssemblyAI and emits partial
+                results like Chrome.</div>
+
+            <div class="checkbox-wrapper" style="margin-top:6px;">
+                <input type="checkbox" id="assemblyai-streaming-multilingual" />
+                <label for="assemblyai-streaming-multilingual" class="checkbox-label"
+                    data-i18n="disable_assemblyai_multilingual_label">
+                    Disable AssemblyAI multilingual streaming model
+                </label>
+            </div>
+            <div class="note" data-i18n="assemblyai_streaming_multilingual_note">Enables
+                universal-streaming-multilingual with language detection.</div>
+
             <div class="actions" style="margin-top:8px;">
                 <button id="open-assemblyai" class="btn-secondary" type="button" data-i18n="assemblyai_get_key_btn">Get
                     an AssemblyAI API Key</button>
@@ -187,6 +206,100 @@
                 v1 uses the older Assistant API and is slightly faster. Both auto-detect spoken languages.
             </div>
             <div class="status" id="status-google" data-i18n="status_saved">Saved</div>
+        </div>
+
+        <div class="card" id="card-parakeet">
+            <div class="section-header">
+                <span class="icon icon-cpu" aria-hidden="true"></span>
+                <span data-i18n="engine_parakeet">Nvidia Parakeet</span>
+                <span class="pill" data-i18n="pill_local">Local</span>
+                <span class="pill" data-i18n="pill_streaming" style="background:#dcfce7;border-color:#86efac;">Streaming Supported</span>
+            </div>
+            <div class="note" data-i18n="parakeet_note">Nvidia Parakeet ONNX models running directly in your browser.</div>
+
+
+            <label data-i18n="parakeet_model_version_label">Model Version</label>
+            <select id="parakeet-model-version">
+                <option value="parakeet-tdt-0.6b-v3" selected data-i18n="parakeet_model_v3">Parakeet TDT 0.6b v3 (Multilingual, default)</option>
+                <option value="parakeet-tdt-0.6b-v2" data-i18n="parakeet_model_v2">Parakeet TDT 0.6b v2 (English only)</option>
+            </select>
+            <div class="note" data-i18n="parakeet_model_note">v2 is English only. v3 is multilingual and the default. There is no meaningful speed difference between them; choose based on language coverage. These models are large, so initial browser-cache downloads can take a while.</div>
+
+            <div id="parakeet-model-progress" class="model-progress" hidden>
+                <div class="model-progress-track">
+                    <div id="parakeet-model-progress-bar" class="model-progress-bar"></div>
+                </div>
+                <div id="parakeet-model-progress-text" class="model-progress-text" data-i18n="parakeet_waiting_download">Waiting for model download...</div>
+            </div>
+
+            <label style="margin-top:8px;" data-i18n="parakeet_backend_label">Backend</label>
+            <select id="parakeet-backend-mode">
+                <option value="webgpu-hybrid" data-i18n="parakeet_backend_webgpu">WebGPU hybrid (recommended)</option>
+                <option value="wasm" data-i18n="parakeet_backend_wasm">WASM CPU fallback</option>
+            </select>
+            <div class="note" data-i18n="parakeet_backend_note">WebGPU hybrid uses GPU acceleration when available and falls back to WASM when needed.</div>
+
+            <div style="display:flex; gap:10px; margin-top:8px;">
+                <div style="flex:1">
+                    <label data-i18n="parakeet_encoder_quant_label">Encoder Quantization</label>
+                    <select id="parakeet-encoder-quant">
+                        <option value="int8" data-i18n="parakeet_quant_int8">int8 (Best for WASM)</option>
+                        <option value="fp16" data-i18n="parakeet_quant_fp16">fp16 (Faster on GPU)</option>
+                        <option value="fp32" data-i18n="parakeet_quant_fp32">fp32 (Higher accuracy, slower)</option>
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label data-i18n="parakeet_decoder_quant_label">Decoder Quantization</label>
+                    <select id="parakeet-decoder-quant">
+                        <option value="int8" data-i18n="parakeet_quant_int8">int8 (Best for WASM)</option>
+                        <option value="fp16" data-i18n="parakeet_quant_fp16">fp16 (Faster on GPU)</option>
+                        <option value="fp32" data-i18n="parakeet_quant_fp32">fp32 (Higher accuracy, slower)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="note" data-i18n="parakeet_quant_note">Defaults to int8 for smaller downloads and steadier CPU fallback.</div>
+
+            <label style="margin-top:8px;" data-i18n="parakeet_interval_label">Inference Interval (ms)</label>
+            <input id="parakeet-inference-interval" type="number" min="200" max="8000" step="40" value="480" />
+            <div class="note" data-i18n="parakeet_interval_note">How often the model builds a streaming inference window. Lower = faster interim text, higher load.</div>
+
+            <label style="margin-top:8px;" data-i18n="parakeet_silence_label">Silence Flush (seconds)</label>
+            <input id="parakeet-silence-flush" type="number" min="0.2" max="5" step="0.1" value="1.0" />
+            <div class="note" data-i18n="parakeet_silence_note">How long silence must last before pending Parakeet text is finalized.</div>
+
+            <label style="margin-top:8px;" data-i18n="parakeet_vad_label">VAD Energy Threshold</label>
+            <input id="parakeet-vad-threshold" type="number" min="0.01" max="0.5" step="0.01" value="0.08" />
+            <div class="note" data-i18n="parakeet_vad_note">Fast energy threshold for speech detection. Higher = requires louder voice.</div>
+
+            <label style="margin-top:8px;" data-i18n="parakeet_ten_vad_label">TEN-VAD Threshold</label>
+            <input id="parakeet-ten-vad-threshold" type="number" min="0.1" max="0.95" step="0.05" value="0.5" />
+            <div class="note" data-i18n="parakeet_ten_vad_note">Inference VAD threshold used by Keet's streaming pipeline when the WASM VAD is available.</div>
+
+            <div style="display:flex; gap:10px; margin-top:8px;">
+                <div style="flex:1">
+                    <label data-i18n="parakeet_frame_stride_label">Frame Stride</label>
+                    <input id="parakeet-frame-stride" type="number" min="1" max="4" step="1" value="1" />
+                </div>
+                <div style="flex:1">
+                    <label data-i18n="parakeet_wasm_threads_label">WASM Threads</label>
+                    <input id="parakeet-wasm-threads" type="number" min="1" max="16" step="1" value="4" />
+                </div>
+            </div>
+            <div class="note" data-i18n="parakeet_stride_threads_note">Frame stride can reduce decoder work. WASM threads only affect CPU fallback paths.</div>
+
+            <div class="checkbox-wrapper" style="margin-top:8px;">
+                <input type="checkbox" id="parakeet-streaming" />
+                <label for="parakeet-streaming" class="checkbox-label" data-i18n="parakeet_streaming_label">Disable Nvidia Parakeet Streaming</label>
+            </div>
+            <div class="note" data-i18n="parakeet_streaming_note">Parakeet streaming is enabled by default. Disable it to transcribe only after recording stops.</div>
+
+            <div class="checkbox-wrapper" style="margin-top:8px;">
+                <input type="checkbox" id="parakeet-prewarm" />
+                <label for="parakeet-prewarm" class="checkbox-label" data-i18n="parakeet_prewarm_label">Enable Nvidia Parakeet prewarm</label>
+            </div>
+            <div class="note" data-i18n="parakeet_prewarm_note">Preloads the selected Parakeet model and runs one idle warmup inference. Uses more memory/GPU time, and only runs when no Parakeet stream is active.</div>
+
+            <div class="status" id="status-parakeet" data-i18n="status_saved">Saved</div>
         </div>
 
         <div class="card">
@@ -218,22 +331,7 @@
             <div class="note" data-i18n="send_enter_after_note">Automatically presses 'Enter' on the focused
                 field right after text is inserted.</div>
 
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="strip-trailing-period" />
-                <label for="strip-trailing-period" class="checkbox-label"
-                    data-i18n="strip_trailing_period_label">Disable trailing period removal</label>
-            </div>
-            <div class="note" data-i18n="strip_trailing_period_note">Removes a final “.” from recognized text.</div>
 
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="disable-space-normalization" />
-                <label for="disable-space-normalization" class="checkbox-label"
-                    data-i18n="disable_space_normalization_label">
-                    Disable space normalization between streaming turns
-                </label>
-            </div>
-            <div class="note" data-i18n="disable_space_normalization_note">Prevents auto-inserting spaces when appending
-                streaming results.</div>
 
             <div class="status" id="status-speech-triggers" data-i18n="status_saved">Saved</div>
         </div>
@@ -272,6 +370,29 @@
             </div>
 
             <div class="checkbox-wrapper">
+                <input type="checkbox" id="strip-trailing-period" />
+                <label for="strip-trailing-period" class="checkbox-label"
+                    data-i18n="strip_trailing_period_label">Strip trailing period</label>
+            </div>
+            <div class="note" data-i18n="strip_trailing_period_note">Removes trailing period from transcription output.</div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="disable-space-normalization" />
+                <label for="disable-space-normalization" class="checkbox-label"
+                    data-i18n="disable_space_normalization_label">
+                    Disable space normalization
+                </label>
+            </div>
+            <div class="note" data-i18n="disable_space_normalization_note">Disables automatic space insertion between results.</div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="finalize-text-cleanup" />
+                <label for="finalize-text-cleanup" class="checkbox-label"
+                    data-i18n="finalize_text_cleanup_label">Finalize text cleanup</label>
+            </div>
+            <div class="note" data-i18n="finalize_text_cleanup_note">Fast local cleanup for final text: punctuation spacing, sentence capitalization, and standalone I.</div>
+
+            <div class="checkbox-wrapper">
                 <input type="checkbox" id="enable-hardcap" />
                 <label for="enable-hardcap" class="checkbox-label" data-i18n="enable_hardcap_label">Enable 5s hard
                     cap</label>
@@ -283,24 +404,6 @@
                     window</label>
             </div>
             <div class="note" data-i18n="disable_grace_note">Grace is enabled; set grace ms above.</div>
-
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="assemblyai-streaming" />
-                <label for="assemblyai-streaming" class="checkbox-label"
-                    data-i18n="disable_assemblyai_streaming_label">Disable AssemblyAI realtime streaming</label>
-            </div>
-            <div class="note" data-i18n="assemblyai_streaming_note">Streams live audio to AssemblyAI and emits partial
-                results like Chrome.</div>
-
-            <div class="checkbox-wrapper" style="margin-top:6px;">
-                <input type="checkbox" id="assemblyai-streaming-multilingual" />
-                <label for="assemblyai-streaming-multilingual" class="checkbox-label"
-                    data-i18n="disable_assemblyai_multilingual_label">
-                    Disable AssemblyAI multilingual streaming model
-                </label>
-            </div>
-            <div class="note" data-i18n="assemblyai_streaming_multilingual_note">Enables
-                universal-streaming-multilingual with language detection.</div>
 
             <div class="notesep" style="margin-top:14px; font-weight:600; font-style: italic;"
                 data-i18n="streaming_silence_timeout">Streaming silence timeout</div>
@@ -359,6 +462,7 @@
                             <option value="vosk" data-i18n="engine_vosk">Vosk (Streaming)</option>
                             <option value="assemblyai" data-i18n="engine_assemblyai">Server AssemblyAI</option>
                             <option value="google" data-i18n="engine_google">Google</option>
+                            <option value="nvidia-parakeet" data-i18n="engine_parakeet">Nvidia Parakeet</option>
                         </select>
                     </div>
                 </div>
@@ -578,7 +682,7 @@
 
     <datalist id="vosk-model-list"></datalist>
 
-    <script src="options.js"></script>
+    <script type="module" src="options.js"></script>
 </body>
 
 </html>

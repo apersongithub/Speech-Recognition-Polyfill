@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "default_locale": "en",
   "name": "__MSG_ext_name__",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "description": "__MSG_ext_desc__",
   "permissions": [
     "<all_urls>",
@@ -19,7 +19,7 @@
       }
     }
   },
-  "content_security_policy": "script-src 'unsafe-eval' 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' data: blob: https://cdn.jsdelivr.net https://ccoreilly.github.io https://alphacephei.com https://api.assemblyai.com https://streaming.assemblyai.com wss://streaming.assemblyai.com https://huggingface.co https://cdn.huggingface.co https://*.hf.co https://*.s3.amazonaws.com https://*.googleapis.com https://embeddedassistant-frontend-clients6.youtube.com https://www.google.com; object-src 'self'",
+  "content_security_policy": "script-src 'unsafe-eval' 'self' blob: https://cdn.jsdelivr.net https://esm.run; connect-src 'self' data: blob: https://cdn.jsdelivr.net https://esm.run https://ccoreilly.github.io https://alphacephei.com https://api.assemblyai.com https://streaming.assemblyai.com wss://streaming.assemblyai.com https://huggingface.co https://cdn.huggingface.co https://*.hf.co https://*.s3.amazonaws.com https://*.googleapis.com https://embeddedassistant-frontend-clients6.youtube.com https://www.google.com https://addons.mozilla.org; object-src 'self'",
   "icons": {
     "16": "images/microphone.svg",
     "32": "images/microphone.svg",
@@ -53,6 +53,12 @@
   "web_accessible_resources": [
     "polyfill.js",
     "asr-worker.js",
+    "parakeet-config.js",
+    "parakeet-worker.js",
+    "parakeet-engine/parakeet-worker.js",
+    "parakeet-engine/chunks/*",
+    "parakeet-engine/assets/*",
+    "parakeet-engine/wasm/*",
     "google/protobuf.js",
     "google/webchannel.js",
     "google/fullduplex.js",

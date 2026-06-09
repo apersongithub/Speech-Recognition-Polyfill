@@ -3,7 +3,7 @@
     "message": "Speech Recognition Polyfill"
   },
   "ext_desc": {
-    "message": "Speech recognition polyfill with local Whisper, Vosk, and optional cloud transcription (AssemblyAI, Google)."
+    "message": "Speech Recognition Polyfill with models such as Vosk, Whisper, Nvidia Parakeet, Google, and AssemblyAI for local/server-side STT"
   },
   "browser_action_title": {
     "message": "Speech Recognition"
@@ -289,6 +289,12 @@
   },
   "disable_space_normalization_note": {
     "message": "Disables automatic space insertion between results."
+  },
+  "finalize_text_cleanup_label": {
+    "message": "Finalize text cleanup"
+  },
+  "finalize_text_cleanup_note": {
+    "message": "Fast local cleanup for final text: punctuation spacing, sentence capitalization, and standalone I."
   },
   "send_enter_after_label": {
     "message": "Send Enter after result"
@@ -607,5 +613,119 @@
   },
   "vosk_model_label_short": {
     "message": "Vosk model (type to search)"
+  },
+  "engine_google": {
+    "message": "Google"
+  },
+  "section_google_title": {
+    "message": "Google"
+  },
+  "google_key_note": {
+    "message": "Uses public Google API keys seamlessly."
+  },
+  "google_server_mode_label": {
+    "message": "Server Mode"
+  },
+  "google_server_mode_note": {
+    "message": "v2 offers better accuracy and punctuation via Cloud Speech v2. v1 uses the older Assistant API and is slightly faster. Both auto-detect spoken languages."
+  },
+  "engine_parakeet": {
+    "message": "Nvidia Parakeet"
+  },
+  "section_parakeet_title": {
+    "message": "Nvidia Parakeet"
+  },
+  "parakeet_note": {
+    "message": "Nvidia Parakeet ONNX models running directly in your browser."
+  },
+  "parakeet_model_version_label": {
+    "message": "Model Version"
+  },
+  "parakeet_model_v3": {
+    "message": "Parakeet TDT 0.6b v3 (Multilingual, default)"
+  },
+  "parakeet_model_v2": {
+    "message": "Parakeet TDT 0.6b v2 (English only)"
+  },
+  "parakeet_model_note": {
+    "message": "v2 is English only. v3 is multilingual and the default. There is no meaningful speed difference between them; choose based on language coverage. These models are large, so initial browser-cache downloads can take a while."
+  },
+  "parakeet_waiting_download": {
+    "message": "Waiting for model download..."
+  },
+  "parakeet_backend_label": {
+    "message": "Backend"
+  },
+  "parakeet_backend_webgpu": {
+    "message": "WebGPU hybrid (recommended)"
+  },
+  "parakeet_backend_wasm": {
+    "message": "WASM CPU fallback"
+  },
+  "parakeet_backend_note": {
+    "message": "WebGPU hybrid uses GPU acceleration when available and falls back to WASM when needed."
+  },
+  "parakeet_encoder_quant_label": {
+    "message": "Encoder Quantization"
+  },
+  "parakeet_decoder_quant_label": {
+    "message": "Decoder Quantization"
+  },
+  "parakeet_quant_int8": {
+    "message": "int8 (Best for WASM)"
+  },
+  "parakeet_quant_fp16": {
+    "message": "fp16 (Faster on GPU)"
+  },
+  "parakeet_quant_fp32": {
+    "message": "fp32 (Higher accuracy, slower)"
+  },
+  "parakeet_quant_note": {
+    "message": "Defaults to int8 for smaller downloads and steadier CPU fallback."
+  },
+  "parakeet_interval_label": {
+    "message": "Inference Interval (ms)"
+  },
+  "parakeet_interval_note": {
+    "message": "How often the model builds a streaming inference window. Lower = faster interim text, higher load."
+  },
+  "parakeet_silence_label": {
+    "message": "Silence Flush (seconds)"
+  },
+  "parakeet_silence_note": {
+    "message": "How long silence must last before pending Parakeet text is finalized."
+  },
+  "parakeet_vad_label": {
+    "message": "VAD Energy Threshold"
+  },
+  "parakeet_vad_note": {
+    "message": "Fast energy threshold for speech detection. Higher = requires louder voice."
+  },
+  "parakeet_ten_vad_label": {
+    "message": "TEN-VAD Threshold"
+  },
+  "parakeet_ten_vad_note": {
+    "message": "Inference VAD threshold used by Keet's streaming pipeline when the WASM VAD is available."
+  },
+  "parakeet_frame_stride_label": {
+    "message": "Frame Stride"
+  },
+  "parakeet_wasm_threads_label": {
+    "message": "WASM Threads"
+  },
+  "parakeet_stride_threads_note": {
+    "message": "Frame stride can reduce decoder work. WASM threads only affect CPU fallback paths."
+  },
+  "parakeet_streaming_label": {
+    "message": "Disable Nvidia Parakeet Streaming"
+  },
+  "parakeet_streaming_note": {
+    "message": "Parakeet streaming is enabled by default. Disable it to transcribe only after recording stops."
+  },
+  "parakeet_prewarm_label": {
+    "message": "Enable Nvidia Parakeet prewarm"
+  },
+  "parakeet_prewarm_note": {
+    "message": "Preloads the selected Parakeet model and runs one idle warmup inference. Uses more memory/GPU time, and only runs when no Parakeet stream is active."
   }
 }

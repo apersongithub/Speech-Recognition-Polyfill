@@ -3,7 +3,7 @@
     "message": "Speech Recognition Polyfill"
   },
   "ext_desc": {
-    "message": "Spracherkennungs-Polyfill mit lokalem Whisper, Vosk und optionaler Cloud-Transkription (AssemblyAI, Google)."
+    "message": "Spracherkennungs-Polyfill mit Modellen wie Vosk, Whisper, Nvidia Parakeet, Google und AssemblyAI für lokales/serverseitiges STT."
   },
   "browser_action_title": {
     "message": "Spracherkennung"
@@ -69,28 +69,28 @@
     "message": "Nur Englisch"
   },
   "model_tiny_en": {
-    "message": "Tiny English (~75MB)"
+    "message": "Winziges Englisch (~75MB)"
   },
   "model_base_en": {
-    "message": "Base English (~150MB)"
+    "message": "Basis-Englisch (~150MB)"
   },
   "model_distil_en": {
-    "message": "Distil-Medium English (~600MB)"
+    "message": "Distil-Mittleres Englisch (~600MB)"
   },
   "model_small_en": {
-    "message": "Small English (~500MB)"
+    "message": "Kleines Englisch (~500MB)"
   },
   "group_multi": {
     "message": "Mehrsprachig (Allzweck)"
   },
   "model_tiny_multi": {
-    "message": "Tiny Multilingual (~150MB)"
+    "message": "Winziges Mehrsprachig (~150MB)"
   },
   "model_base_multi": {
-    "message": "Base Multilingual (~290MB)"
+    "message": "Basis Mehrsprachig (~290MB)"
   },
   "model_small_multi": {
-    "message": "Small Multilingual (~1GB)"
+    "message": "Kleines Mehrsprachig (~1GB)"
   },
   "language_label": {
     "message": "Sprache"
@@ -607,5 +607,125 @@
   },
   "vosk_model_label_short": {
     "message": "Vosk-Modell (tippen zum Suchen)"
+  },
+  "engine_google": {
+    "message": "Google"
+  },
+  "section_google_title": {
+    "message": "Google"
+  },
+  "google_key_note": {
+    "message": "Verwendet nahtlos öffentliche Google-API-Schlüssel."
+  },
+  "google_server_mode_label": {
+    "message": "Server-Modus"
+  },
+  "google_server_mode_note": {
+    "message": "v2 bietet eine bessere Genauigkeit und Zeichensetzung über Cloud Speech v2. v1 verwendet die ältere Assistant-API und ist etwas schneller. Beide erkennen Sprachen automatisch."
+  },
+  "finalize_text_cleanup_label": {
+    "message": "Finalize text cleanup"
+  },
+  "finalize_text_cleanup_note": {
+    "message": "Schnelle lokale Bereinigung für den endgültigen Text: Interpunktionsabstände, Satzgroßschreibung und alleinstehendes 'I'."
+  },
+  "engine_parakeet": {
+    "message": "Nvidia Parakeet"
+  },
+  "section_parakeet_title": {
+    "message": "Nvidia Parakeet"
+  },
+  "parakeet_note": {
+    "message": "Nvidia Parakeet ONNX-Modelle werden direkt in Ihrem Browser ausgeführt."
+  },
+  "parakeet_model_version_label": {
+    "message": "Modell-Version"
+  },
+  "parakeet_model_v3": {
+    "message": "Parakeet TDT 0.6b v3 (Mehrsprachig, Standard)"
+  },
+  "parakeet_model_v2": {
+    "message": "Parakeet TDT 0.6b v2 (Nur Englisch)"
+  },
+  "parakeet_model_note": {
+    "message": "v2 ist nur in Englisch. v3 ist mehrsprachig und der Standard. Es gibt keinen merklichen Geschwindigkeitsunterschied; wählen Sie basierend auf der benötigten Sprache. Diese Modelle sind groß, daher kann der initiale Download etwas dauern."
+  },
+  "parakeet_waiting_download": {
+    "message": "Warten auf Modell-Download..."
+  },
+  "parakeet_backend_label": {
+    "message": "Backend"
+  },
+  "parakeet_backend_webgpu": {
+    "message": "WebGPU Hybrid (empfohlen)"
+  },
+  "parakeet_backend_wasm": {
+    "message": "WASM CPU-Fallback"
+  },
+  "parakeet_backend_note": {
+    "message": "Der WebGPU-Hybrid nutzt, sofern verfügbar, GPU-Beschleunigung und greift andernfalls auf WASM zurück."
+  },
+  "parakeet_encoder_quant_label": {
+    "message": "Encoder-Quantisierung"
+  },
+  "parakeet_decoder_quant_label": {
+    "message": "Decoder-Quantisierung"
+  },
+  "parakeet_quant_int8": {
+    "message": "int8 (Beste Wahl für WASM)"
+  },
+  "parakeet_quant_fp16": {
+    "message": "fp16 (Schneller auf der GPU)"
+  },
+  "parakeet_quant_fp32": {
+    "message": "fp32 (Höhere Genauigkeit, langsamer)"
+  },
+  "parakeet_quant_note": {
+    "message": "Standardmäßig auf int8 gesetzt für kleinere Downloads und stabilen CPU-Betrieb."
+  },
+  "parakeet_interval_label": {
+    "message": "Inferenzintervall (ms)"
+  },
+  "parakeet_interval_note": {
+    "message": "Wie oft das Modell ein Streaming-Inferenzfenster erstellt. Niedriger = schnellerer temporärer Text, höhere Last."
+  },
+  "parakeet_silence_label": {
+    "message": "Stille Flush (Sekunden)"
+  },
+  "parakeet_silence_note": {
+    "message": "Wie lange Stille anhalten muss, bevor der ausstehende Parakeet-Text endgültig übernommen wird."
+  },
+  "parakeet_vad_label": {
+    "message": "VAD Energie-Schwellenwert"
+  },
+  "parakeet_vad_note": {
+    "message": "Schneller Energie-Schwellenwert zur Spracherkennung. Höher = erfordert eine lautere Stimme."
+  },
+  "parakeet_ten_vad_label": {
+    "message": "TEN-VAD Schwellenwert"
+  },
+  "parakeet_ten_vad_note": {
+    "message": "VAD-Inferenz-Schwellenwert, der von Keets Streaming-Pipeline verwendet wird, wenn das WASM VAD verfügbar ist."
+  },
+  "parakeet_frame_stride_label": {
+    "message": "Frame-Schritt"
+  },
+  "parakeet_wasm_threads_label": {
+    "message": "WASM Threads"
+  },
+  "parakeet_stride_threads_note": {
+    "message": "Frame-Schritt kann die Arbeit des Decoders reduzieren. WASM-Threads wirken sich nur auf die CPU-Rückfallpfade aus."
+  },
+  "parakeet_streaming_label": {
+    "message": "Nvidia Parakeet Streaming deaktivieren"
+  },
+  "parakeet_streaming_note": {
+    "message": "Parakeet Streaming ist standardmäßig aktiviert. Deaktivieren Sie es, um erst nach Beendigung der Aufnahme zu transkribieren."
+  },
+  "parakeet_prewarm_label": {
+    "message": "Nvidia Parakeet Vorwärmung aktivieren"
+  },
+  "parakeet_prewarm_note": {
+    "message": "Lädt das Modell vorab und führt eine Leerlauf-Aufwärm-Inferenz durch. Benötigt mehr Speicher/GPU-Zeit und läuft nur, wenn kein Parakeet-Stream aktiv ist."
   }
 }

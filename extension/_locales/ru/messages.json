@@ -3,7 +3,7 @@
     "message": "Polyfill распознавания речи"
   },
   "ext_desc": {
-    "message": "Polyfill распознавания речи с локальными Whisper и Vosk, а также опциональной облачной транскрипцией (AssemblyAI, Google)."
+    "message": "Polyfill для распознавания речи с такими моделями, как Vosk, Whisper, Nvidia Parakeet, Google и AssemblyAI для локального/серверного распознавания."
   },
   "browser_action_title": {
     "message": "Распознавание речи"
@@ -69,28 +69,28 @@
     "message": "Только английский"
   },
   "model_tiny_en": {
-    "message": "Tiny English (~75MB)"
+    "message": "Крошечный английский (~75MB)"
   },
   "model_base_en": {
-    "message": "Base English (~150MB)"
+    "message": "Базовый английский (~150MB)"
   },
   "model_distil_en": {
-    "message": "Distil-Medium English (~600MB)"
+    "message": "Distil-Средний английский (~600MB)"
   },
   "model_small_en": {
-    "message": "Small English (~500MB)"
+    "message": "Малый английский (~500MB)"
   },
   "group_multi": {
     "message": "Многоязычная (общего назначения)"
   },
   "model_tiny_multi": {
-    "message": "Tiny Multilingual (~150MB)"
+    "message": "Крошечный мультиязычный (~150MB)"
   },
   "model_base_multi": {
-    "message": "Base Multilingual (~290MB)"
+    "message": "Базовый мультиязычный (~290MB)"
   },
   "model_small_multi": {
-    "message": "Small Multilingual (~1GB)"
+    "message": "Малый мультиязычный (~1GB)"
   },
   "language_label": {
     "message": "Язык"
@@ -408,7 +408,7 @@
     "message": "Используется WASM."
   },
   "title_recording": {
-    "message": "Whisper: Прослушивание"
+    "message": "Whisper: Слушает"
   },
   "title_processing": {
     "message": "Whisper: Обработка"
@@ -607,5 +607,125 @@
   },
   "vosk_model_label_short": {
     "message": "модель Vosk (введите для поиска)"
+  },
+  "engine_google": {
+    "message": "Google"
+  },
+  "section_google_title": {
+    "message": "Google"
+  },
+  "google_key_note": {
+    "message": "Беспрепятственно использует публичные API-ключи Google."
+  },
+  "google_server_mode_label": {
+    "message": "Режим сервера"
+  },
+  "google_server_mode_note": {
+    "message": "v2 обеспечивает лучшую точность и пунктуацию через Cloud Speech v2. v1 использует старый Assistant API и работает немного быстрее. Оба автоматически определяют язык."
+  },
+  "finalize_text_cleanup_label": {
+    "message": "Finalize text cleanup"
+  },
+  "finalize_text_cleanup_note": {
+    "message": "Быстрая локальная очистка финального текста: пробелы перед знаками препинания, заглавные буквы и отдельные 'I'."
+  },
+  "engine_parakeet": {
+    "message": "Nvidia Parakeet"
+  },
+  "section_parakeet_title": {
+    "message": "Nvidia Parakeet"
+  },
+  "parakeet_note": {
+    "message": "Модели Nvidia Parakeet ONNX работают прямо в вашем браузере."
+  },
+  "parakeet_model_version_label": {
+    "message": "Версия модели"
+  },
+  "parakeet_model_v3": {
+    "message": "Parakeet TDT 0.6b v3 (Мультиязычная, по умолчанию)"
+  },
+  "parakeet_model_v2": {
+    "message": "Parakeet TDT 0.6b v2 (Только английский)"
+  },
+  "parakeet_model_note": {
+    "message": "v2 только на английском. v3 мультиязычная и используется по умолчанию. Заметной разницы в скорости между ними нет; выбирайте в зависимости от нужного языка. Эти модели объемные, поэтому первая загрузка может занять время."
+  },
+  "parakeet_waiting_download": {
+    "message": "Ожидание загрузки модели..."
+  },
+  "parakeet_backend_label": {
+    "message": "Бэкенд"
+  },
+  "parakeet_backend_webgpu": {
+    "message": "WebGPU гибрид (рекомендуется)"
+  },
+  "parakeet_backend_wasm": {
+    "message": "WASM CPU резервный вариант"
+  },
+  "parakeet_backend_note": {
+    "message": "Гибридный режим WebGPU использует GPU ускорение при его наличии и переключается на WASM при необходимости."
+  },
+  "parakeet_encoder_quant_label": {
+    "message": "Квантование энкодера"
+  },
+  "parakeet_decoder_quant_label": {
+    "message": "Квантование декодера"
+  },
+  "parakeet_quant_int8": {
+    "message": "int8 (Лучше для WASM)"
+  },
+  "parakeet_quant_fp16": {
+    "message": "fp16 (Быстрее на GPU)"
+  },
+  "parakeet_quant_fp32": {
+    "message": "fp32 (Выше точность, медленнее)"
+  },
+  "parakeet_quant_note": {
+    "message": "По умолчанию установлено int8 для меньшего объема загрузки и стабильной работы на CPU."
+  },
+  "parakeet_interval_label": {
+    "message": "Интервал вывода (мс)"
+  },
+  "parakeet_interval_note": {
+    "message": "Как часто модель строит окно для потокового вывода. Меньше = быстрее промежуточный текст, но выше нагрузка."
+  },
+  "parakeet_silence_label": {
+    "message": "Сброс тишины (сек)"
+  },
+  "parakeet_silence_note": {
+    "message": "Сколько должна длиться тишина до того, как текст Parakeet будет финализирован."
+  },
+  "parakeet_vad_label": {
+    "message": "Порог энергии VAD"
+  },
+  "parakeet_vad_note": {
+    "message": "Порог энергии для детекции речи. Выше = требуется более громкий голос."
+  },
+  "parakeet_ten_vad_label": {
+    "message": "Порог TEN-VAD"
+  },
+  "parakeet_ten_vad_note": {
+    "message": "Порог VAD для вывода, используемый потоковым пайплайном Keet при доступном WASM VAD."
+  },
+  "parakeet_frame_stride_label": {
+    "message": "Шаг кадра"
+  },
+  "parakeet_wasm_threads_label": {
+    "message": "Потоки WASM"
+  },
+  "parakeet_stride_threads_note": {
+    "message": "Шаг кадра снижает нагрузку на декодер. Потоки WASM влияют только на резервные пути CPU."
+  },
+  "parakeet_streaming_label": {
+    "message": "Отключить потоковую передачу Nvidia Parakeet"
+  },
+  "parakeet_streaming_note": {
+    "message": "Потоковая передача Parakeet включена по умолчанию. Отключите ее, чтобы транскрибировать только после остановки записи."
+  },
+  "parakeet_prewarm_label": {
+    "message": "Включить предварительный прогрев Nvidia Parakeet"
+  },
+  "parakeet_prewarm_note": {
+    "message": "Предварительно загружает модель и выполняет один тестовый прогон. Использует больше памяти/GPU и запускается только при отсутствии активного потока Parakeet."
   }
 }

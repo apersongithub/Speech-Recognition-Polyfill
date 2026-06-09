@@ -2,6 +2,7 @@
 // Worker-based local Whisper to allow freeing WASM/WebGPU resources by terminating the worker.
 // Debug mode: can forward debug logs to the site console via content script.
 
+import { readParakeetConfig } from './parakeet-config.js';
 import { env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1';
 
 env.allowLocalModels = false;
@@ -21,7 +22,8 @@ const PROVIDERS = {
   LOCAL: 'local-whisper',
   ASSEMBLY: 'assemblyai',
   VOSK: 'vosk',
-  GOOGLE: 'google'
+  GOOGLE: 'google',
+  NVIDIA_PARAKEET: 'nvidia-parakeet'
 };
 
 const VOSK_MODELS = new Map([
@@ -97,6 +99,12 @@ let residentModelId = null;
 let keepVoskResident = false;
 let residentVoskModelId = null;
 
+let keepParakeetResident = false;
+let residentParakeetModelId = null;
+let residentParakeetConfig = null;
+let parakeetPrewarmPromise = null;
+let parakeetPrewarmKey = '';
+
 // Track defaults so we can cancel sessions when model/provider changes
 let lastDefaultsFingerprint = null;
 
@@ -111,6 +119,7 @@ const pageInstanceByTabFrame = new Map(); // key: `${tabId}:${frameId}` -> pageI
 
 // Per-tab toolbar icon state
 const tabStateById = new Map();
+const streamUiByTab = new Map();
 const iconCache = new Map();
 const ICON_CACHE_MAX = 48;
 
@@ -125,10 +134,10 @@ const ERROR_HOLD_MS = 2500;
 const assemblyStopRequestedBySession = new Set();
 
 const BADGE_MS = {
-  cached: 900,
+  cached: 2200,
   downloading: 0,
-  downloaded: 900,
-  download_error: 1200,
+  downloaded: 2200,
+  download_error: 1800,
   cloudprocessing: 0,
   cancel: 1200,
   done: 650
@@ -399,10 +408,10 @@ function startVoskStream(sessionId, tabId, frameId, sampleRate = 16000, graceEna
     if (!voskRecognizers.has(sessionId)) return;
 
     const text = message?.result?.partial || '';
-    if (text) {
+    if (text !== undefined) {
       sendTerminal(tabId, frameId, {
         type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
-        text: text.trim(),
+        text: text, // send as-is, even if empty
         sessionId,
         isFinal: false
       });
@@ -579,6 +588,482 @@ async function terminateAsrWorker() {
   }
 }
 
+// ---------------- Parakeet Worker (ONNX/WebGPU isolation) ----------------
+let parakeetWorker = null;
+let parakeetSeq = 1;
+const parakeetInflight = new Map();
+let parakeetModelSwitches = 0;
+const PARAKEET_MODEL_SWITCH_TERMINATE_THRESHOLD = 8;
+let currentParakeetModel = 'parakeet-tdt-0.6b-v3';
+let parakeetModelLoadPromise = null;
+let parakeetModelLoadKey = '';
+const parakeetStreamChain = new Map();
+const parakeetLastMature = new Map();
+const parakeetLastImmature = new Map();
+const parakeetStreamReady = new Set();
+const parakeetPendingChunks = new Map();
+const parakeetFirstInferenceReady = new Set();
+const parakeetStreamRuntimeKey = new Map();
+const PARAKEET_PENDING_CHUNKS_MAX = 120;
+const PARAKEET_STREAM_CHUNK_TIMEOUT_MS = 120000;
+const PARAKEET_STREAM_STOP_TIMEOUT_MS = 60000;
+const parakeetActiveStreamByOwner = new Map();
+const parakeetStreamOwnerByKey = new Map();
+const parakeetProgressTargets = new Map();
+let parakeetWorkerCallChain = Promise.resolve();
+
+const ALLOWED_PARAKEET_MODELS = new Set([
+  'parakeet-tdt-0.6b-v2',
+  'parakeet-tdt-0.6b-v3'
+]);
+
+function ensureParakeetWorker() {
+  if (parakeetWorker) return;
+
+  parakeetWorker = new Worker(browser.runtime.getURL('parakeet-engine/parakeet-worker.js'), { type: 'module' });
+
+  parakeetWorker.onmessage = (ev) => {
+    const msg = ev.data || {};
+    if (msg.type === 'MODEL_PROGRESS') {
+      handleParakeetWorkerProgress(msg.payload || {});
+      return;
+    }
+    if (msg.type === 'MODEL_STATE') {
+      handleParakeetWorkerState(String(msg.payload || ''));
+      return;
+    }
+    if (msg.type === 'ERROR') {
+      handleParakeetWorkerLoadError(String(msg.payload || 'Parakeet model error'));
+      return;
+    }
+
+    const h = parakeetInflight.get(msg.id);
+    if (!h) return;
+    parakeetInflight.delete(msg.id);
+    if (h.timeout) clearTimeout(h.timeout);
+    if (msg.ok) h.resolve(msg);
+    else h.reject(new Error(msg.error || 'Parakeet worker error'));
+  };
+
+  parakeetWorker.onerror = (e) => {
+    dbg('parakeet_worker_error', { message: e?.message || String(e) });
+
+    for (const [id, h] of parakeetInflight.entries()) {
+      parakeetInflight.delete(id);
+      if (h.timeout) clearTimeout(h.timeout);
+      h.reject(new Error('Parakeet worker crashed'));
+    }
+    try { parakeetWorker.terminate(); } catch (_) { }
+    parakeetWorker = null;
+    parakeetStreamChain.clear();
+    parakeetStreamReady.clear();
+    parakeetLastMature.clear();
+    parakeetLastImmature.clear();
+    parakeetPendingChunks.clear();
+    parakeetFirstInferenceReady.clear();
+    parakeetStreamRuntimeKey.clear();
+    parakeetActiveStreamByOwner.clear();
+    parakeetStreamOwnerByKey.clear();
+    clearParakeetProgressTargets();
+    parakeetWorkerCallChain = Promise.resolve();
+    parakeetModelLoadPromise = null;
+    parakeetModelLoadKey = '';
+    parakeetPrewarmPromise = null;
+    parakeetPrewarmKey = '';
+  };
+}
+
+function callParakeetWorker(type, payload = {}, timeoutMs = PROCESSING_TIMEOUT_MS, transfer = []) {
+  ensureParakeetWorker();
+  const id = parakeetSeq++;
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      parakeetInflight.delete(id);
+      reject(new Error('Parakeet worker call timed out'));
+    }, timeoutMs);
+
+    parakeetInflight.set(id, { resolve, reject, timeout });
+    try {
+      parakeetWorker.postMessage({ id, type, ...payload }, transfer);
+    } catch (e) {
+      clearTimeout(timeout);
+      parakeetInflight.delete(id);
+      reject(e);
+    }
+  });
+}
+
+function clearParakeetStreamState(key) {
+  parakeetStreamChain.delete(key);
+  parakeetStreamReady.delete(key);
+  parakeetLastMature.delete(key);
+  parakeetLastImmature.delete(key);
+  parakeetPendingChunks.delete(key);
+  parakeetFirstInferenceReady.delete(key);
+  parakeetStreamRuntimeKey.delete(key);
+  const ownerKey = parakeetStreamOwnerByKey.get(key);
+  if (ownerKey && parakeetActiveStreamByOwner.get(ownerKey) === key) {
+    parakeetActiveStreamByOwner.delete(ownerKey);
+  }
+  parakeetStreamOwnerByKey.delete(key);
+}
+
+function clearParakeetStreamsForTab(tabId) {
+  const prefix = `${tabId}:`;
+  for (const key of Array.from(parakeetStreamReady.keys())) {
+    if (!String(key).startsWith(prefix)) continue;
+    const sessionId = parseSessionIdFromStreamKey(key);
+    clearParakeetStreamState(key);
+    queueParakeetWorkerCall(() => callParakeetWorker(
+      'TRANSCRIBE_STREAM_STOP',
+      { sessionId },
+      PARAKEET_STREAM_STOP_TIMEOUT_MS
+    )).catch(() => { });
+  }
+
+  for (const key of Array.from(parakeetStreamChain.keys())) {
+    if (String(key).startsWith(prefix)) clearParakeetStreamState(key);
+  }
+
+  for (const key of Array.from(parakeetPendingChunks.keys())) {
+    if (String(key).startsWith(prefix)) clearParakeetStreamState(key);
+  }
+
+  for (const [ownerKey, key] of Array.from(parakeetActiveStreamByOwner.entries())) {
+    if (String(ownerKey).startsWith(prefix) || String(key).startsWith(prefix)) {
+      clearParakeetStreamState(key);
+    }
+  }
+
+  for (const key of Array.from(parakeetProgressTargets.keys())) {
+    if (String(key).startsWith(prefix)) untrackParakeetProgress(key);
+  }
+}
+
+function rememberParakeetStreamOwner(ownerKey, key) {
+  parakeetActiveStreamByOwner.set(ownerKey, key);
+  parakeetStreamOwnerByKey.set(key, ownerKey);
+}
+
+function parseSessionIdFromStreamKey(key) {
+  return Number(String(key).split(':').pop() || 0);
+}
+
+function hasActiveParakeetStream() {
+  return parakeetStreamReady.size > 0
+    || parakeetStreamChain.size > 0
+    || parakeetPendingChunks.size > 0
+    || parakeetActiveStreamByOwner.size > 0;
+}
+
+function queueParakeetWorkerCall(run) {
+  const queued = parakeetWorkerCallChain.catch(() => { }).then(run);
+  parakeetWorkerCallChain = queued.catch(() => { });
+  return queued;
+}
+
+function fallbackParakeetModel(modelID) {
+  return ALLOWED_PARAKEET_MODELS.has(modelID) ? modelID : 'parakeet-tdt-0.6b-v3';
+}
+
+function parakeetProgressTargetKey(tabId, frameId, label = 'load') {
+  return `${tabId}:${typeof frameId === 'number' ? frameId : 0}:${label}`;
+}
+
+function trackParakeetProgress(tabId, frameId, label = 'load') {
+  if (tabId == null) return null;
+  const key = parakeetProgressTargetKey(tabId, frameId, label);
+  parakeetProgressTargets.set(key, {
+    tabId,
+    frameId: typeof frameId === 'number' ? frameId : 0,
+    label,
+    lastToastAt: 0,
+    lastToastProgress: -1,
+    lastToastStage: ''
+  });
+  return key;
+}
+
+function untrackParakeetProgress(key) {
+  if (!key) return;
+  const target = parakeetProgressTargets.get(key);
+  parakeetProgressTargets.delete(key);
+  if (!target) return;
+  const hasSameTab = Array.from(parakeetProgressTargets.values())
+    .some(item => item.tabId === target.tabId);
+  if (!hasSameTab) {
+    try { browser.browserAction.setBadgeText({ tabId: target.tabId, text: '' }); } catch (_) { }
+  }
+}
+
+function clearParakeetProgressTargets() {
+  const tabIds = new Set();
+  for (const target of parakeetProgressTargets.values()) {
+    if (target?.tabId != null) tabIds.add(target.tabId);
+  }
+  parakeetProgressTargets.clear();
+  for (const tabId of tabIds) {
+    try { browser.browserAction.setBadgeText({ tabId, text: '' }); } catch (_) { }
+  }
+}
+
+function normalizeParakeetProgress(progress = {}) {
+  const percent = Number(progress.progress);
+  const clamped = Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : null;
+  const stage = String(progress.stage || '').trim();
+  const message = String(progress.message || '').trim() || (stage ? stage : 'Loading Parakeet model');
+  const file = progress.file ? String(progress.file) : '';
+  return {
+    stage,
+    progress: clamped,
+    message,
+    file,
+    backend: progress.backend || null
+  };
+}
+
+function formatParakeetProgress(progress) {
+  const pct = progress.progress == null ? '' : ` ${progress.progress}%`;
+  const file = progress.file ? ` - ${progress.file}` : '';
+  return `Parakeet: ${progress.message}${pct}${file}`;
+}
+
+function sendParakeetProgressToExtension(progress, state = 'progress') {
+  try {
+    const p = browser.runtime.sendMessage({
+      type: 'PARAKEET_MODEL_PROGRESS',
+      state,
+      progress
+    });
+    if (p && typeof p.catch === 'function') p.catch(() => { });
+  } catch (_) { }
+}
+
+function handleParakeetWorkerProgress(rawProgress = {}) {
+  const progress = normalizeParakeetProgress(rawProgress);
+  sendParakeetProgressToExtension(progress, 'progress');
+
+  const colors = ICON_COLORS();
+  const badgeColor = progress.progress === 100 ? colors.downloaded : colors.downloading;
+  const badgeMs = progress.progress === 100 ? BADGE_MS.downloaded : BADGE_MS.downloading;
+  const title = formatParakeetProgress(progress);
+  const now = Date.now();
+  const targets = new Map();
+
+  for (const target of parakeetProgressTargets.values()) {
+    const targetKey = `${target.tabId}:${target.frameId}`;
+    if (targets.has(targetKey)) continue;
+    targets.set(targetKey, target);
+  }
+
+  for (const target of targets.values()) {
+    showBadgeForTab(target.tabId, { type: 'download', color: badgeColor, title }, badgeMs);
+    try {
+      const text = progress.progress == null
+        ? 'DL'
+        : (progress.progress >= 100 ? '' : `${progress.progress}%`);
+      browser.browserAction.setBadgeText({ tabId: target.tabId, text });
+      browser.browserAction.setBadgeBackgroundColor({ tabId: target.tabId, color: badgeColor });
+    } catch (_) { }
+
+    const progressChanged = progress.progress != null
+      && (target.lastToastProgress < 0 || Math.abs(progress.progress - target.lastToastProgress) >= 10);
+    const stageChanged = progress.stage && progress.stage !== target.lastToastStage;
+    const shouldToast = progress.progress === 100 || stageChanged || progressChanged || (now - target.lastToastAt > 2500);
+    if (!shouldToast) continue;
+
+    target.lastToastAt = now;
+    target.lastToastProgress = progress.progress ?? target.lastToastProgress;
+    target.lastToastStage = progress.stage || target.lastToastStage;
+    sendTerminal(target.tabId, target.frameId, {
+      type: 'WHISPER_TOAST',
+      message: title,
+      level: progress.progress === 100 ? 'recording' : 'processing'
+    });
+  }
+}
+
+function handleParakeetWorkerState(state) {
+  if (!state) return;
+  sendParakeetProgressToExtension({
+    stage: state,
+    progress: state === 'ready' ? 100 : null,
+    message: state === 'ready' ? 'Model ready' : `Model ${state}`,
+    file: ''
+  }, state);
+}
+
+function handleParakeetWorkerLoadError(message) {
+  sendParakeetProgressToExtension({
+    stage: 'error',
+    progress: null,
+    message,
+    file: ''
+  }, 'error');
+}
+
+async function processParakeetStreamChunk(tabId, frameId, sessionId, key, audioData) {
+  const transfer = audioData instanceof ArrayBuffer ? [audioData] : [];
+  const res = await queueParakeetWorkerCall(() => {
+    if (!parakeetStreamReady.has(key)) return { ok: false, skipped: true };
+    return callParakeetWorker(
+      'TRANSCRIBE_STREAM_CHUNK',
+      { sessionId, input: audioData },
+      PARAKEET_STREAM_CHUNK_TIMEOUT_MS,
+      transfer
+    );
+  });
+
+  if (!res.ok) return;
+
+  if (res.firstInferenceReady && !parakeetFirstInferenceReady.has(key)) {
+    parakeetFirstInferenceReady.add(key);
+    parakeetPrewarmKey = parakeetStreamRuntimeKey.get(key) || parakeetPrewarmKey;
+    await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'recording', null);
+    sendTerminal(tabId, frameId, {
+      type: 'WHISPER_TOAST',
+      message: 'Parakeet first inference ready.',
+      level: 'recording'
+    });
+  }
+
+  const oldMature = parakeetLastMature.get(key) || '';
+  if (res.matureText && res.matureText.length > oldMature.length) {
+    const newMature = res.matureText.substring(oldMature.length).trim();
+    if (newMature) {
+      parakeetLastMature.set(key, res.matureText);
+      parakeetLastImmature.delete(key);
+      sendTerminal(tabId, frameId, {
+        type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+        text: newMature,
+        sessionId,
+        isFinal: false,
+        commit: true
+      });
+    }
+  }
+
+  if (res.immatureText !== undefined) {
+    const immatureText = String(res.immatureText || '');
+    const oldImmature = parakeetLastImmature.get(key);
+    if (oldImmature !== immatureText) {
+      parakeetLastImmature.set(key, immatureText);
+      sendTerminal(tabId, frameId, {
+        type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+        text: immatureText,
+        sessionId,
+        isFinal: false
+      });
+    }
+  }
+}
+
+async function terminateParakeetWorker() {
+  if (!parakeetWorker) return;
+
+  dbg('parakeet_worker_terminate', {});
+  try { parakeetWorker.terminate(); } catch (_) { }
+  parakeetWorker = null;
+
+  for (const [id, h] of parakeetInflight.entries()) {
+    parakeetInflight.delete(id);
+    if (h.timeout) clearTimeout(h.timeout);
+    h.reject(new Error('Parakeet worker terminated'));
+  }
+
+  parakeetStreamChain.clear();
+  parakeetStreamReady.clear();
+  parakeetLastMature.clear();
+  parakeetLastImmature.clear();
+  parakeetPendingChunks.clear();
+  parakeetFirstInferenceReady.clear();
+  parakeetStreamRuntimeKey.clear();
+  parakeetActiveStreamByOwner.clear();
+  parakeetStreamOwnerByKey.clear();
+  clearParakeetProgressTargets();
+  parakeetWorkerCallChain = Promise.resolve();
+  parakeetModelLoadPromise = null;
+  parakeetModelLoadKey = '';
+  parakeetPrewarmPromise = null;
+  parakeetPrewarmKey = '';
+}
+
+function parakeetLoadRuntimeKey(modelID, config = {}) {
+  const c = config && typeof config === 'object' ? config : {};
+  return JSON.stringify({
+    modelID: fallbackParakeetModel(modelID),
+    backendMode: c.backendMode || 'webgpu-hybrid',
+    encoderQuant: c.encoderQuant || 'int8',
+    decoderQuant: c.decoderQuant || 'int8',
+    wasmThreads: c.wasmThreads || 4
+  });
+}
+
+async function ensureParakeetModelLoaded(modelID, config = null, timeoutMs = 300000) {
+  const safeModel = fallbackParakeetModel(modelID);
+  const configForLoad = config && typeof config === 'object' ? config : {};
+  const key = parakeetLoadRuntimeKey(safeModel, configForLoad);
+
+  if (parakeetModelLoadPromise && parakeetModelLoadKey === key) {
+    return parakeetModelLoadPromise;
+  }
+
+  const previousModel = currentParakeetModel;
+  const loadPromise = queueParakeetWorkerCall(async () => {
+    let res = await callParakeetWorker('ENSURE_MODEL', {
+      modelID: safeModel,
+      config: configForLoad
+    }, timeoutMs);
+
+    currentParakeetModel = res.model || safeModel;
+
+    if (previousModel && previousModel !== currentParakeetModel) {
+      parakeetModelSwitches += 1;
+      dbg('parakeet_model_switched', { previousModel, currentModel: currentParakeetModel, switches: parakeetModelSwitches });
+    }
+
+    if (parakeetModelSwitches >= PARAKEET_MODEL_SWITCH_TERMINATE_THRESHOLD) {
+      dbg('parakeet_recycling_worker', { switches: parakeetModelSwitches });
+      parakeetModelSwitches = 0;
+      await terminateParakeetWorker();
+      ensureParakeetWorker();
+      res = await callParakeetWorker('ENSURE_MODEL', {
+        modelID: currentParakeetModel,
+        config: configForLoad
+      }, timeoutMs);
+    }
+
+    return res;
+  });
+
+  const wrappedPromise = loadPromise.finally(() => {
+    if (parakeetModelLoadPromise === wrappedPromise) {
+      parakeetModelLoadPromise = null;
+      parakeetModelLoadKey = '';
+    }
+  });
+  parakeetModelLoadKey = key;
+  parakeetModelLoadPromise = wrappedPromise;
+  return wrappedPromise;
+}
+
+async function ensureParakeetModelForTab(tabId, modelID, config = null) {
+  const safeModel = fallbackParakeetModel(modelID);
+  const colors = ICON_COLORS();
+  const progressKey = trackParakeetProgress(tabId, 0, `ensure:${safeModel}`);
+  showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
+
+  try {
+    const res = await ensureParakeetModelLoaded(safeModel, config, 300000);
+
+    if (res.cached) {
+      showBadgeForTab(tabId, { type: 'cached', color: colors.cached }, BADGE_MS.cached);
+    }
+  } finally {
+    untrackParakeetProgress(progressKey);
+  }
+}
+
 // ---------------- Runtime flags ----------------
 async function refreshRuntimeFlagsFromStorage() {
   try {
@@ -590,7 +1075,9 @@ async function refreshRuntimeFlagsFromStorage() {
     const defaults = settings?.defaults || {};
     const provider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY
       : (defaults.provider === PROVIDERS.GOOGLE) ? PROVIDERS.GOOGLE
-      : (defaults.provider === PROVIDERS.LOCAL) ? PROVIDERS.LOCAL : PROVIDERS.VOSK;
+        : (defaults.provider === PROVIDERS.NVIDIA_PARAKEET) ? PROVIDERS.NVIDIA_PARAKEET
+          : (defaults.provider === PROVIDERS.LOCAL) ? PROVIDERS.LOCAL : PROVIDERS.VOSK;
+    const parakeetConfig = readParakeetConfig(settings || {});
 
     const model = (defaults.model && ALLOWED_MODELS.has(defaults.model))
       ? defaults.model
@@ -604,7 +1091,12 @@ async function refreshRuntimeFlagsFromStorage() {
     keepVoskResident = !!(cacheDefaultModel && provider === PROVIDERS.VOSK);
     residentVoskModelId = keepVoskResident ? voskModel : null;
 
-    dbg('runtime_flags', { debugMode, keepModelResident, residentModelId, keepVoskResident, residentVoskModelId, provider, model, voskModel });
+    keepParakeetResident = !!(provider === PROVIDERS.NVIDIA_PARAKEET
+      && (cacheDefaultModel || parakeetConfig.prewarmEnabled));
+    residentParakeetModelId = keepParakeetResident ? parakeetConfig.modelId : null;
+    residentParakeetConfig = keepParakeetResident ? parakeetConfig : null;
+
+    dbg('runtime_flags', { debugMode, keepModelResident, residentModelId, keepVoskResident, residentVoskModelId, keepParakeetResident, residentParakeetModelId, parakeetPrewarmEnabled: parakeetConfig.prewarmEnabled, provider, model, voskModel });
   } catch (_) {
     debugMode = false;
     disableProcessingTimeouts = false;
@@ -612,6 +1104,9 @@ async function refreshRuntimeFlagsFromStorage() {
     residentModelId = null;
     keepVoskResident = false;
     residentVoskModelId = null;
+    keepParakeetResident = false;
+    residentParakeetModelId = null;
+    residentParakeetConfig = null;
   }
 
   if (voskStreamInitPromise.size === 0 && voskRecognizers.size === 0) {
@@ -625,6 +1120,7 @@ const isDarkMode = () => window.matchMedia && window.matchMedia('(prefers-color-
 const ICON_COLORS = () => ({
   idle: isDarkMode() ? '#e5e7eb' : '#374151',
   recording: '#2563eb',
+  loading: '#3b82f6',
   processing: '#f59e0b',
   error: '#dc2626',
 
@@ -821,16 +1317,39 @@ function getTabState(tabId) {
   return tabStateById.get(tabId);
 }
 
-function computeTitle(state) {
-  if (state === 'recording') return t('title_recording', 'Whisper: Listening');
-  if (state === 'processing') return t('title_processing', 'Whisper: Processing');
-  if (state === 'error') return t('title_error', 'Whisper: Error');
-  return t('title_idle', 'Whisper: Idle');
+function badgeTitle(badge) {
+  if (!badge) return '';
+  const colors = ICON_COLORS();
+  if (badge.title) return badge.title;
+  if (badge.type === 'cached') return 'model cached';
+  if (badge.type === 'done') return 'done';
+  if (badge.type === 'cancel') return 'canceled';
+  if (badge.type === 'cloudprocessing') return 'finalizing';
+  if (badge.type === 'download') {
+    if (badge.color === colors.downloaded) return 'model downloaded';
+    if (badge.color === colors.download_error) return 'model load failed';
+    return 'downloading model';
+  }
+  return '';
+}
+
+function computeTitle(state, badge = null) {
+  let base = t('title_idle', 'Whisper: Idle');
+  if (state === 'loading') base = 'Whisper: Loading model';
+  else if (state === 'recording') base = t('title_recording', 'Whisper: Listening');
+  else if (state === 'finalizing') base = 'Whisper: Finalizing';
+  else if (state === 'processing') base = t('title_processing', 'Whisper: Processing');
+  else if (state === 'error') base = t('title_error', 'Whisper: Error');
+
+  const badgeSuffix = badgeTitle(badge);
+  return badgeSuffix ? `${base} - ${badgeSuffix}` : base;
 }
 
 function computeColor(state) {
   const c = ICON_COLORS();
+  if (state === 'loading') return c.loading;
   if (state === 'recording') return c.recording;
+  if (state === 'finalizing') return c.processing;
   if (state === 'processing') return c.processing;
   if (state === 'error') return c.error;
   return c.idle;
@@ -847,7 +1366,7 @@ async function applyIconForTab(tabId) {
   }
 
   const color = computeColor(effectiveState);
-  const title = computeTitle(effectiveState);
+  const title = computeTitle(effectiveState, ts.badge);
 
   const images = await getIconImageData(color, ts.badge);
   await browser.browserAction.setIcon({ tabId, imageData: images });
@@ -858,10 +1377,16 @@ async function setTabState(tabId, state, badge = null) {
   const ts = getTabState(tabId);
   const now = Date.now();
 
-  if (state === 'recording' || state === 'processing') {
+  if (state === 'recording' || state === 'processing' || state === 'loading' || state === 'finalizing') {
     ts.errorHoldUntil = 0;
   } else if (ts.errorHoldUntil > now && state !== 'error') {
     return;
+  }
+
+  const prevTimer = badgeTimerByTab.get(tabId);
+  if (prevTimer) {
+    clearTimeout(prevTimer);
+    badgeTimerByTab.delete(tabId);
   }
 
   ts.state = state;
@@ -912,7 +1437,7 @@ function showBadgeForTab(tabId, badge, ms) {
   const prevTimer = badgeTimerByTab.get(tabId);
   if (prevTimer) {
     clearTimeout(prevTimer);
-    badgeTimerByTab.delete(prevTimer);
+    badgeTimerByTab.delete(tabId);
   }
 
   if (ms > 0) {
@@ -1038,6 +1563,14 @@ function scheduleModelGc() {
       dbg('gc_skip_resident_default', { residentModelId });
     }
 
+    if (parakeetStreamReady.size > 0 || parakeetStreamChain.size > 0) {
+      dbg('gc_skip_parakeet_active', { ready: parakeetStreamReady.size, chains: parakeetStreamChain.size });
+    } else if (!(keepParakeetResident && residentParakeetModelId)) {
+      await terminateParakeetWorker();
+    } else {
+      dbg('gc_skip_resident_parakeet', { residentParakeetModelId });
+    }
+
     trimVoskModelCache({ forceIdle: true });
 
     dbg('worker_terminated_idle', { afterMs: MODEL_IDLE_UNLOAD_MS });
@@ -1050,10 +1583,12 @@ async function getEffectiveSettings(hostname) {
   const graceEnabled = settings?.graceEnabled !== false;
   const graceMs = typeof settings?.graceMs === 'number' ? settings.graceMs : RESULT_GRACE_MS_DEFAULT;
   const assemblyaiApiKey = settings?.assemblyaiApiKey || null;
+  const parakeetConfig = readParakeetConfig(settings || {});
 
   const baseProvider = (defaults.provider === PROVIDERS.ASSEMBLY) ? PROVIDERS.ASSEMBLY
     : (defaults.provider === PROVIDERS.GOOGLE ? PROVIDERS.GOOGLE
-    : (defaults.provider === PROVIDERS.LOCAL ? PROVIDERS.LOCAL : PROVIDERS.VOSK));
+      : (defaults.provider === PROVIDERS.LOCAL ? PROVIDERS.LOCAL
+        : (defaults.provider === PROVIDERS.NVIDIA_PARAKEET ? PROVIDERS.NVIDIA_PARAKEET : PROVIDERS.VOSK)));
 
   const overrides = settings?.overrides || {};
   const host = normalizeHost(hostname);
@@ -1075,7 +1610,8 @@ async function getEffectiveSettings(hostname) {
   const provider = effProvider === PROVIDERS.ASSEMBLY
     ? PROVIDERS.ASSEMBLY
     : (effProvider === PROVIDERS.GOOGLE ? PROVIDERS.GOOGLE
-    : (effProvider === PROVIDERS.VOSK ? PROVIDERS.VOSK : PROVIDERS.LOCAL));
+      : (effProvider === PROVIDERS.VOSK ? PROVIDERS.VOSK
+        : (effProvider === PROVIDERS.NVIDIA_PARAKEET ? PROVIDERS.NVIDIA_PARAKEET : PROVIDERS.LOCAL)));
 
   const disabled = isHostDisabled(settings, host);
   const siteGraceMs = typeof site.graceMs === 'number' ? site.graceMs : null;
@@ -1085,18 +1621,52 @@ async function getEffectiveSettings(hostname) {
     : (ALLOWED_MODELS.has(defaults.model) ? defaults.model : 'Xenova/whisper-base');
 
   const voskModel = normalizeVoskModel(site.model || defaults.voskModel || DEFAULT_VOSK_MODEL);
+  if (site.parakeetModel && ALLOWED_PARAKEET_MODELS.has(site.parakeetModel)) {
+    parakeetConfig.modelId = site.parakeetModel;
+  }
 
   return {
     enabled: !disabled,
-    model: provider === PROVIDERS.VOSK ? voskModel : whisperModel,
+    model: provider === PROVIDERS.VOSK ? voskModel
+      : (provider === PROVIDERS.NVIDIA_PARAKEET ? parakeetConfig.modelId : whisperModel),
     language: normalizeLanguageCode(site.language ?? defaults.language ?? 'auto'),
     graceEnabled,
     graceMs: (siteGraceMs ?? graceMs),
     provider,
     assemblyaiApiKey,
     assemblyaiStreamingEnabled: settings?.assemblyaiStreamingEnabled !== false,
-    assemblyaiStreamingMultilingualEnabled: settings?.assemblyaiStreamingMultilingualEnabled !== false
+    assemblyaiStreamingMultilingualEnabled: settings?.assemblyaiStreamingMultilingualEnabled !== false,
+    parakeet: parakeetConfig,
+    parakeetEncoderQuant: parakeetConfig.encoderQuant,
+    parakeetDecoderQuant: parakeetConfig.decoderQuant,
+    parakeetInferenceInterval: parakeetConfig.inferenceIntervalMs,
+    parakeetVadThreshold: parakeetConfig.energyThreshold
   };
+}
+
+function streamingUiKey(provider, sessionId) {
+  return `${provider || 'stream'}:${sessionId || 0}`;
+}
+
+function getStreamingUi(tabId) {
+  return streamUiByTab.get(tabId) || null;
+}
+
+async function setStreamingUi(tabId, provider, sessionId, state, badge = null) {
+  const key = streamingUiKey(provider, sessionId);
+  streamUiByTab.set(tabId, { key, provider, sessionId, state });
+  await setTabState(tabId, state, badge);
+}
+
+async function clearStreamingUi(tabId, provider, sessionId, { finalBadge = null, finalBadgeMs = 0 } = {}) {
+  const ui = streamUiByTab.get(tabId);
+  const key = streamingUiKey(provider, sessionId);
+  if (ui && ui.key !== key) return;
+
+  streamUiByTab.delete(tabId);
+  await clearBadge(tabId);
+  await setTabState(tabId, 'idle', null);
+  if (finalBadge) showBadgeForTab(tabId, finalBadge, finalBadgeMs);
 }
 
 async function ensureModelSilently(modelID) {
@@ -1171,6 +1741,78 @@ async function prefetchDefaultModelIfEnabled() {
       dbg('prefetch_vosk_failed', { error: String(e) });
     }
   }
+
+  if (keepParakeetResident && residentParakeetModelId) {
+    try {
+      dbg('prefetch_parakeet_start', { model: residentParakeetModelId });
+      await ensureParakeetModelLoaded(residentParakeetModelId, residentParakeetConfig, 300000);
+      if (residentParakeetConfig?.prewarmEnabled) {
+        const prewarm = await prewarmParakeetModelIfIdle(residentParakeetModelId, residentParakeetConfig);
+        dbg('prewarm_parakeet_done', {
+          model: residentParakeetModelId,
+          skipped: !!prewarm?.skipped,
+          reason: prewarm?.reason || null
+        });
+      }
+      dbg('prefetch_parakeet_done', { model: residentParakeetModelId });
+    } catch (e) {
+      dbg('prefetch_parakeet_failed', { error: String(e) });
+    }
+  }
+}
+
+function parakeetModelRuntimeKey(modelID, config = {}) {
+  const c = config && typeof config === 'object' ? config : {};
+  return JSON.stringify({
+    modelID: fallbackParakeetModel(modelID),
+    backendMode: c.backendMode || 'webgpu-hybrid',
+    encoderQuant: c.encoderQuant || 'int8',
+    decoderQuant: c.decoderQuant || 'int8',
+    frameStride: c.frameStride || 1,
+    wasmThreads: c.wasmThreads || 4
+  });
+}
+
+function isParakeetModelPrewarmed(modelID, config = {}) {
+  return parakeetPrewarmKey === parakeetModelRuntimeKey(modelID, config);
+}
+
+async function prewarmParakeetModelIfIdle(modelID, config = {}, tabId = null, frameId = null) {
+  if (!config?.prewarmEnabled) return { ok: true, skipped: true, reason: 'disabled' };
+  if (hasActiveParakeetStream()) return { ok: true, skipped: true, reason: 'active_stream' };
+
+  const safeModel = fallbackParakeetModel(modelID);
+  const key = parakeetModelRuntimeKey(safeModel, config);
+  if (parakeetPrewarmKey === key) return { ok: true, skipped: true, reason: 'already_warmed' };
+  if (parakeetPrewarmPromise) return parakeetPrewarmPromise;
+  const progressKey = trackParakeetProgress(tabId, frameId, `prewarm:${safeModel}`);
+
+  const notify = (message, level = 'processing') => {
+    if (tabId == null || frameId == null) return;
+    sendTerminal(tabId, frameId, { type: 'WHISPER_TOAST', message, level });
+  };
+
+  notify('Prewarming Parakeet model...');
+  parakeetPrewarmPromise = queueParakeetWorkerCall(async () => {
+    if (hasActiveParakeetStream()) return { ok: true, skipped: true, reason: 'active_stream' };
+    const res = await callParakeetWorker('PREWARM_MODEL', {
+      modelID: safeModel,
+      config
+    }, 120000);
+    if (res.ok && !res.skipped) {
+      parakeetPrewarmKey = key;
+      notify('Parakeet prewarm ready.', 'recording');
+    }
+    return res;
+  }).catch((e) => {
+    notify('Parakeet prewarm failed; continuing without prewarm.', 'info');
+    throw e;
+  }).finally(() => {
+    parakeetPrewarmPromise = null;
+    untrackParakeetProgress(progressKey);
+  });
+
+  return parakeetPrewarmPromise;
 }
 
 // ---------- Audio ----------
@@ -1550,7 +2192,30 @@ async function cancelAllSessions(reason = 'config_changed') {
   // 4. Clear Vosk Metadata
 
 
-  // 5. Reset Tab UI States
+  // 5. Clear Parakeet streaming state
+  for (const key of Array.from(parakeetStreamReady.keys())) {
+    const sessionId = parseSessionIdFromStreamKey(key);
+    try {
+      await queueParakeetWorkerCall(() => callParakeetWorker(
+        'TRANSCRIBE_STREAM_STOP',
+        { sessionId },
+        PARAKEET_STREAM_STOP_TIMEOUT_MS
+      ));
+    } catch (_) { }
+  }
+  parakeetStreamReady.clear();
+  parakeetStreamChain.clear();
+  parakeetLastMature.clear();
+  parakeetLastImmature.clear();
+  parakeetPendingChunks.clear();
+  parakeetFirstInferenceReady.clear();
+  parakeetStreamRuntimeKey.clear();
+  parakeetActiveStreamByOwner.clear();
+  parakeetStreamOwnerByKey.clear();
+  clearParakeetProgressTargets();
+  streamUiByTab.clear();
+
+  // 6. Reset Tab UI States
   for (const tabId of tabStateById.keys()) {
     try { await clearBadge(tabId); } catch (_) { }
     try { await setTabState(tabId, 'idle', null); } catch (_) { }
@@ -1559,9 +2224,12 @@ async function cancelAllSessions(reason = 'config_changed') {
   canceledSessionsByTab.clear();
   lastSessionByTab.clear();
 
-  // 6. Terminate Workers & GC
+  // 7. Terminate Workers & GC
   await disposeCurrentModel();
   await terminateAsrWorker();
+  if (!(keepParakeetResident && residentParakeetModelId)) {
+    await terminateParakeetWorker();
+  }
 
 
   // Now that voskRecognizers is empty, this will successfully unload the models
@@ -1722,7 +2390,7 @@ function _fdFlushBatch(sessionPair, session, isFinal) {
   const combinedChunks = [...(session.overlapBuffer || []), ...session.chunks];
   session.chunks = [];
   session.overlapBuffer = combinedChunks.slice(-8);
-  
+
   session.batchIndex++;
 
   // Combine into one buffer
@@ -2000,21 +2668,22 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
         const colors = ICON_COLORS();
         // Show the UI badge and also notify page that we're downloading the model
-        showBadgeForTab(tabId, { type: 'download', color: colors.downloading }, BADGE_MS.downloading);
+        await setStreamingUi(tabId, PROVIDERS.VOSK, sessionId, 'loading', { type: 'download', color: colors.downloading });
         sendTerminal(tabId, frameId, { type: 'WHISPER_TOAST', message: 'Downloading Vosk model…', level: 'processing' });
 
         dbg('vosk_bg_loading_model', { modelId });
         const res = await ensureVoskModel(modelId);
         dbg('vosk_bg_model_loaded', {});
 
+        startVoskStream(sessionId, tabId, frameId, sampleRate, settings.graceEnabled, settings.graceMs, res.modelId, res.model);
+        dbg('vosk_bg_stream_started', {});
+
+        await setStreamingUi(tabId, PROVIDERS.VOSK, sessionId, 'recording', null);
         if (res.cached) {
           showBadgeForTab(tabId, { type: 'cached', color: colors.cached }, BADGE_MS.cached);
         } else {
           showBadgeForTab(tabId, { type: 'download', color: colors.downloaded }, BADGE_MS.downloaded);
         }
-
-        startVoskStream(sessionId, tabId, frameId, sampleRate, settings.graceEnabled, settings.graceMs, res.modelId, res.model);
-        dbg('vosk_bg_stream_started', {});
 
         // Inform page that streaming is ready (so it can show recording toast immediately)
         sendTerminal(tabId, frameId, { type: 'WHISPER_STREAMING_STARTED', provider: 'vosk', sessionId });
@@ -2050,6 +2719,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
         voskPendingChunks.delete(key);
         voskStreamReady.delete(key);
         voskStreamInitPromise.delete(key); // CRITICAL FIX: allow GC to run if init fails
+        await clearStreamingUi(tabId, PROVIDERS.VOSK, sessionId);
         // Provide a clearer, actionable message to the page
         const msg = (err && err.message) ? `Failed to load Vosk model: ${err.message}` : 'Failed to load Vosk model';
         showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
@@ -2097,6 +2767,11 @@ browser.runtime.onMessage.addListener((message, sender) => {
     dbg('vosk_bg_stream_stop_received', { tabId, sessionId });
 
     (async () => {
+      await setStreamingUi(tabId, PROVIDERS.VOSK, sessionId, 'finalizing', {
+        type: 'download',
+        color: ICON_COLORS().processing,
+        title: 'finalizing Vosk locally'
+      });
       const initPromise = voskStreamInitPromise.get(key);
 
       if (initPromise) {
@@ -2113,6 +2788,10 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
       // Stop the recognizer
       stopVoskStream(sessionId);
+      await clearStreamingUi(tabId, PROVIDERS.VOSK, sessionId, {
+        finalBadge: { type: 'done', color: ICON_COLORS().done },
+        finalBadgeMs: BADGE_MS.done
+      });
       dbg('vosk_bg_stream_stopped', {});
       scheduleModelGc();
     })();
@@ -2146,7 +2825,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
         nextFp = JSON.stringify({
           provider: d.provider || PROVIDERS.LOCAL,
           model: d.model || 'Xenova/whisper-base',
-          voskModel: d.voskModel || DEFAULT_VOSK_MODEL
+          voskModel: d.voskModel || DEFAULT_VOSK_MODEL,
+          parakeet: readParakeetConfig(settings || {})
         });
 
         if (lastDefaultsFingerprint && nextFp && nextFp !== lastDefaultsFingerprint) {
@@ -2327,11 +3007,226 @@ browser.runtime.onMessage.addListener((message, sender) => {
     return;
   }
 
+  // ============================================================
+  // PARAKEET_STREAM_START, CHUNK, STOP handlers
+  // ============================================================
+  if (message?.type === 'PARAKEET_STREAM_START') {
+    const hostname = message.hostname || '';
+    const sessionId = message.sessionId || 0;
+    const key = sessionKey(tabId, sessionId);
+    const ownerKey = tabFrameKey(tabId, frameId);
+
+    dbg('parakeet_bg_stream_start_received', { tabId, sessionId, hostname });
+    const previousKey = parakeetActiveStreamByOwner.get(ownerKey);
+    if (previousKey && previousKey !== key) {
+      const previousSessionId = parseSessionIdFromStreamKey(previousKey);
+      clearParakeetStreamState(previousKey);
+      queueParakeetWorkerCall(() => callParakeetWorker(
+        'TRANSCRIBE_STREAM_STOP',
+        { sessionId: previousSessionId },
+        PARAKEET_STREAM_STOP_TIMEOUT_MS
+      )).catch(() => { });
+    }
+    clearParakeetStreamState(key);
+    rememberParakeetStreamOwner(ownerKey, key);
+    parakeetPendingChunks.set(key, []);
+
+    const initPromise = (async () => {
+      let progressKey = null;
+      try {
+        const settings = await getEffectiveSettings(hostname);
+        if (!settings.enabled || settings.provider !== PROVIDERS.NVIDIA_PARAKEET) {
+          throw new Error('Parakeet provider disabled');
+        }
+
+        const modelId = fallbackParakeetModel(settings.model);
+        parakeetStreamRuntimeKey.set(key, parakeetModelRuntimeKey(modelId, settings.parakeet));
+
+        const colors = ICON_COLORS();
+        await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'loading', { type: 'download', color: colors.downloading });
+        sendTerminal(tabId, frameId, { type: 'WHISPER_TOAST', message: 'Loading Parakeet model…', level: 'processing' });
+
+        progressKey = trackParakeetProgress(tabId, frameId, `stream:${sessionId}`);
+
+        const res = await queueParakeetWorkerCall(() => callParakeetWorker('TRANSCRIBE_STREAM_START', {
+          sessionId,
+          modelID: modelId,
+          config: settings.parakeet,
+          encoderQuant: settings.parakeet.encoderQuant,
+          decoderQuant: settings.parakeet.decoderQuant,
+          inferenceInterval: settings.parakeet.inferenceIntervalMs,
+          vadThreshold: settings.parakeet.energyThreshold
+        }, 300000));
+
+        if (parakeetStreamOwnerByKey.get(key) !== ownerKey || !parakeetPendingChunks.has(key)) {
+          await queueParakeetWorkerCall(() => callParakeetWorker(
+            'TRANSCRIBE_STREAM_STOP',
+            { sessionId },
+            PARAKEET_STREAM_STOP_TIMEOUT_MS
+          )).catch(() => { });
+          clearParakeetStreamState(key);
+          return;
+        }
+
+        if (isParakeetModelPrewarmed(modelId, settings.parakeet)) {
+          await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'recording', null);
+        } else {
+          const firstInferenceBadge = {
+            type: 'download',
+            color: colors.processing,
+            title: 'preparing Parakeet first inference'
+          };
+          await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'recording', firstInferenceBadge);
+          sendTerminal(tabId, frameId, {
+            type: 'WHISPER_TOAST',
+            message: res.cached
+              ? 'Parakeet model cached. Preparing first inference...'
+              : 'Parakeet model downloaded. Preparing first inference...',
+            level: 'processing'
+          });
+        }
+        sendTerminal(tabId, frameId, { type: 'WHISPER_STREAMING_STARTED', provider: 'nvidia-parakeet', sessionId });
+
+        parakeetStreamReady.add(key);
+        const pending = parakeetPendingChunks.get(key) || [];
+        dbg('parakeet_bg_flushing_chunks', { count: pending.length });
+        for (const chunk of pending) {
+          if (!parakeetStreamReady.has(key)) break;
+          await processParakeetStreamChunk(tabId, frameId, sessionId, key, chunk);
+        }
+        parakeetPendingChunks.delete(key);
+      } catch (err) {
+        console.error('[BG] Parakeet stream init error:', err);
+        const msg = (err && err.message) ? `Failed to load Parakeet model: ${err.message}` : 'Failed to load Parakeet model';
+        await clearStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId);
+        showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
+        sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: msg });
+        sendTerminal(tabId, frameId, { type: 'WHISPER_CANCEL_ALL', reason: 'parakeet_model_failed' });
+        // Clean up stale state so retries don't chain onto this rejected promise
+        clearParakeetStreamState(key);
+        throw err; // Reject the promise so chain stops
+      } finally {
+        untrackParakeetProgress(progressKey);
+      }
+    })();
+
+    parakeetStreamChain.set(key, initPromise);
+    return;
+  }
+
+  if (message?.type === 'PARAKEET_STREAM_CHUNK') {
+    const sessionId = message.sessionId || 0;
+    const key = sessionKey(tabId, sessionId);
+    const audioData = message.audioData;
+    if (!audioData) return;
+
+    if (!parakeetStreamReady.has(key)) {
+      const pending = parakeetPendingChunks.get(key);
+      if (pending && pending.length < PARAKEET_PENDING_CHUNKS_MAX) {
+        pending.push(audioData);
+      }
+      return;
+    }
+
+    const previousChain = parakeetStreamChain.get(key) || Promise.resolve();
+
+    const newChain = previousChain.then(async () => {
+      if (!parakeetStreamReady.has(key)) return;
+      try {
+        await processParakeetStreamChunk(tabId, frameId, sessionId, key, audioData);
+      } catch (e) {
+        console.warn('Parakeet stream chunk error', e);
+        if (/timed out/i.test(String(e?.message || e))) {
+          clearParakeetStreamState(key);
+          await terminateParakeetWorker();
+          await clearStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId);
+          sendTerminal(tabId, frameId, {
+            type: 'WHISPER_ERROR',
+            error: 'Parakeet inference timed out. Please start recognition again.'
+          });
+        }
+      }
+    }).catch(() => { });
+
+    parakeetStreamChain.set(key, newChain);
+    return;
+  }
+
+  if (message?.type === 'PARAKEET_STREAM_STOP') {
+    const sessionId = message.sessionId || 0;
+    const key = sessionKey(tabId, sessionId);
+
+    dbg('parakeet_bg_stream_stop_received', { tabId, sessionId });
+
+    const previousChain = parakeetStreamChain.get(key) || Promise.resolve();
+    const newChain = previousChain.then(async () => {
+      await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'finalizing', {
+        type: 'download',
+        color: ICON_COLORS().processing,
+        title: 'finalizing Parakeet locally'
+      });
+      if (!parakeetStreamReady.has(key)) {
+        clearParakeetStreamState(key);
+        await clearStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId);
+        return;
+      }
+      try {
+        const res = await queueParakeetWorkerCall(() => callParakeetWorker(
+          'TRANSCRIBE_STREAM_STOP',
+          { sessionId },
+          PARAKEET_STREAM_STOP_TIMEOUT_MS
+        ));
+
+        let finalDelta = '';
+        if (res.ok && typeof res.immatureText === 'string') {
+          finalDelta = res.immatureText.trim();
+        } else if (res.ok && res.finalText) {
+          const oldMature = parakeetLastMature.get(key) || '';
+          if (res.finalText.length > oldMature.length) {
+            finalDelta = res.finalText.substring(oldMature.length).trim();
+          }
+        }
+
+        // Always send a final result to satisfy the polyfill's 5s _pendingEnd timer
+        sendTerminal(tabId, frameId, {
+          type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+          text: finalDelta,
+          sessionId,
+          isFinal: true,
+          stopFinal: true
+        });
+
+      } catch (e) {
+        console.warn('Parakeet stream stop error', e);
+        // Fallback: send empty final to satisfy polyfill
+        sendTerminal(tabId, frameId, {
+          type: 'WHISPER_RESULT_TO_PAGE_BRIDGE',
+          text: '',
+          sessionId,
+          isFinal: true,
+          stopFinal: true
+        });
+      }
+
+      clearParakeetStreamState(key);
+      await clearStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, {
+        finalBadge: { type: 'done', color: ICON_COLORS().done },
+        finalBadgeMs: BADGE_MS.done
+      });
+    }).catch(() => { });
+
+    parakeetStreamChain.set(key, newChain);
+    return;
+  }
+
   // ---------------- Recording UI state ----------------
   if (message?.type === 'RECORDING_START') {
     const ts = getTabState(tabId);
+    const streamUi = getStreamingUi(tabId);
 
-    if (ts.state !== 'processing') setTabState(tabId, 'recording', null).catch(() => { });
+    if (!streamUi && ts.state !== 'processing' && ts.state !== 'loading' && ts.state !== 'finalizing') {
+      setTabState(tabId, 'recording', null).catch(() => { });
+    }
 
     dbg('recording_start', {
       tabId,
@@ -2357,6 +3252,14 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
         const settings = await getEffectiveSettings(hostname);
         let langToReport = pageLang || settings.language || 'auto';
+
+        if (settings.provider === PROVIDERS.GOOGLE || settings.provider === PROVIDERS.ASSEMBLY) {
+          await setTabState(tabId, 'recording', {
+            type: 'cloudprocessing',
+            color: ICON_COLORS().cloudprocessing,
+            title: settings.provider === PROVIDERS.GOOGLE ? 'Google speech service' : 'AssemblyAI service'
+          });
+        }
 
         if (settings.provider === PROVIDERS.VOSK) {
           // Prefer metadata language for Vosk models if present
@@ -2389,7 +3292,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
   if (message?.type === 'RECORDING_STOP') {
     const ts = getTabState(tabId);
-    if (ts.state === 'recording') setTabState(tabId, 'idle', null).catch(() => { });
+    const streamUi = getStreamingUi(tabId);
+    if (!streamUi && ts.state === 'recording') setTabState(tabId, 'idle', null).catch(() => { });
 
     dbg('recording_stop', {
       tabId,
@@ -2407,25 +3311,6 @@ browser.runtime.onMessage.addListener((message, sender) => {
       canceled: !!message.canceled,
       pageInstanceId: message.pageInstanceId
     });
-    return;
-  }
-
-  // --- Add inside the existing runtime.onMessage listener ---
-  if (message?.type === 'WHISPER_STREAMING_STARTED') {
-    // Only show the "Listening..." toast for Vosk streaming so user sees microphone state
-    if (message.provider === 'vosk') {
-      showNotification("Listening...", "recording");
-    }
-    return;
-  }
-
-  if (message?.type === 'WHISPER_TOAST') {
-    // Generic background->page toast: { message, level } where level is "info"|"processing"|"success"|"error"|"recording"
-    try {
-      const m = String(message.message || '');
-      const lvl = (message.level || 'info');
-      showNotification(m, lvl);
-    } catch (_) { }
     return;
   }
 
@@ -2454,6 +3339,18 @@ browser.runtime.onMessage.addListener((message, sender) => {
     }
 
     closeAssemblyStreaming(sessionKey(tabId, sessionId));
+    const parakeetKey = sessionKey(tabId, sessionId);
+    const hadParakeetStream = parakeetStreamReady.has(parakeetKey)
+      || parakeetStreamChain.has(parakeetKey)
+      || parakeetPendingChunks.has(parakeetKey);
+    clearParakeetStreamState(parakeetKey);
+    if (hadParakeetStream) {
+      queueParakeetWorkerCall(() => callParakeetWorker(
+        'TRANSCRIBE_STREAM_STOP',
+        { sessionId },
+        PARAKEET_STREAM_STOP_TIMEOUT_MS
+      )).catch(() => { });
+    }
 
     const ts = getTabState(tabId);
     ts.errorHoldUntil = 0;
@@ -2538,6 +3435,10 @@ browser.runtime.onMessage.addListener((message, sender) => {
         showBadgeForTab(tabId, { type: 'cloudprocessing', color: ICON_COLORS().cloudprocessing }, BADGE_MS.cloudprocessing);
       }
 
+      if (provider === PROVIDERS.NVIDIA_PARAKEET) {
+        showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().downloading }, BADGE_MS.downloading);
+      }
+
       const audioBlob = new Blob([new Uint8Array(audioBuf)], { type: 'application/octet-stream' });
       const raw = await readAudio(audioBlob);
       const input = trimSilence(raw);
@@ -2566,6 +3467,35 @@ browser.runtime.onMessage.addListener((message, sender) => {
         } finally {
           assemblyAbortBySession.delete(cancelKey);
         }
+      } else if (provider === PROVIDERS.NVIDIA_PARAKEET) {
+        await ensureParakeetModelForTab(tabId, model, settings.parakeet);
+
+        dbgToTab(tabId, frameId, 'parakeet_transcribe_start', { model, language });
+        if (!isParakeetModelPrewarmed(model, settings.parakeet)) {
+          showBadgeForTab(tabId, {
+            type: 'download',
+            color: ICON_COLORS().processing,
+            title: 'preparing Parakeet first inference'
+          }, BADGE_MS.cloudprocessing);
+          sendTerminal(tabId, frameId, {
+            type: 'WHISPER_TOAST',
+            message: 'Preparing Parakeet first inference...',
+            level: 'processing'
+          });
+        }
+
+        const res = await callParakeetWorker(
+          'TRANSCRIBE_FLOAT32',
+          { modelID: model, input, config: settings.parakeet },
+          PROCESSING_TIMEOUT_MS,
+          [input.buffer]
+        );
+
+        text = (res.text || '').trim();
+        if (res.firstInferenceReady) {
+          parakeetPrewarmKey = parakeetModelRuntimeKey(model, settings.parakeet);
+        }
+        dbgToTab(tabId, frameId, 'parakeet_transcribed', { chars: text.length, model: res.model, cached: !!res.cached, backend: res.backend });
       } else {
         await ensureModelForTab(tabId, model);
 
@@ -2644,14 +3574,19 @@ browser.runtime.onInstalled.addListener((details) => {
   // Always refresh flags first
   refreshRuntimeFlagsFromStorage().then(() => prefetchDefaultModelIfEnabled());
 
-  // Open options on fresh install OR when re-added after removal
-  if (details?.reason === 'install' || details?.reason === 'update') {
-    // Optional: you could add version comparison if you want to avoid opening on every update
-    // e.g. if (!details.previousVersion) { ... } for true first install only
+  if (details?.reason === 'install') {
     try {
       browser.runtime.openOptionsPage();
     } catch (err) {
       console.error("Failed to open options page:", err);
+    }
+  } else if (details?.reason === 'update') {
+    try {
+      const version = browser.runtime.getManifest().version;
+      const url = browser.runtime.getURL(`update.html?version=${encodeURIComponent(version)}&previous=${encodeURIComponent(details.previousVersion || '')}`);
+      browser.tabs.create({ url, active: true });
+    } catch (err) {
+      console.error("Failed to open update page:", err);
     }
   }
 });
@@ -2663,6 +3598,13 @@ function clearTabTracking(tabId) {
   lastSessionByTab.delete(tabId);
   clearProcessingTimeout(tabId);
   tabStateById.delete(tabId);
+  streamUiByTab.delete(tabId);
+
+  const badgeTimer = badgeTimerByTab.get(tabId);
+  if (badgeTimer) {
+    clearTimeout(badgeTimer);
+    badgeTimerByTab.delete(tabId);
+  }
 
   for (const k of pageInstanceByTabFrame.keys()) {
     if (k.startsWith(`${tabId}:`)) pageInstanceByTabFrame.delete(k);
@@ -2685,6 +3627,7 @@ function clearTabTracking(tabId) {
   voskSessionsToStop.forEach(sid => stopVoskStream(sid));
   // --- FIX END ---
 
+  clearParakeetStreamsForTab(tabId);
 
 }
 

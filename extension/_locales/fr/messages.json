@@ -3,7 +3,7 @@
     "message": "Speech Recognition Polyfill"
   },
   "ext_desc": {
-    "message": "Polyfill de reconnaissance vocale avec Whisper et Vosk en local et transcription cloud optionnelle (AssemblyAI, Google)."
+    "message": "Polyfill de reconnaissance vocale avec des modèles tels que Vosk, Whisper, Nvidia Parakeet, Google et AssemblyAI pour le STT local/côté serveur."
   },
   "browser_action_title": {
     "message": "Reconnaissance vocale"
@@ -69,28 +69,28 @@
     "message": "Anglais seulement"
   },
   "model_tiny_en": {
-    "message": "Tiny English (~75MB)"
+    "message": "Anglais Minuscule (~75MB)"
   },
   "model_base_en": {
-    "message": "Base English (~150MB)"
+    "message": "Anglais de Base (~150MB)"
   },
   "model_distil_en": {
-    "message": "Distil-Medium English (~600MB)"
+    "message": "Anglais Distil-Moyen (~600MB)"
   },
   "model_small_en": {
-    "message": "Small English (~500MB)"
+    "message": "Anglais Petit (~500MB)"
   },
   "group_multi": {
     "message": "Multilingue (Usage général)"
   },
   "model_tiny_multi": {
-    "message": "Tiny Multilingual (~150MB)"
+    "message": "Multilingue Minuscule (~150MB)"
   },
   "model_base_multi": {
-    "message": "Base Multilingual (~290MB)"
+    "message": "Multilingue de Base (~290MB)"
   },
   "model_small_multi": {
-    "message": "Small Multilingual (~1GB)"
+    "message": "Multilingue Petit (~1GB)"
   },
   "language_label": {
     "message": "Langue"
@@ -408,10 +408,10 @@
     "message": "Utilisation de WASM."
   },
   "title_recording": {
-    "message": "Whisper : Écoute"
+    "message": "Whisper : À l'écoute"
   },
   "title_processing": {
-    "message": "Whisper : Traitement"
+    "message": "Whisper : Traitement en cours"
   },
   "title_error": {
     "message": "Whisper : Erreur"
@@ -607,5 +607,125 @@
   },
   "vosk_model_label_short": {
     "message": "Modèle Vosk (tapez pour rechercher)"
+  },
+  "engine_google": {
+    "message": "Google"
+  },
+  "section_google_title": {
+    "message": "Google"
+  },
+  "google_key_note": {
+    "message": "Utilise les clés API publiques de Google de manière transparente."
+  },
+  "google_server_mode_label": {
+    "message": "Mode Serveur"
+  },
+  "google_server_mode_note": {
+    "message": "v2 offre une meilleure précision et ponctuation via Cloud Speech v2. v1 utilise l'ancienne API Assistant et est légèrement plus rapide. Les deux détectent automatiquement les langues parlées."
+  },
+  "finalize_text_cleanup_label": {
+    "message": "Finalize text cleanup"
+  },
+  "finalize_text_cleanup_note": {
+    "message": "Nettoyage local rapide pour le texte final : espacement de la ponctuation, majuscules des phrases et 'I' isolé."
+  },
+  "engine_parakeet": {
+    "message": "Nvidia Parakeet"
+  },
+  "section_parakeet_title": {
+    "message": "Nvidia Parakeet"
+  },
+  "parakeet_note": {
+    "message": "Modèles Nvidia Parakeet ONNX fonctionnant directement dans votre navigateur."
+  },
+  "parakeet_model_version_label": {
+    "message": "Version du Modèle"
+  },
+  "parakeet_model_v3": {
+    "message": "Parakeet TDT 0.6b v3 (Multilingue, par défaut)"
+  },
+  "parakeet_model_v2": {
+    "message": "Parakeet TDT 0.6b v2 (Anglais uniquement)"
+  },
+  "parakeet_model_note": {
+    "message": "v2 est uniquement en anglais. v3 est multilingue et défini par défaut. Il n'y a pas de différence de vitesse significative entre les deux ; choisissez en fonction de la langue souhaitée. Ces modèles sont volumineux, le téléchargement initial peut donc prendre un certain temps."
+  },
+  "parakeet_waiting_download": {
+    "message": "En attente du téléchargement du modèle..."
+  },
+  "parakeet_backend_label": {
+    "message": "Backend"
+  },
+  "parakeet_backend_webgpu": {
+    "message": "WebGPU hybride (recommandé)"
+  },
+  "parakeet_backend_wasm": {
+    "message": "WASM CPU (alternative)"
+  },
+  "parakeet_backend_note": {
+    "message": "Le mode hybride WebGPU utilise l'accélération GPU lorsqu'elle est disponible et se rabat sur WASM si nécessaire."
+  },
+  "parakeet_encoder_quant_label": {
+    "message": "Quantification de l'Encodeur"
+  },
+  "parakeet_decoder_quant_label": {
+    "message": "Quantification du Décodeur"
+  },
+  "parakeet_quant_int8": {
+    "message": "int8 (Optimal pour WASM)"
+  },
+  "parakeet_quant_fp16": {
+    "message": "fp16 (Plus rapide sur GPU)"
+  },
+  "parakeet_quant_fp32": {
+    "message": "fp32 (Meilleure précision, plus lent)"
+  },
+  "parakeet_quant_note": {
+    "message": "Par défaut, int8 est utilisé pour des téléchargements réduits et un fonctionnement CPU plus stable."
+  },
+  "parakeet_interval_label": {
+    "message": "Intervalle d'Inférence (ms)"
+  },
+  "parakeet_interval_note": {
+    "message": "Fréquence à laquelle le modèle crée une fenêtre d'inférence de flux. Plus bas = texte provisoire plus rapide, mais charge accrue."
+  },
+  "parakeet_silence_label": {
+    "message": "Délai de Silence (secondes)"
+  },
+  "parakeet_silence_note": {
+    "message": "Durée du silence nécessaire avant que le texte de Parakeet en attente ne soit finalisé."
+  },
+  "parakeet_vad_label": {
+    "message": "Seuil d'Énergie VAD"
+  },
+  "parakeet_vad_note": {
+    "message": "Seuil d'énergie rapide pour la détection vocale. Plus haut = nécessite une voix plus forte."
+  },
+  "parakeet_ten_vad_label": {
+    "message": "Seuil TEN-VAD"
+  },
+  "parakeet_ten_vad_note": {
+    "message": "Seuil d'inférence VAD utilisé par le pipeline de flux de Keet lorsque le WASM VAD est disponible."
+  },
+  "parakeet_frame_stride_label": {
+    "message": "Pas de Trame"
+  },
+  "parakeet_wasm_threads_label": {
+    "message": "Threads WASM"
+  },
+  "parakeet_stride_threads_note": {
+    "message": "Le pas de trame peut réduire la charge du décodeur. Les threads WASM n'affectent que les chemins de repli CPU."
+  },
+  "parakeet_streaming_label": {
+    "message": "Désactiver le Streaming Nvidia Parakeet"
+  },
+  "parakeet_streaming_note": {
+    "message": "Le streaming Parakeet est activé par défaut. Désactivez-le pour transcrire uniquement après l'arrêt de l'enregistrement."
+  },
+  "parakeet_prewarm_label": {
+    "message": "Activer le préchauffage Nvidia Parakeet"
+  },
+  "parakeet_prewarm_note": {
+    "message": "Précharge le modèle sélectionné et exécute une inférence à vide. Utilise plus de mémoire/temps GPU, s'exécute uniquement lorsqu'aucun flux n'est actif."
   }
 }

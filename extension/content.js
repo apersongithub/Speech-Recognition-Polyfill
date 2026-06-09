@@ -104,12 +104,13 @@ let silenceCheckTimer = null;
 let debugLogToSiteConsole = false;
 
 // dev options
-let stripTrailingPeriod = false;
+let stripTrailingPeriod = true;
 let micGain = MIC_GAIN_DEFAULT;
 let silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
 let streamingSilenceMode = 'partial';
 let suppressFavicons = false;
 let disableSpaceNormalization = false;
+let finalizeTextCleanup = false;
 
 // google provider runtime cache
 let googleServerMode = 'v1';
@@ -123,12 +124,14 @@ let streamingActive = false;
 
 // AssemblyAI streaming
 let assemblyaiStreamingEnabled = false;
+let parakeetStreamingEnabled = true;
 let streamingProcessor = null;
 let streamingGain = null;
 let streamingBuffers = [];
 let streamingBufferSamples = 0;
 let streamingSessionId = null;
 let streamingCaptureActive = false;
+let streamingStopSent = false;
 
 // NEW: prevent multiple final submissions per Duolingo session
 let handledStreamingFinalSessionId = null;
@@ -142,10 +145,12 @@ let lockedInsertTarget = null;
 let lockedInsertTargetInfo = null;
 
 let currentInterimLength = 0;
+let currentInterimText = "";
 
 // NEW: page-bridge ack tracking (duplicate-text fix)
 let pendingPageAck = null; // { sessionId, timer, resolve }
-const PAGE_ACK_TIMEOUT_MS = 220;
+const PAGE_ACK_TIMEOUT_MS = 600;
+const INTERIM_PAGE_ACK_TIMEOUT_MS = 180;
 
 // NEW: recording-start watchdog to prevent "Listening..." desync
 let startRecordingWatchdog = null;
@@ -208,6 +213,20 @@ function sendStreamingChunk(chunk) {
         sessionId: streamingSessionId,
         audioData: slice,
         sampleRate: STREAM_TARGET_SAMPLE_RATE,
+        hostname: location.hostname,
+        pageInstanceId: PAGE_INSTANCE_ID
+      });
+    } catch (_) { }
+    return;
+  }
+
+  if (streamingProvider === 'nvidia-parakeet') {
+    const slice = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
+    try {
+      browser.runtime.sendMessage({
+        type: 'PARAKEET_STREAM_CHUNK',
+        sessionId: streamingSessionId,
+        audioData: slice,
         hostname: location.hostname,
         pageInstanceId: PAGE_INSTANCE_ID
       });
@@ -278,6 +297,18 @@ function clearPendingStreamingFinal() {
     try { clearTimeout(pendingStreamingFinal.timer); } catch (_) { }
   }
   pendingStreamingFinal = null;
+}
+
+function closeStreamingRecognitionWithoutResult() {
+  const ackId = 'ack_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  window.postMessage({
+    type: 'WHISPER_RESULT_TO_PAGE',
+    text: '',
+    isFinal: true,
+    streaming: true,
+    stopFinal: true,
+    ackId
+  }, "*");
 }
 
 function clearStartRecordingWatchdog() {
@@ -595,6 +626,7 @@ function getProviderFromSettings(settings, hostname) {
   if (globalDefaults.provider === 'assemblyai') baseProvider = 'assemblyai';
   else if (globalDefaults.provider === 'local-whisper') baseProvider = 'local-whisper';
   else if (globalDefaults.provider === 'google') baseProvider = 'google';
+  else if (globalDefaults.provider === 'nvidia-parakeet') baseProvider = 'nvidia-parakeet';
 
   const overrides = settings?.overrides || {};
   let site = {};
@@ -614,6 +646,7 @@ function getProviderFromSettings(settings, hostname) {
   if (site.provider === 'assemblyai') return 'assemblyai';
   if (site.provider === 'google') return 'google';
   if (site.provider === 'local-whisper') return 'local-whisper';
+  if (site.provider === 'nvidia-parakeet') return 'nvidia-parakeet';
 
   return baseProvider;
 }
@@ -630,7 +663,14 @@ function shouldApplyStreamingSilenceTimeout() {
   if (streamingSilenceMode === 'always') return true;
   if (streamingSilenceMode === 'never') return false;
 
-  // "partial" => only when started by site UI, not hotkey
+  // "partial" => only when started by site UI, not hotkey.
+  // HOWEVER, Parakeet and Vosk have internal Voice Activity Detection (VAD)
+  // that commits segments on silence while keeping the stream OPEN.
+  // We must not let the browser's aggressive 1-second silence timeout kill the mic.
+  if (streamingProvider === 'nvidia-parakeet' || streamingProvider === 'vosk') {
+    return false;
+  }
+
   return currentStartSource === 'ui';
 }
 
@@ -737,6 +777,24 @@ function teardownStreamingProcessor() {
   resetStreamingBuffers();
 }
 
+function sendStreamingStopForSession(sessionId, provider) {
+  if (!sessionId || streamingStopSent) return;
+  streamingStopSent = true;
+
+  try {
+    let type = 'VOSK_STREAM_STOP';
+    if (provider === 'assemblyai') type = 'ASSEMBLYAI_STREAM_STOP';
+    else if (provider === 'nvidia-parakeet') type = 'PARAKEET_STREAM_STOP';
+
+    browser.runtime.sendMessage({
+      type,
+      sessionId,
+      hostname: location.hostname,
+      pageInstanceId: PAGE_INSTANCE_ID
+    });
+  } catch (_) { }
+}
+
 async function resolveEffectiveSettings() {
   const prevEnabled = extensionEnabledForSite;
 
@@ -766,8 +824,9 @@ async function resolveEffectiveSettings() {
 
     normalizedHotkey = shortcutEnabled ? normalizeHotkey(hotkey) : null;
 
-    stripTrailingPeriod = settings?.stripTrailingPeriod === true;
+    stripTrailingPeriod = settings?.stripTrailingPeriod !== false;
     disableSpaceNormalization = settings?.disableSpaceNormalization === true;
+    finalizeTextCleanup = settings?.finalizeTextCleanup === true;
 
     const rawMicGain = (typeof site.micGain === 'number')
       ? site.micGain
@@ -784,6 +843,7 @@ async function resolveEffectiveSettings() {
     silenceSensitivity = clampSilenceSensitivity(rawSensitivity);
 
     assemblyaiStreamingEnabled = settings?.assemblyaiStreamingEnabled !== false;
+    parakeetStreamingEnabled = settings?.parakeetStreamingEnabled !== false;
     streamingSilenceMode = normalizeStreamingSilenceMode(settings?.assemblyaiStreamingSilenceMode || 'never');
 
     googleServerMode = typeof defaults?.googleServerMode === 'string'
@@ -800,7 +860,10 @@ async function resolveEffectiveSettings() {
       streamingProvider = 'vosk';
     } else if (provider === 'google') {
       streamingProvider = 'google';
+    } else if (provider === 'nvidia-parakeet') {
+      streamingProvider = parakeetStreamingEnabled ? 'nvidia-parakeet' : null;
     } else {
+      // local-whisper is batch (non-streaming)
       streamingProvider = null;
     }
 
@@ -847,14 +910,16 @@ async function resolveEffectiveSettings() {
     sendEnterAfterResult = false;
     normalizedHotkey = normalizeHotkey(hotkey);
     extensionEnabledForSite = true;
-    stripTrailingPeriod = false;
+    stripTrailingPeriod = true;
     micGain = MIC_GAIN_DEFAULT;
     silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
     assemblyaiStreamingEnabled = false;
+    parakeetStreamingEnabled = true;
     streamingProvider = null;
     streamingActive = false;
     streamingSilenceMode = 'partial';
     disableSpaceNormalization = false;
+    finalizeTextCleanup = false;
     disableProcessingTimeouts = false;
     googleServerMode = 'v1';
   }
@@ -931,7 +996,6 @@ browser.runtime.onMessage.addListener((message) => {
     dbgSite(message.tag, message.data);
   }
 
-  // Replace the existing WHISPER_CANCEL_ALL handler in the runtime.onMessage listener with this:
   if (message?.type === 'WHISPER_CANCEL_ALL') {
     clearProcessingWatchdog();
     processingSessionId = null;
@@ -942,6 +1006,19 @@ browser.runtime.onMessage.addListener((message) => {
     clearStartRecordingWatchdog();
     try { stopRecording(true); } catch (_) { }
 
+    // Clean up streaming state — critical for Parakeet model load failures.
+    // Without this, streamingActive/streamingSessionId stay stale and
+    // subsequent recording attempts silently fail.
+    if (streamingActive) {
+      teardownStreamingProcessor();
+      streamingSessionId = null;
+      streamingCaptureActive = false;
+      streamingActive = false;
+      streamingProvider = null;
+      clearSilenceTimer();
+      forceEndPageRecognition();
+    }
+
     // Show a more helpful toast depending on the cancel reason.
     // Background sends reason = 'assemblyai_api_missing' when the API key is absent.
     const reason = message?.reason || '';
@@ -951,14 +1028,16 @@ browser.runtime.onMessage.addListener((message) => {
       showNotification("AssemblyAI token error. Check your API key in options.", "error");
     } else if (reason === 'vosk_model_failed') {
       showNotification("Failed to load Vosk model. See options or try a different model.", "error");
+    } else if (reason === 'parakeet_model_failed') {
+      showNotification("Failed to load Parakeet model. Try again or check options.", "error");
     } else {
       showNotification("Canceled (settings changed)", "info");
     }
   }
 
   if (message?.type === 'WHISPER_STREAMING_STARTED') {
-    // Show listening toast for streaming providers (Vosk)
-    if (message.provider === 'vosk') {
+    // Show listening toast for streaming providers (Vosk, Parakeet)
+    if (message.provider === 'vosk' || message.provider === 'nvidia-parakeet') {
       showNotification("Listening...", "recording");
     }
     return;
@@ -1183,8 +1262,29 @@ function fixEncoding(text) {
     .replace(/â€¦/g, "…");
 }
 
-function applyOutputPostProcessing(text) {
+function finalizeTranscriptText(text) {
   if (!text) return text;
+  let out = String(text).trim();
+  if (!out) return out;
+
+  out = out
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([,;:!?])(?=\S)/g, '$1 ')
+    .replace(/([a-z0-9])\.([A-Za-z])/g, '$1. $2')
+    .replace(/\bi\s*(['\u2019])\s*(m|ve|ll|d)\b/gi, (_, quote, tail) => `I${quote === '\u2019' ? "'" : quote}${tail.toLowerCase()}`)
+    .replace(/\bi\b/g, 'I')
+    .replace(/(^|[.!?]\s+)(["'([{]*)([a-z])/g, (_, prefix, opener, letter) => `${prefix}${opener}${letter.toUpperCase()}`);
+
+  if (/[A-Za-z0-9)"'\]]$/.test(out)) out += '.';
+  return out;
+}
+
+function applyOutputPostProcessing(text, { isFinal = true } = {}) {
+  if (!text) return text;
+  if (isFinal && finalizeTextCleanup) {
+    text = finalizeTranscriptText(text);
+  }
   if (stripTrailingPeriod) {
     const trimmed = text.trimEnd();
     if (trimmed.endsWith('.')) {
@@ -1347,6 +1447,7 @@ function replaceInterimText(el, text) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
 
     currentInterimLength = text.length;
+    currentInterimText = text;
     return true;
   }
 
@@ -1362,11 +1463,36 @@ function replaceInterimText(el, text) {
     const success = document.execCommand('insertText', false, text);
     if (success) {
       currentInterimLength = text.length;
+      currentInterimText = text;
       return true;
     }
   } catch (_) { }
 
   return false;
+}
+
+function clearInterimTextIfStillPresent(el) {
+  if (!currentInterimLength || !currentInterimText || !el || !isEditableTarget(el)) return false;
+
+  const tag = (el.tagName || '').toLowerCase();
+  if (tag !== 'textarea' && tag !== 'input') return false;
+
+  try {
+    const value = String(el.value || '');
+    const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : value.length;
+    const start = Math.max(0, end - currentInterimLength);
+    if (value.slice(start, end) !== currentInterimText) return false;
+
+    el.value = value.substring(0, start) + value.substring(end);
+    el.selectionStart = el.selectionEnd = start;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    currentInterimLength = 0;
+    currentInterimText = "";
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function fallbackSendEnterKeyForElement(el) {
@@ -1484,6 +1610,9 @@ window.addEventListener("message", async (event) => {
     if (processingSessionId !== null && !captureActive) {
       cancelProcessing('ui_restart');
     }
+    if (streamingActive || streamingSessionId) {
+      stopStreamingOnly('restart_before_start');
+    }
     if (captureActive) return;
 
     currentStartSource = event.data.startSource || nextStartSource || 'ui';
@@ -1510,9 +1639,9 @@ window.addEventListener("message", async (event) => {
 
     clearProcessingWatchdog();
 
-    let text = fixEncoding(event.data.text);
-    text = applyOutputPostProcessing(text);
     const isFinal = event.data.isFinal !== false;
+    let text = fixEncoding(event.data.text);
+    text = applyOutputPostProcessing(text, { isFinal });
 
     if (isFinal) {
       const now = Date.now();
@@ -1527,6 +1656,7 @@ window.addEventListener("message", async (event) => {
       if (currentInterimLength > 0) {
         replaceInterimText(target, normalizedText);
         currentInterimLength = 0;
+        currentInterimText = "";
       } else {
         insertIntoElement(target, normalizedText);
       }
@@ -1549,6 +1679,7 @@ window.addEventListener("message", async (event) => {
       } else {
         insertIntoElement(target, normalizedText);
         currentInterimLength = normalizedText.length;
+        currentInterimText = normalizedText;
       }
     }
     return;
@@ -1566,28 +1697,20 @@ window.addEventListener("message", async (event) => {
       setAudioActive(false);
       forceEndPageRecognition();
 
-      // 1. Stop the microphone
+      // 1. Send the stream stop BEFORE stopping the recorder
+      //    This prevents the onstop handler from also sending STREAM_STOP (double-stop).
+      const stoppedSessionId = streamingSessionId;
+      sendStreamingStopForSession(stoppedSessionId, streamingProvider);
+
+      // 2. Stop forwarding more chunks, but keep streamingActive true until
+      //    MediaRecorder.onstop takes the streaming cleanup path.
+      teardownStreamingProcessor();
+      streamingSessionId = null;
+      clearSilenceTimer();
+      clearPendingPageAck();
+
+      // 3. Now stop the microphone/recorder
       stopRecording(false);
-
-      // 2. ALWAYS tell the background to stop the stream
-      if (streamingSessionId) {
-        try {
-          const type = (streamingProvider === 'assemblyai') ? 'ASSEMBLYAI_STREAM_STOP' : 'VOSK_STREAM_STOP';
-          browser.runtime.sendMessage({
-            type,
-            sessionId: streamingSessionId,
-            hostname: location.hostname,
-            pageInstanceId: PAGE_INSTANCE_ID
-          });
-        } catch (_) { }
-
-        // 3. Clean up local streaming state
-        teardownStreamingProcessor();
-        streamingSessionId = null;
-        clearSilenceTimer();
-        clearLockedInsertionTarget();
-        clearPendingPageAck();
-      }
       return;
     }
 
@@ -1622,6 +1745,13 @@ window.addEventListener("message", async (event) => {
           } else if (streamingProvider === 'vosk') {
             browser.runtime.sendMessage({
               type: 'VOSK_STREAM_STOP',
+              sessionId: streamingSessionId,
+              hostname: location.hostname,
+              pageInstanceId: PAGE_INSTANCE_ID
+            });
+          } else if (streamingProvider === 'nvidia-parakeet') {
+            browser.runtime.sendMessage({
+              type: 'PARAKEET_STREAM_STOP',
               sessionId: streamingSessionId,
               hostname: location.hostname,
               pageInstanceId: PAGE_INSTANCE_ID
@@ -1681,7 +1811,7 @@ function stopStreamingOnly(reason = 'duolingo_foreignobject_removed') {
     streamingCaptureActive
   });
 
-  if (!streamingActive) return;
+  if (!streamingActive && !streamingSessionId) return;
 
   // If a recording is active, stop it (this will also stop streaming)
   if (captureActive && globalRecorder && globalRecorder.state !== 'inactive') {
@@ -1705,6 +1835,13 @@ function stopStreamingOnly(reason = 'duolingo_foreignobject_removed') {
           hostname: location.hostname,
           pageInstanceId: PAGE_INSTANCE_ID
         });
+      } else if (streamingProvider === 'nvidia-parakeet') {
+        browser.runtime.sendMessage({
+          type: 'PARAKEET_STREAM_STOP',
+          sessionId: streamingSessionId,
+          hostname: location.hostname,
+          pageInstanceId: PAGE_INSTANCE_ID
+        });
       }
     } catch (_) { }
   }
@@ -1712,6 +1849,7 @@ function stopStreamingOnly(reason = 'duolingo_foreignobject_removed') {
   teardownStreamingProcessor();
   streamingSessionId = null;
   streamingCaptureActive = false;
+  streamingActive = false;
   clearSilenceTimer();
   clearLockedInsertionTarget();
   clearPendingPageAck();
@@ -1802,6 +1940,7 @@ async function startRecording(pageLanguage, sessionId) {
 
     const provider = getProviderFromSettings(settings, hostname);
     const assemblyEnabled = settings?.assemblyaiStreamingEnabled !== false;
+    const parakeetEnabled = settings?.parakeetStreamingEnabled !== false;
 
     if (provider === 'google') {
       streamingProvider = 'google';
@@ -1812,7 +1951,11 @@ async function startRecording(pageLanguage, sessionId) {
     } else if (provider === 'assemblyai' && assemblyEnabled) {
       streamingProvider = 'assemblyai';
       streamingActive = true;
+    } else if (provider === 'nvidia-parakeet' && parakeetEnabled) {
+      streamingProvider = 'nvidia-parakeet';
+      streamingActive = true;
     } else {
+      // local-whisper is batch (non-streaming)
       streamingProvider = null;
       streamingActive = false;
     }
@@ -1849,6 +1992,7 @@ async function startRecording(pageLanguage, sessionId) {
 
     recordingStartTime = Date.now();
     streamingEverHeard = false; // NEW
+    streamingStopSent = false;
     handledStreamingFinalSessionId = null; // NEW
 
     lastStreamingPartialText = null; // NEW
@@ -1899,6 +2043,15 @@ async function startRecording(pageLanguage, sessionId) {
             sessionId,
             hostname: location.hostname,
             language: pageLanguage,
+            pageInstanceId: PAGE_INSTANCE_ID,
+            sampleRate: STREAM_TARGET_SAMPLE_RATE
+          });
+        } else if (streamingProvider === 'nvidia-parakeet') {
+          dbg('[Whisper] sending PARAKEET_STREAM_START', { sessionId, host: location.hostname });
+          browser.runtime.sendMessage({
+            type: 'PARAKEET_STREAM_START',
+            sessionId,
+            hostname: location.hostname,
             pageInstanceId: PAGE_INSTANCE_ID,
             sampleRate: STREAM_TARGET_SAMPLE_RATE
           });
@@ -2110,26 +2263,13 @@ async function startRecording(pageLanguage, sessionId) {
         });
 
         if (streamingActive) {
-          try {
-            if (streamingProvider === 'assemblyai') {
-              browser.runtime.sendMessage({
-                type: 'ASSEMBLYAI_STREAM_STOP',
-                sessionId,
-                hostname: location.hostname,
-                pageInstanceId: PAGE_INSTANCE_ID
-              });
-            } else if (streamingProvider === 'vosk') {
-              browser.runtime.sendMessage({
-                type: 'VOSK_STREAM_STOP',
-                sessionId,
-                hostname: location.hostname,
-                pageInstanceId: PAGE_INSTANCE_ID
-              });
-            }
-          } catch (_) { }
+          sendStreamingStopForSession(sessionId, streamingProvider);
           teardownStreamingProcessor();
           streamingSessionId = null;
           streamingCaptureActive = false;
+          streamingActive = false;
+          streamingStopSent = false;
+          forceEndPageRecognition();
           clearLockedInsertionTarget();
           clearPendingPageAck();
           return;
@@ -2268,6 +2408,108 @@ function stopRecording(abandonAudio = false) {
 // Responses
 let lastTextTime = 0;
 let lastText = "";
+let streamingEnterSentSessionId = null;
+
+function maybeSendEnterAfterResult(target) {
+  if (!sendEnterAfterResult || isGoogleDocsOrSlidesHost()) return;
+  sendEnterAfterInsertForTarget(target || document.activeElement);
+}
+
+function maybeSendEnterAfterStreamingCommit(sid, target) {
+  if (!sendEnterAfterResult || isGoogleDocsOrSlidesHost()) return;
+  if (streamingEnterSentSessionId === sid) return;
+  streamingEnterSentSessionId = sid;
+  sendEnterAfterInsertForTarget(target || document.activeElement);
+}
+
+function sendInterimResult(text, sid, isStreaming) {
+  const provider = streamingProvider;
+  const supportsTextFieldInterim = provider === 'vosk' || provider === 'assemblyai' || provider === 'nvidia-parakeet';
+  if (!supportsTextFieldInterim) {
+    window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text, isFinal: false, streaming: isStreaming }, "*");
+    return;
+  }
+
+  const ackId = 'ack_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  let pageHandled = false;
+  const onAck = (e) => {
+    if (e?.data?.type === 'WHISPER_PAGE_HANDLED' && e.data.ackId === ackId) {
+      pageHandled = true;
+      window.removeEventListener('message', onAck);
+    }
+  };
+
+  window.addEventListener('message', onAck);
+  window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text, isFinal: false, streaming: isStreaming, ackId }, "*");
+
+  setTimeout(() => {
+    window.removeEventListener('message', onAck);
+    if (pageHandled || !streamingActive || !streamingCaptureActive || sid !== activeSessionId || streamingProvider !== provider) {
+      return;
+    }
+    if (!text.trim()) return;
+
+    const target = resolveInsertTarget();
+    const normalizedText = normalizeInsertText(target, text);
+    if (currentInterimLength > 0) {
+      replaceInterimText(target, normalizedText);
+    } else {
+      insertIntoElement(target, normalizedText);
+      currentInterimLength = normalizedText.length;
+      currentInterimText = normalizedText;
+    }
+  }, INTERIM_PAGE_ACK_TIMEOUT_MS);
+}
+
+function sendStreamingCommit(text, sid, isStreaming) {
+  const ackId = 'ack_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  let pageHandled = false;
+  const onAck = (e) => {
+    if (e?.data?.type === 'WHISPER_PAGE_HANDLED' && e.data.ackId === ackId) {
+      pageHandled = true;
+      window.removeEventListener('message', onAck);
+    }
+  };
+
+  window.addEventListener('message', onAck);
+  window.postMessage({
+    type: 'WHISPER_RESULT_TO_PAGE',
+    text,
+    isFinal: false,
+    streaming: isStreaming,
+    commit: true,
+    ackId
+  }, "*");
+
+  setTimeout(() => {
+    window.removeEventListener('message', onAck);
+    if (!streamingActive || sid !== activeSessionId || streamingProvider !== 'nvidia-parakeet') {
+      return;
+    }
+    if (!text.trim()) return;
+
+    const target = resolveInsertTarget();
+    if (pageHandled) {
+      if (currentInterimLength > 0) {
+        clearInterimTextIfStillPresent(target);
+        currentInterimLength = 0;
+        currentInterimText = "";
+      }
+      maybeSendEnterAfterStreamingCommit(sid, target);
+      return;
+    }
+
+    const normalizedText = normalizeInsertText(target, text);
+    if (currentInterimLength > 0) {
+      replaceInterimText(target, normalizedText);
+      currentInterimLength = 0;
+      currentInterimText = "";
+    } else {
+      insertIntoElement(target, normalizedText);
+    }
+    maybeSendEnterAfterStreamingCommit(sid, target);
+  }, 400);
+}
 
 browser.runtime.onMessage.addListener((message) => {
   if (!IS_TOP_FRAME) return;
@@ -2302,86 +2544,143 @@ browser.runtime.onMessage.addListener((message) => {
 
     // --- FIX 2: Hard Stop (Gatekeeper) ---
     // We only drop packets if 'streamingCaptureActive' is false (meaning you clicked STOP).
-    // If you are still talking (captureActive is true), we let it through!
+    // However, we MUST let isFinal results through — they are the expected response
+    // from STREAM_STOP (e.g. Parakeet's final full-buffer retranscription), not late packets.
     const isStreaming = streamingActive === true;
-    if (isStreaming && !streamingCaptureActive) {
+    const isFinalResult = message.isFinal === true;
+    if (isStreaming && !streamingCaptureActive && !isFinalResult) {
       dbg('dropped_late_streaming_packet', { sid, text: message.text });
+      return;
+    }
+
+    // --- FIX 3: Stale Session Protection ---
+    // If the user already started a NEW session, drop all late results from the OLD session.
+    // Otherwise, they will leak into the new session and ghost-paste the old text.
+    if (sid !== activeSessionId) {
+      dbg('dropped_stale_session_packet', { sid, activeSessionId, text: message.text });
       return;
     }
 
     clearProcessingWatchdog();
     processingSessionId = null;
 
-    let text = fixEncoding(message.text);
-    text = applyOutputPostProcessing(text);
     const isFinal = message.isFinal !== false;
+    let text = fixEncoding(message.text);
+    text = applyOutputPostProcessing(text, { isFinal });
+    const isParakeetStopFinal = isFinal && message.stopFinal === true && streamingProvider === 'nvidia-parakeet';
 
-    const sendFinal = (finalText) => {
+    // Heartbeat: empty interim results are forwarded to the polyfill so that
+    // site watchdogs (e.g. Speechnotes' 5-second abort timer) stay alive,
+    // but they must NOT enter the insertion/ack pipeline — doing so would
+    // cancel the pending ack for real results and block text insertion.
+    if (!isFinal && !text.trim()) {
+      const isStreaming = streamingActive === true;
+      window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text: '', isFinal: false, streaming: isStreaming }, "*");
+      return;
+    }
+
+    const sendFinal = (finalText, { force = false } = {}) => {
       // Duolingo special handling: only stop if it's AssemblyAI (Standard behavior for that site)
       if (isFinal && isStreaming && streamingProvider === 'assemblyai' && isDuolingoHost()) {
         handledStreamingFinalSessionId = sid;
         try { stopRecording(false); } catch (_) { }
       }
 
-      // --- THE CHANGE ---
-      // We NO LONGER set handledStreamingFinalSessionId = sid here for everyone.
-      // This allows the stream to stay open for the next sentence.
-
       const now = Date.now();
-      if (finalText === lastText && (now - lastTextTime < 2000)) return;
+      if (!force && finalText === lastText && (now - lastTextTime < 2000)) return;
       lastText = finalText; lastTextTime = now;
 
       showNotification(finalText, "success");
 
-      const target = resolveInsertTarget();
-      const ackPromise = waitForPageHandledAck(sid);
+      const interimTarget = currentInterimLength > 0 ? resolveInsertTarget() : null;
+      const hadInterimFallback = currentInterimLength > 0;
 
-      window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text: finalText, isFinal: true, streaming: isStreaming }, "*");
+      // Post the result to the page polyfill with a unique ackId.
+      // Batch results should not be labeled as streaming; otherwise the page can
+      // acknowledge a final result without committing text, and the fallback backs off.
+      const ackId = 'ack_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
-      ackPromise.then((pageHandled) => {
-        if (pageHandled) return;
+      // Simple fallback: if the page doesn't ack within 400ms, insert directly.
+      // Uses a one-shot flag keyed by ackId so heartbeat acks can't interfere.
+      let pageHandled = false;
+      const onAck = (e) => {
+        if (e?.data?.type === 'WHISPER_PAGE_HANDLED' && e.data.ackId === ackId) {
+          pageHandled = true;
+          window.removeEventListener('message', onAck);
+        }
+      };
+      window.addEventListener('message', onAck);
+      window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text: finalText, isFinal: true, streaming: isStreaming, ackId }, "*");
 
-        const normalizedText = normalizeInsertText(target, finalText);
+      setTimeout(() => {
+        window.removeEventListener('message', onAck);
+        const target = interimTarget || resolveInsertTarget();
 
-        if (currentInterimLength > 0) {
-          replaceInterimText(target, normalizedText);
+        if (!pageHandled) {
+          const normalizedText = normalizeInsertText(target, finalText);
+          if (hadInterimFallback && currentInterimLength > 0) {
+            replaceInterimText(target, normalizedText);
+            currentInterimLength = 0;
+            currentInterimText = "";
+          } else {
+            insertIntoElement(target, normalizedText);
+          }
+
+          maybeSendEnterAfterResult(target);
+        } else if (hadInterimFallback && currentInterimLength > 0) {
+          clearInterimTextIfStillPresent(target);
           currentInterimLength = 0;
-        } else {
-          insertIntoElement(target, normalizedText);
+          currentInterimText = "";
         }
-
-        if (sendEnterAfterResult && !isGoogleDocsOrSlidesHost()) {
-          sendEnterAfterInsertForTarget(target || document.activeElement);
-        }
-      }).finally(() => {
-        // Only clear target if the mic is actually turned off
+        if (pageHandled) maybeSendEnterAfterResult(target);
         if (!streamingCaptureActive) {
           clearLockedInsertionTarget();
         }
-      });
+      }, 400);
     };
 
-    // Vosk/Assembly logic continues below as before...
-    if (isFinal && isStreaming && streamingProvider === 'vosk') {
+    if (isParakeetStopFinal) {
+      clearPendingStreamingFinal();
+      const hadInterim = lastStreamingPartialSessionId === sid && !!normalizeStreamingText(lastStreamingPartialText || '');
+      if (hadInterim) {
+        handledStreamingFinalSessionId = sid;
+        sendFinal(lastStreamingPartialText || '', { force: true });
+        return;
+      }
+      if (!text.trim()) {
+        handledStreamingFinalSessionId = sid;
+        closeStreamingRecognitionWithoutResult();
+        return;
+      }
+    }
+
+    // Vosk/Assembly/Parakeet logic continues below as before...
+    if (isFinal && isStreaming && (streamingProvider === 'vosk' || streamingProvider === 'nvidia-parakeet')) {
       clearPendingStreamingFinal();
       sendFinal(text);
       return;
     }
 
     if (!isFinal) {
+      if (message.commit === true && streamingProvider === 'nvidia-parakeet') {
+        clearPendingStreamingFinal();
+        lastStreamingPartialText = null;
+        lastStreamingPartialSessionId = null;
+        sendStreamingCommit(text, sid, isStreaming);
+        if (text.trim()) {
+          showNotification(text, "success");
+        }
+        return;
+      }
+
+      if (isStreaming) {
+        lastStreamingPartialText = text;
+        lastStreamingPartialSessionId = sid;
+      }
+      sendInterimResult(text, sid, isStreaming);
       if (text.trim()) {
         showNotification(text, "processing");
-        const target = resolveInsertTarget();
-        const normalizedText = normalizeInsertText(target, text);
-
-        if (currentInterimLength > 0) {
-          replaceInterimText(target, normalizedText);
-        } else {
-          insertIntoElement(target, normalizedText);
-          currentInterimLength = normalizedText.length;
-        }
       }
-      window.postMessage({ type: 'WHISPER_RESULT_TO_PAGE', text, isFinal: false, streaming: isStreaming }, "*");
       return;
     }
 

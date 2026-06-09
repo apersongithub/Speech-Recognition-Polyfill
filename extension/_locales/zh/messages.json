@@ -3,7 +3,7 @@
     "message": "语音识别 Polyfill"
   },
   "ext_desc": {
-    "message": "语音识别 polyfill，支持本地 Whisper、Vosk，以及可选的云端转录（AssemblyAI、Google）。"
+    "message": "语音识别 Polyfill，支持 Vosk、Whisper、Nvidia Parakeet、Google 和 AssemblyAI 等模型，用于本地/服务器端语音转文本。"
   },
   "browser_action_title": {
     "message": "语音识别"
@@ -69,28 +69,28 @@
     "message": "仅限英语"
   },
   "model_tiny_en": {
-    "message": "Tiny English (~75MB)"
+    "message": "微型英语 (~75MB)"
   },
   "model_base_en": {
-    "message": "Base English (~150MB)"
+    "message": "基础英语 (~150MB)"
   },
   "model_distil_en": {
-    "message": "Distil-Medium English (~600MB)"
+    "message": "Distil-中型英语 (~600MB)"
   },
   "model_small_en": {
-    "message": "Small English (~500MB)"
+    "message": "小型英语 (~500MB)"
   },
   "group_multi": {
     "message": "多语言（通用）"
   },
   "model_tiny_multi": {
-    "message": "Tiny Multilingual (~150MB)"
+    "message": "微型多语言 (~150MB)"
   },
   "model_base_multi": {
-    "message": "Base Multilingual (~290MB)"
+    "message": "基础多语言 (~290MB)"
   },
   "model_small_multi": {
-    "message": "Small Multilingual (~1GB)"
+    "message": "小型多语言 (~1GB)"
   },
   "language_label": {
     "message": "语言"
@@ -408,10 +408,10 @@
     "message": "使用 WASM。"
   },
   "title_recording": {
-    "message": "Whisper：正在监听"
+    "message": "Whisper：正在收听"
   },
   "title_processing": {
-    "message": "Whisper：处理中"
+    "message": "Whisper：正在处理"
   },
   "title_error": {
     "message": "Whisper：错误"
@@ -607,5 +607,125 @@
   },
   "vosk_model_label_short": {
     "message": "Vosk 模型（输入以搜索）"
+  },
+  "engine_google": {
+    "message": "Google"
+  },
+  "section_google_title": {
+    "message": "Google"
+  },
+  "google_key_note": {
+    "message": "无缝使用公共 Google API 密钥。"
+  },
+  "google_server_mode_label": {
+    "message": "服务器模式"
+  },
+  "google_server_mode_note": {
+    "message": "v2 通过 Cloud Speech v2 提供更好的准确性和标点符号。v1 使用旧版 Assistant API，速度稍快。两者都会自动检测所讲语言。"
+  },
+  "finalize_text_cleanup_label": {
+    "message": "Finalize text cleanup"
+  },
+  "finalize_text_cleanup_note": {
+    "message": "对最终文本进行快速本地清理：标点符号间距、句子首字母大写以及独立的 I。"
+  },
+  "engine_parakeet": {
+    "message": "Nvidia Parakeet"
+  },
+  "section_parakeet_title": {
+    "message": "Nvidia Parakeet"
+  },
+  "parakeet_note": {
+    "message": "Nvidia Parakeet ONNX 模型直接在您的浏览器中运行。"
+  },
+  "parakeet_model_version_label": {
+    "message": "模型版本"
+  },
+  "parakeet_model_v3": {
+    "message": "Parakeet TDT 0.6b v3（多语言，默认）"
+  },
+  "parakeet_model_v2": {
+    "message": "Parakeet TDT 0.6b v2（仅支持英语）"
+  },
+  "parakeet_model_note": {
+    "message": "v2 仅限英语。v3 为多语言并作为默认选项。两者之间没有明显的速度差异；请根据语言需求进行选择。这些模型较大，因此初始下载可能需要一些时间。"
+  },
+  "parakeet_waiting_download": {
+    "message": "正在等待模型下载..."
+  },
+  "parakeet_backend_label": {
+    "message": "后端"
+  },
+  "parakeet_backend_webgpu": {
+    "message": "WebGPU 混合模式（推荐）"
+  },
+  "parakeet_backend_wasm": {
+    "message": "WASM CPU 回退"
+  },
+  "parakeet_backend_note": {
+    "message": "WebGPU 混合模式在可用时使用 GPU 加速，并在需要时回退到 WASM。"
+  },
+  "parakeet_encoder_quant_label": {
+    "message": "编码器量化"
+  },
+  "parakeet_decoder_quant_label": {
+    "message": "解码器量化"
+  },
+  "parakeet_quant_int8": {
+    "message": "int8（最适合 WASM）"
+  },
+  "parakeet_quant_fp16": {
+    "message": "fp16（GPU 上更快）"
+  },
+  "parakeet_quant_fp32": {
+    "message": "fp32（精度更高，但更慢）"
+  },
+  "parakeet_quant_note": {
+    "message": "默认使用 int8，以减小下载体积并在 CPU 回退时更稳定。"
+  },
+  "parakeet_interval_label": {
+    "message": "推理间隔 (毫秒)"
+  },
+  "parakeet_interval_note": {
+    "message": "模型构建流式推理窗口的频率。数值越小 = 中间文本越快，但负载越高。"
+  },
+  "parakeet_silence_label": {
+    "message": "静音刷新 (秒)"
+  },
+  "parakeet_silence_note": {
+    "message": "静音必须持续多长时间，待处理的文本才会被最终确定。"
+  },
+  "parakeet_vad_label": {
+    "message": "VAD 能量阈值"
+  },
+  "parakeet_vad_note": {
+    "message": "语音检测的快速能量阈值。数值越高 = 需要更大的声音。"
+  },
+  "parakeet_ten_vad_label": {
+    "message": "TEN-VAD 阈值"
+  },
+  "parakeet_ten_vad_note": {
+    "message": "当 WASM VAD 可用时，Keet 的流式管道所使用的推理 VAD 阈值。"
+  },
+  "parakeet_frame_stride_label": {
+    "message": "帧步长"
+  },
+  "parakeet_wasm_threads_label": {
+    "message": "WASM 线程数"
+  },
+  "parakeet_stride_threads_note": {
+    "message": "帧步长可以减少解码器的工作量。WASM 线程数仅影响 CPU 回退路径。"
+  },
+  "parakeet_streaming_label": {
+    "message": "禁用 Nvidia Parakeet 流式处理"
+  },
+  "parakeet_streaming_note": {
+    "message": "Parakeet 流式处理默认开启。禁用它将仅在停止录音后进行转录。"
+  },
+  "parakeet_prewarm_label": {
+    "message": "启用 Nvidia Parakeet 预热"
+  },
+  "parakeet_prewarm_note": {
+    "message": "预加载选定的 Parakeet 模型并运行一次空闲的预热推理。这会占用更多内存/GPU 时间，且仅在没有活跃的 Parakeet 流时运行。"
   }
 }

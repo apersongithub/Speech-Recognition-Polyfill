@@ -3,7 +3,7 @@
     "message": "Speech Recognition Polyfill"
   },
   "ext_desc": {
-    "message": "ローカルの Whisper、Vosk とオプションのクラウド文字起こし（AssemblyAI、Google）を備えた音声認識ポリフィル。"
+    "message": "Vosk、Whisper、Nvidia Parakeet、Google、AssemblyAIなどのモデルを使用し、ローカル/サーバーサイドの音声認識（STT）を行う音声認識ポリフィル。"
   },
   "browser_action_title": {
     "message": "音声認識"
@@ -69,28 +69,28 @@
     "message": "英語のみ"
   },
   "model_tiny_en": {
-    "message": "Tiny English (~75MB)"
+    "message": "タイニー英語 (~75MB)"
   },
   "model_base_en": {
-    "message": "Base English (~150MB)"
+    "message": "ベース英語 (~150MB)"
   },
   "model_distil_en": {
-    "message": "Distil-Medium English (~600MB)"
+    "message": "Distil-ミディアム英語 (~600MB)"
   },
   "model_small_en": {
-    "message": "Small English (~500MB)"
+    "message": "スモール英語 (~500MB)"
   },
   "group_multi": {
     "message": "多言語（汎用）"
   },
   "model_tiny_multi": {
-    "message": "Tiny Multilingual (~150MB)"
+    "message": "タイニー多言語 (~150MB)"
   },
   "model_base_multi": {
-    "message": "Base Multilingual (~290MB)"
+    "message": "ベース多言語 (~290MB)"
   },
   "model_small_multi": {
-    "message": "Small Multilingual (~1GB)"
+    "message": "スモール多言語 (~1GB)"
   },
   "language_label": {
     "message": "言語"
@@ -408,16 +408,16 @@
     "message": "WASM を使用中。"
   },
   "title_recording": {
-    "message": "Whisper：リッスン中"
+    "message": "Whisper: リスニング中"
   },
   "title_processing": {
-    "message": "Whisper：処理中"
+    "message": "Whisper: 処理中"
   },
   "title_error": {
-    "message": "Whisper：エラー"
+    "message": "Whisper: エラー"
   },
   "title_idle": {
-    "message": "Whisper：アイドル"
+    "message": "Whisper: 待機中"
   },
   "size_warning": {
     "message": "⚠️ 大きなモデル：初回実行は遅くなります。クラッシュする場合は Base または Tiny を使用してください。"
@@ -607,5 +607,125 @@
   },
   "vosk_model_label_short": {
     "message": "Vosk モデル（検索するには入力）"
+  },
+  "engine_google": {
+    "message": "Google"
+  },
+  "section_google_title": {
+    "message": "Google"
+  },
+  "google_key_note": {
+    "message": "パブリックな Google API キーをシームレスに使用します。"
+  },
+  "google_server_mode_label": {
+    "message": "サーバーモード"
+  },
+  "google_server_mode_note": {
+    "message": "v2はCloud Speech v2により高い精度と句読点を提供します。v1は古いAssistant APIを使用し、わずかに高速です。どちらも自動的に言語を検出します。"
+  },
+  "finalize_text_cleanup_label": {
+    "message": "Finalize text cleanup"
+  },
+  "finalize_text_cleanup_note": {
+    "message": "最終テキストの高速なローカルクリーンアップ: 句読点の間隔、文のキャピタライゼーション、独立した 'I'。"
+  },
+  "engine_parakeet": {
+    "message": "Nvidia Parakeet"
+  },
+  "section_parakeet_title": {
+    "message": "Nvidia Parakeet"
+  },
+  "parakeet_note": {
+    "message": "ブラウザで直接動作するNvidia Parakeet ONNXモデルです。"
+  },
+  "parakeet_model_version_label": {
+    "message": "モデルバージョン"
+  },
+  "parakeet_model_v3": {
+    "message": "Parakeet TDT 0.6b v3（多言語、デフォルト）"
+  },
+  "parakeet_model_v2": {
+    "message": "Parakeet TDT 0.6b v2（英語のみ）"
+  },
+  "parakeet_model_note": {
+    "message": "v2は英語専用です。v3は多言語対応でデフォルトです。どちらも処理速度に大きな違いはありません。必要な言語に応じて選択してください。モデルのサイズが大きいため、初回のダウンロードには時間がかかる場合があります。"
+  },
+  "parakeet_waiting_download": {
+    "message": "モデルのダウンロードを待機中..."
+  },
+  "parakeet_backend_label": {
+    "message": "バックエンド"
+  },
+  "parakeet_backend_webgpu": {
+    "message": "WebGPUハイブリッド（推奨）"
+  },
+  "parakeet_backend_wasm": {
+    "message": "WASM CPUフォールバック"
+  },
+  "parakeet_backend_note": {
+    "message": "WebGPUハイブリッドは、利用可能な場合はGPUアクセラレーションを使用し、必要に応じてWASMにフォールバックします。"
+  },
+  "parakeet_encoder_quant_label": {
+    "message": "エンコーダ量子化"
+  },
+  "parakeet_decoder_quant_label": {
+    "message": "デコーダ量子化"
+  },
+  "parakeet_quant_int8": {
+    "message": "int8 (WASMに最適)"
+  },
+  "parakeet_quant_fp16": {
+    "message": "fp16 (GPUで高速)"
+  },
+  "parakeet_quant_fp32": {
+    "message": "fp32 (高精度だが低速)"
+  },
+  "parakeet_quant_note": {
+    "message": "ダウンロード容量を抑え、CPUでの動作を安定させるため、デフォルトはint8です。"
+  },
+  "parakeet_interval_label": {
+    "message": "推論間隔 (ミリ秒)"
+  },
+  "parakeet_interval_note": {
+    "message": "モデルがストリーミング推論ウィンドウを構築する頻度。値を小さくすると中間テキストが速くなりますが、負荷が高くなります。"
+  },
+  "parakeet_silence_label": {
+    "message": "無音フラッシュ (秒)"
+  },
+  "parakeet_silence_note": {
+    "message": "保留中のParakeetテキストを確定するまでに必要な無音時間です。"
+  },
+  "parakeet_vad_label": {
+    "message": "VADエネルギーしきい値"
+  },
+  "parakeet_vad_note": {
+    "message": "音声検出のためのエネルギーしきい値です。値を大きくするとより大きな声が必要になります。"
+  },
+  "parakeet_ten_vad_label": {
+    "message": "TEN-VADしきい値"
+  },
+  "parakeet_ten_vad_note": {
+    "message": "WASM VADが利用可能な場合、Keetのストリーミングパイプラインで使用される推論VADしきい値です。"
+  },
+  "parakeet_frame_stride_label": {
+    "message": "フレームストライド"
+  },
+  "parakeet_wasm_threads_label": {
+    "message": "WASMスレッド数"
+  },
+  "parakeet_stride_threads_note": {
+    "message": "フレームストライドはデコーダの負荷を軽減します。WASMスレッド数はCPUフォールバックパスにのみ影響します。"
+  },
+  "parakeet_streaming_label": {
+    "message": "Nvidia Parakeet ストリーミングを無効にする"
+  },
+  "parakeet_streaming_note": {
+    "message": "Parakeetストリーミングはデフォルトで有効です。無効にすると、録音終了後にのみ文字起こしが行われます。"
+  },
+  "parakeet_prewarm_label": {
+    "message": "Nvidia Parakeet プレウォームを有効にする"
+  },
+  "parakeet_prewarm_note": {
+    "message": "選択したモデルを事前にロードし、待機中に1回推論を実行します。メモリ/GPUをより多く消費し、アクティブなストリームがない場合にのみ実行されます。"
   }
 }

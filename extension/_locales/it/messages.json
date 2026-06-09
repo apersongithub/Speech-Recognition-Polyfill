@@ -3,7 +3,7 @@
     "message": "Speech Recognition Polyfill"
   },
   "ext_desc": {
-    "message": "Polyfill per riconoscimento vocale con Whisper e Vosk locali e trascrizione cloud opzionale (AssemblyAI, Google)."
+    "message": "Polyfill per il riconoscimento vocale con modelli come Vosk, Whisper, Nvidia Parakeet, Google e AssemblyAI per STT locale/server."
   },
   "browser_action_title": {
     "message": "Riconoscimento vocale"
@@ -69,28 +69,28 @@
     "message": "Solo inglese"
   },
   "model_tiny_en": {
-    "message": "Tiny English (~75MB)"
+    "message": "Inglese Minuscolo (~75MB)"
   },
   "model_base_en": {
-    "message": "Base English (~150MB)"
+    "message": "Inglese Base (~150MB)"
   },
   "model_distil_en": {
-    "message": "Distil-Medium English (~600MB)"
+    "message": "Inglese Distil-Medio (~600MB)"
   },
   "model_small_en": {
-    "message": "Small English (~500MB)"
+    "message": "Inglese Piccolo (~500MB)"
   },
   "group_multi": {
     "message": "Multilingue (uso generale)"
   },
   "model_tiny_multi": {
-    "message": "Tiny Multilingual (~150MB)"
+    "message": "Multilingue Minuscolo (~150MB)"
   },
   "model_base_multi": {
-    "message": "Base Multilingual (~290MB)"
+    "message": "Multilingue Base (~290MB)"
   },
   "model_small_multi": {
-    "message": "Small Multilingual (~1GB)"
+    "message": "Multilingue Piccolo (~1GB)"
   },
   "language_label": {
     "message": "Lingua"
@@ -408,7 +408,7 @@
     "message": "Uso WASM."
   },
   "title_recording": {
-    "message": "Whisper: Ascolto"
+    "message": "Whisper: In ascolto"
   },
   "title_processing": {
     "message": "Whisper: Elaborazione"
@@ -607,5 +607,125 @@
   },
   "vosk_model_label_short": {
     "message": "Modello Vosk (digita per cercare)"
+  },
+  "engine_google": {
+    "message": "Google"
+  },
+  "section_google_title": {
+    "message": "Google"
+  },
+  "google_key_note": {
+    "message": "Utilizza le chiavi API pubbliche di Google in modo trasparente."
+  },
+  "google_server_mode_label": {
+    "message": "Modalità Server"
+  },
+  "google_server_mode_note": {
+    "message": "v2 offre maggiore precisione e punteggiatura tramite Cloud Speech v2. v1 utilizza la vecchia API Assistant ed è leggermente più veloce. Entrambi rilevano automaticamente le lingue."
+  },
+  "finalize_text_cleanup_label": {
+    "message": "Finalize text cleanup"
+  },
+  "finalize_text_cleanup_note": {
+    "message": "Pulizia locale rapida per il testo finale: spaziatura della punteggiatura, maiuscole delle frasi e 'I' singola."
+  },
+  "engine_parakeet": {
+    "message": "Nvidia Parakeet"
+  },
+  "section_parakeet_title": {
+    "message": "Nvidia Parakeet"
+  },
+  "parakeet_note": {
+    "message": "Modelli Nvidia Parakeet ONNX eseguiti direttamente nel browser."
+  },
+  "parakeet_model_version_label": {
+    "message": "Versione del Modello"
+  },
+  "parakeet_model_v3": {
+    "message": "Parakeet TDT 0.6b v3 (Multilingue, predefinito)"
+  },
+  "parakeet_model_v2": {
+    "message": "Parakeet TDT 0.6b v2 (Solo inglese)"
+  },
+  "parakeet_model_note": {
+    "message": "v2 è solo in inglese. v3 è multilingue ed è predefinito. Non vi è una differenza di velocità significativa tra di essi; scegli in base alla lingua. Poiché questi modelli sono di grandi dimensioni, il download iniziale potrebbe richiedere un po' di tempo."
+  },
+  "parakeet_waiting_download": {
+    "message": "In attesa del download del modello..."
+  },
+  "parakeet_backend_label": {
+    "message": "Backend"
+  },
+  "parakeet_backend_webgpu": {
+    "message": "Ibrido WebGPU (consigliato)"
+  },
+  "parakeet_backend_wasm": {
+    "message": "WASM CPU (alternativa)"
+  },
+  "parakeet_backend_note": {
+    "message": "L'ibrido WebGPU utilizza l'accelerazione GPU quando disponibile e passa a WASM quando necessario."
+  },
+  "parakeet_encoder_quant_label": {
+    "message": "Quantizzazione dell'Encoder"
+  },
+  "parakeet_decoder_quant_label": {
+    "message": "Quantizzazione del Decoder"
+  },
+  "parakeet_quant_int8": {
+    "message": "int8 (Migliore per WASM)"
+  },
+  "parakeet_quant_fp16": {
+    "message": "fp16 (Più veloce su GPU)"
+  },
+  "parakeet_quant_fp32": {
+    "message": "fp32 (Migliore precisione, più lento)"
+  },
+  "parakeet_quant_note": {
+    "message": "Il valore predefinito è int8 per download più piccoli e operazioni su CPU più stabili."
+  },
+  "parakeet_interval_label": {
+    "message": "Intervallo di Inferenza (ms)"
+  },
+  "parakeet_interval_note": {
+    "message": "Con quale frequenza il modello crea una finestra di inferenza. Minore = testo provvisorio più rapido, ma carico maggiore."
+  },
+  "parakeet_silence_label": {
+    "message": "Tempo di Silenzio (secondi)"
+  },
+  "parakeet_silence_note": {
+    "message": "Quanto deve durare il silenzio prima che il testo in sospeso di Parakeet venga completato."
+  },
+  "parakeet_vad_label": {
+    "message": "Soglia Energia VAD"
+  },
+  "parakeet_vad_note": {
+    "message": "Soglia di energia rapida per il rilevamento del parlato. Più alta = richiede una voce più forte."
+  },
+  "parakeet_ten_vad_label": {
+    "message": "Soglia TEN-VAD"
+  },
+  "parakeet_ten_vad_note": {
+    "message": "Soglia VAD di inferenza utilizzata dalla pipeline di streaming di Keet quando il VAD WASM è disponibile."
+  },
+  "parakeet_frame_stride_label": {
+    "message": "Passo dei Frame"
+  },
+  "parakeet_wasm_threads_label": {
+    "message": "Thread WASM"
+  },
+  "parakeet_stride_threads_note": {
+    "message": "Il passo dei frame può ridurre il lavoro del decoder. I thread WASM influiscono solo sui percorsi della CPU."
+  },
+  "parakeet_streaming_label": {
+    "message": "Disabilita lo streaming di Nvidia Parakeet"
+  },
+  "parakeet_streaming_note": {
+    "message": "Lo streaming di Parakeet è abilitato per impostazione predefinita. Disabilitalo per trascrivere solo dopo aver interrotto la registrazione."
+  },
+  "parakeet_prewarm_label": {
+    "message": "Abilita preriscaldamento Nvidia Parakeet"
+  },
+  "parakeet_prewarm_note": {
+    "message": "Precarica il modello Parakeet selezionato ed esegue un'inferenza inattiva di riscaldamento. Utilizza più memoria/tempo della GPU e viene eseguito solo quando non c'è alcuno stream attivo."
   }
 }
