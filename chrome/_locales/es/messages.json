@@ -1,0 +1,10 @@
+{
+  "ext_name": {
+    "message": "Speech Recognition Polyfill",
+    "description": "The name of the extension"
+  },
+  "ext_desc": {
+    "message": "¡Obtén la misma experiencia de reconocimiento de voz que Chrome en cualquier navegador!",
+    "description": "The description of the extension"
+  }
+}

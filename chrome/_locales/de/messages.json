@@ -1,0 +1,10 @@
+{
+  "ext_name": {
+    "message": "Speech Recognition Polyfill",
+    "description": "Der Name der Erweiterung"
+  },
+  "ext_desc": {
+    "message": "Erhalten Sie die gleiche Spracherkennungserfahrung wie in Chrome in jedem Browser!",
+    "description": "Die Beschreibung der Erweiterung"
+  }
+}

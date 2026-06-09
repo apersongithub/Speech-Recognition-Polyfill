@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Speech Recognition Polyfill Options</title>
+    <link rel="stylesheet" href="css/options.css">
+    <style>
+        body {
+            /* Make sure it works nicely as a popup too */
+            min-width: 320px;
+            padding: 10px;
+        }
+        .container {
+            width: 100%;
+        }
+        input[type="checkbox"] {
+            flex-shrink: 0;
+        }
+        
+        /* Custom select styling */
+        .custom-select-container {
+            position: relative;
+            width: 100%;
+            margin-top: 4px;
+            user-select: none;
+        }
+        .custom-select-trigger {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--input-border);
+            background: var(--card);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            color: var(--text);
+        }
+        .custom-select-trigger:focus,
+        .custom-select-container.active .custom-select-trigger {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+            outline: none;
+        }
+        @media (prefers-color-scheme: dark) {
+            .custom-select-trigger:focus,
+            .custom-select-container.active .custom-select-trigger {
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+            }
+        }
+        .selected-option-content {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .select-option-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+        .select-arrow {
+            width: 8px;
+            height: 8px;
+            border-right: 2px solid var(--muted);
+            border-bottom: 2px solid var(--muted);
+            transform: rotate(45deg);
+            transition: transform 0.2s ease;
+            margin-right: 4px;
+            margin-top: -3px;
+        }
+        .custom-select-container.active .select-arrow {
+            transform: rotate(-135deg);
+            margin-top: 3px;
+        }
+        .custom-select-options {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--card);
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            margin-top: 4px;
+            box-shadow: var(--shadow);
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px);
+            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+        }
+        .custom-select-container.active .custom-select-options {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        .custom-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text);
+            transition: background 0.15s ease;
+        }
+        .custom-option:first-child {
+            border-top-left-radius: 7px;
+            border-top-right-radius: 7px;
+        }
+        .custom-option:last-child {
+            border-bottom-left-radius: 7px;
+            border-bottom-right-radius: 7px;
+        }
+        .custom-option:hover {
+            background: rgba(37, 99, 235, 0.08);
+        }
+        @media (prefers-color-scheme: dark) {
+            .custom-option:hover {
+                background: rgba(59, 130, 246, 0.15);
+            }
+        }
+        .custom-option.selected {
+            background: rgba(37, 99, 235, 0.12);
+            font-weight: 500;
+        }
+        @media (prefers-color-scheme: dark) {
+            .custom-option.selected {
+                background: rgba(59, 130, 246, 0.25);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h3>Speech Recognition</h3>
+        <div class="card">
+            <div class="section-header">
+                <span class="icon icon-sliders" aria-hidden="true"></span>
+                <span>General Settings</span>
+            </div>
+            
+            <label for="server-mode">Server Backend</label>
+            <select id="server-mode" style="display: none;">
+                <option value="v2">Google Chirp v2</option>
+                <option value="v1">Google Chirp v1</option>
+            </select>
+
+            <div class="custom-select-container" id="custom-server-select">
+                <div class="custom-select-trigger" tabindex="0">
+                    <div class="selected-option-content">
+                        <img src="images/google.svg" class="select-option-icon" alt="Google Logo">
+                        <span class="selected-text">Google Chirp v2</span>
+                    </div>
+                    <div class="select-arrow"></div>
+                </div>
+                <div class="custom-select-options">
+                    <div class="custom-option" data-value="v2">
+                        <img src="images/google.svg" class="select-option-icon" alt="Google Logo">
+                        <span>Google Chirp v2</span>
+                    </div>
+                    <div class="custom-option" data-value="v1">
+                        <img src="images/google.svg" class="select-option-icon" alt="Google Logo">
+                        <span>Google Chirp v1</span>
+                    </div>
+                </div>
+            </div>
+            <div id="backend-description" class="note" style="margin-top: 6px;"></div>
+
+            <label for="mic-idle">Mic Idle Timeout (ms)</label>
+            <input type="number" id="mic-idle" step="100" min="0" max="60000" value="5000">
+            <div class="note">Time to wait before tearing down the PC Microphone hardware after dictation ends.</div>
+
+            <label class="checkbox-wrapper">
+                <input type="checkbox" id="browser-racism-fix">
+                <span class="checkbox-label">Spoof User-Agent</span>
+            </label>
+            <div class="note" style="margin-top: 2px; margin-bottom: 12px;">Automatically spoofs the browser User-Agent to Chrome on supported speech recognition endpoints. This bypasses arbitrary restrictions and browser blocks on websites like Duolingo.</div>
+
+            <label class="checkbox-wrapper">
+                <input type="checkbox" id="dev-mode">
+                <span class="checkbox-label">Developer Mode</span>
+            </label>
+            <div class="note" style="margin-top: 2px; margin-bottom: 12px;">Enables verbose debugging and diagnostics in the browser console. Turn this on to inspect WebSocket packets, connection states, and API speech response payloads.</div>
+
+            <div class="note" style="background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.25); padding: 10px; border-radius: 8px; color: var(--text); margin-top: 15px; margin-bottom: 0;">
+                ⚠️ <strong>Note:</strong> This extension is a polyfill for browsers that do not natively support the Web Speech API (like Firefox or Safari). It is not meant for Chrome, as Chrome already has this API implemented natively. Please do not give it a bad rating if you don't understand how it works.
+            </div>
+
+            <div class="button-row" style="display: flex; gap: 10px;">
+                <button id="reset-btn" class="btn-danger" type="button">Reset Settings</button>
+                <a href="https://github.com/apersongithub/Speech-Recognition-Polyfill" target="_blank" style="text-decoration: none; width: 100%; display: block;">
+                    <button class="btn-secondary" type="button" style="width: 100%;">GitHub Page</button>
+                </a>
+            </div>
+            <div id="status" class="status"></div>
+        </div>
+    </div>
+    <script src="options.js"></script>
+</body>
+</html>

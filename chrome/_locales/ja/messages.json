@@ -1,0 +1,10 @@
+{
+  "ext_name": {
+    "message": "Speech Recognition Polyfill",
+    "description": "The name of the extension"
+  },
+  "ext_desc": {
+    "message": "どのブラウザでも Chrome と同じ音声認識機能を利用できます！",
+    "description": "The description of the extension"
+  }
+}

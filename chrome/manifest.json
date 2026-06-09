@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_ext_name__",
+  "version": "1.6.4",
+  "description": "__MSG_ext_desc__",
+  "default_locale": "en",
+  "icons": {
+    "16": "images/microphone.png",
+    "48": "images/microphone.png",
+    "128": "images/microphone.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_popup": "options.html",
+    "default_icon": "images/microphone.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "userscript.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "userscript.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
