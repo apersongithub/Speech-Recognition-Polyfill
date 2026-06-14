@@ -25,20 +25,11 @@ function injectPolyfill(asyncFallback = false) {
   } catch (e) { }
 
   if (!asyncFallback && inlineAllowed) {
-    try {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', browser.runtime.getURL('polyfill.js'), false); // synchronous
-      xhr.send(null);
-      if (xhr.status === 200 || xhr.responseText) {
-        const s = document.createElement('script');
-        s.textContent = xhr.responseText;
-        (document.head || document.documentElement).prepend(s);
-        s.remove();
-        return;
-      }
-    } catch (e) {
-      console.warn('[Speech Polyfill] Synchronous injection failed, falling back to async', e);
-    }
+    const s = document.createElement('script');
+    s.textContent = "(function () {\n  if (window.__googleProviderConfig) return; // Google provider uses its own polyfill engine\n  console.log(\" >>> GTranslate Polyfill: Initializing...\");\n\n  if (window.webkitSpeechRecognition) return;\n\n  window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {\n    constructor(type, options) {\n      super(type, options);\n      this.results = options ? options.results : [];\n      this.resultIndex = options ? options.resultIndex : 0;\n    }\n  };\n\n  window.webkitSpeechRecognition = class SpeechRecognition {\n    constructor() {\n      this.continuous = false;\n      this.interimResults = false;\n      this.lang = 'en-US';\n      this.onresult = null;\n      this.onend = null;\n      this.onstart = null;\n      this.onaudiostart = null;\n      this.onaudioend = null;\n      this.onspeechstart = null;\n      this.onspeechend = null;\n      this.onsoundstart = null;\n      this.onsoundend = null;\n      this.isRecording = false;\n\n      this._results = [];\n      this._interimActive = false;\n      this._disableSpaceNormalization = false;\n      this._streamingActive = false;\n      this._pendingEnd = false;\n      this._endTimer = null;\n      this._ended = false;\n\n      window.addEventListener(\"message\", (e) => {\n        if (e.data && e.data.type === 'WHISPER_CONFIG') {\n          this._disableSpaceNormalization = !!e.data.disableSpaceNormalization;\n          this._streamingActive = !!e.data.streamingActive;\n        }\n\n        if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {\n          if (e.data.stopFinal === true) {\n            if (e.data.ackId) window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, \"*\");\n            this._pendingEnd = false;\n            if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n            this._interimActive = false;\n            this._ended = true;\n            if (this.onend) this.onend();\n            this.isRecording = false;\n            return;\n          }\n\n          if (!this.onresult) return;\n          if (this._ended) return;\n\n          const isFinal = e.data.isFinal !== false;\n          const isCommit = e.data.commit === true;\n          const isResultFinal = isFinal || isCommit;\n          if (!isFinal && !isCommit && !this.interimResults) {\n            if (e.data.ackId) window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, \"*\");\n            return;\n          }\n\n          const rawText = e.data.text || '';\n          const prevIndex = this._interimActive ? (this._results.length - 2) : (this._results.length - 1);\n          const prev = (prevIndex >= 0 && this._results[prevIndex]) ? this._results[prevIndex].transcript : '';\n          const needsSpace = !this._disableSpaceNormalization && !!prev &&\n            !/[\\s\\(\\[\\{'\"“‘]$/.test(prev) &&\n            !/^[\\s\\.,!?;:\\)\\]\\}'\"”’]/.test(rawText);\n\n          const text = needsSpace ? (' ' + rawText) : rawText;\n\n          const resultObj = { transcript: text, confidence: 0.98, isFinal: isResultFinal };\n\n          if (isResultFinal) {\n            if (this._interimActive) {\n              this._results[this._results.length - 1] = resultObj;\n            } else {\n              this._results.push(resultObj);\n            }\n            this._interimActive = false;\n          } else {\n            if (this._interimActive) {\n              this._results[this._results.length - 1] = resultObj;\n            } else {\n              this._results.push(resultObj);\n            }\n            this._interimActive = true;\n          }\n\n          const resultsList = this._results.map(r => {\n            const arr = [r];\n            arr.isFinal = r.isFinal;\n            return arr;\n          });\n\n          const resultEvent = new window.webkitSpeechRecognitionEvent('result', {\n            results: resultsList,\n            resultIndex: resultsList.length - 1\n          });\n\n          resultEvent.results[resultEvent.resultIndex].isFinal = isResultFinal;\n          if (this.onresult) this.onresult(resultEvent);\n          window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, \"*\");\n\n          if (isFinal) {\n            if (!e.data.streaming) {\n              this._ended = true;\n              if (this.onend) this.onend();\n              this.isRecording = false;\n            } else if (this._pendingEnd) {\n              this._pendingEnd = false;\n              if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n              this._ended = true;\n              if (this.onend) this.onend();\n              this.isRecording = false;\n            }\n          }\n        }\n\n        if (e.data && e.data.type === 'WHISPER_AUDIO_START') {\n          if (this.onaudiostart) this.onaudiostart();\n          this.dispatchEvent(new Event('audiostart'));\n          if (this.onsoundstart) this.onsoundstart();\n          this.dispatchEvent(new Event('soundstart'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_AUDIO_END') {\n          if (this.onaudioend) this.onaudioend();\n          this.dispatchEvent(new Event('audioend'));\n          if (this.onsoundend) this.onsoundend();\n          this.dispatchEvent(new Event('soundend'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_SPEECH_START') {\n          if (this.onspeechstart) this.onspeechstart();\n          this.dispatchEvent(new Event('speechstart'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_SPEECH_END') {\n          if (this.onspeechend) this.onspeechend();\n          this.dispatchEvent(new Event('speechend'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_FORCE_END') {\n          if (this._streamingActive && !this._pendingEnd) {\n            this._pendingEnd = true;\n            this._endTimer = setTimeout(() => {\n              if (this._pendingEnd) {\n                this._pendingEnd = false;\n                this._ended = true;\n                if (this.onend) this.onend();\n                this.isRecording = false;\n              }\n            }, 5000);\n          } else if (!this._streamingActive) {\n            this._ended = true;\n            if (this.onend) this.onend();\n            this.isRecording = false;\n          }\n        }\n      });\n    }\n\n    start() {\n      if (this.isRecording || this._pendingEnd) {\n        if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n        this._pendingEnd = false;\n        this._ended = true;\n        if (this.onend) this.onend();\n        this.isRecording = false;\n\n        if (!this._streamingActive) return;\n      }\n      this.isRecording = true;\n      this._pendingEnd = false;\n      this._ended = false;\n      if (this.onstart) this.onstart();\n      this._results = [];\n      this._interimActive = false;\n\n      this.dispatchEvent(new Event('audiostart'));\n      this.dispatchEvent(new Event('soundstart'));\n\n      let requestedLang = this.lang || 'en';\n      if (requestedLang.includes('-')) requestedLang = requestedLang.split('-')[0];\n\n      window.postMessage({\n        type: 'WHISPER_START_RECORDING',\n        language: requestedLang\n      }, \"*\");\n    }\n\n    stop() {\n      if (!this.isRecording) return;\n      this.isRecording = false;\n      window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, \"*\");\n      this.dispatchEvent(new Event('audioend'));\n      this.dispatchEvent(new Event('soundend'));\n\n      if (this._streamingActive) {\n        this._pendingEnd = true;\n        this._endTimer = setTimeout(() => {\n          if (this._pendingEnd) {\n            this._pendingEnd = false;\n            this._ended = true;\n            if (this.onend) this.onend();\n          }\n        }, 5000);\n      } else {\n        this._ended = true;\n        if (this.onend) this.onend();\n      }\n    }\n\n    abort() {\n      this.isRecording = false;\n      this._pendingEnd = false;\n      if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n      window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, \"*\");\n      this.dispatchEvent(new Event('audioend'));\n      this.dispatchEvent(new Event('soundend'));\n      this._ended = true;\n      if (this.onend) this.onend();\n    }\n\n    dispatchEvent(event) { if (this[\"on\" + event.type]) this[\"on\" + event.type](event); }\n    addEventListener(type, callback) { this[\"on\" + type] = callback; }\n  };\n\n  window.SpeechRecognition = window.webkitSpeechRecognition;\n  window.SpeechRecognitionEvent = window.webkitSpeechRecognitionEvent;\n\n})();\n";
+    (document.head || document.documentElement).prepend(s);
+    s.remove();
+    return;
   }
   const s = document.createElement('script');
   s.src = browser.runtime.getURL('polyfill.js');
@@ -48,7 +39,7 @@ function injectPolyfill(asyncFallback = false) {
 }
 
 try {
-  if (window.localStorage.getItem('__speech_polyfill_disabled_flag__') === '1') {
+  if (document.cookie.includes('__sp_disabled=1')) {
     extensionEnabledForSite = false;
   }
 } catch (e) { }
@@ -880,12 +871,12 @@ async function resolveEffectiveSettings() {
     }
     if (isEnabledBySettings && site && site.enabled === false) isEnabledBySettings = false;
 
-    // Synchronously cache the disabled flag for the next page load
+    // Synchronously cache the disabled flag using a cookie (no disk I/O)
     try {
       if (!isEnabledBySettings) {
-        window.localStorage.setItem('__speech_polyfill_disabled_flag__', '1');
+        document.cookie = "__sp_disabled=1; path=/; max-age=31536000; SameSite=Lax";
       } else {
-        window.localStorage.removeItem('__speech_polyfill_disabled_flag__');
+        document.cookie = "__sp_disabled=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
       }
     } catch (e) { }
 
@@ -915,8 +906,8 @@ async function resolveEffectiveSettings() {
     silenceSensitivity = SILENCE_SENSITIVITY_DEFAULT;
     assemblyaiStreamingEnabled = false;
     parakeetStreamingEnabled = true;
-    streamingProvider = null;
-    streamingActive = false;
+    streamingProvider = 'vosk';
+    streamingActive = true;
     streamingSilenceMode = 'partial';
     disableSpaceNormalization = false;
     finalizeTextCleanup = false;
@@ -1138,22 +1129,12 @@ function injectPolyfillTrulySync() {
   if (!extensionEnabledForSite) return;
   if (document.documentElement?.hasAttribute('data-whisper-polyfill-injected')) return;
 
-  try {
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', browser.runtime.getURL('polyfill.js'), false);
-    xhr.send();
-
-    const script = document.createElement('script');
-    script.textContent = xhr.responseText;
-
-    (document.head || document.documentElement).prepend(script);
-    script.remove();
-    document.documentElement.setAttribute('data-whisper-polyfill-injected', '1');
-
-    dbg('polyfill_injected_truly_sync');
-  } catch (e) {
-    console.error('[Whisper] Sync polyfill injection failed:', e);
-  }
+  const script = document.createElement('script');
+  script.textContent = "(function () {\n  if (window.__googleProviderConfig) return; // Google provider uses its own polyfill engine\n  console.log(\" >>> GTranslate Polyfill: Initializing...\");\n\n  if (window.webkitSpeechRecognition) return;\n\n  window.webkitSpeechRecognitionEvent = class SpeechRecognitionEvent extends Event {\n    constructor(type, options) {\n      super(type, options);\n      this.results = options ? options.results : [];\n      this.resultIndex = options ? options.resultIndex : 0;\n    }\n  };\n\n  window.webkitSpeechRecognition = class SpeechRecognition {\n    constructor() {\n      this.continuous = false;\n      this.interimResults = false;\n      this.lang = 'en-US';\n      this.onresult = null;\n      this.onend = null;\n      this.onstart = null;\n      this.onaudiostart = null;\n      this.onaudioend = null;\n      this.onspeechstart = null;\n      this.onspeechend = null;\n      this.onsoundstart = null;\n      this.onsoundend = null;\n      this.isRecording = false;\n\n      this._results = [];\n      this._interimActive = false;\n      this._disableSpaceNormalization = false;\n      this._streamingActive = false;\n      this._pendingEnd = false;\n      this._endTimer = null;\n      this._ended = false;\n\n      window.addEventListener(\"message\", (e) => {\n        if (e.data && e.data.type === 'WHISPER_CONFIG') {\n          this._disableSpaceNormalization = !!e.data.disableSpaceNormalization;\n          this._streamingActive = !!e.data.streamingActive;\n        }\n\n        if (e.data && e.data.type === 'WHISPER_RESULT_TO_PAGE') {\n          if (e.data.stopFinal === true) {\n            if (e.data.ackId) window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, \"*\");\n            this._pendingEnd = false;\n            if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n            this._interimActive = false;\n            this._ended = true;\n            if (this.onend) this.onend();\n            this.isRecording = false;\n            return;\n          }\n\n          if (!this.onresult) return;\n          if (this._ended) return;\n\n          const isFinal = e.data.isFinal !== false;\n          const isCommit = e.data.commit === true;\n          const isResultFinal = isFinal || isCommit;\n          if (!isFinal && !isCommit && !this.interimResults) {\n            if (e.data.ackId) window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, \"*\");\n            return;\n          }\n\n          const rawText = e.data.text || '';\n          const prevIndex = this._interimActive ? (this._results.length - 2) : (this._results.length - 1);\n          const prev = (prevIndex >= 0 && this._results[prevIndex]) ? this._results[prevIndex].transcript : '';\n          const needsSpace = !this._disableSpaceNormalization && !!prev &&\n            !/[\\s\\(\\[\\{'\"“‘]$/.test(prev) &&\n            !/^[\\s\\.,!?;:\\)\\]\\}'\"”’]/.test(rawText);\n\n          const text = needsSpace ? (' ' + rawText) : rawText;\n\n          const resultObj = { transcript: text, confidence: 0.98, isFinal: isResultFinal };\n\n          if (isResultFinal) {\n            if (this._interimActive) {\n              this._results[this._results.length - 1] = resultObj;\n            } else {\n              this._results.push(resultObj);\n            }\n            this._interimActive = false;\n          } else {\n            if (this._interimActive) {\n              this._results[this._results.length - 1] = resultObj;\n            } else {\n              this._results.push(resultObj);\n            }\n            this._interimActive = true;\n          }\n\n          const resultsList = this._results.map(r => {\n            const arr = [r];\n            arr.isFinal = r.isFinal;\n            return arr;\n          });\n\n          const resultEvent = new window.webkitSpeechRecognitionEvent('result', {\n            results: resultsList,\n            resultIndex: resultsList.length - 1\n          });\n\n          resultEvent.results[resultEvent.resultIndex].isFinal = isResultFinal;\n          if (this.onresult) this.onresult(resultEvent);\n          window.postMessage({ type: 'WHISPER_PAGE_HANDLED', ackId: e.data.ackId }, \"*\");\n\n          if (isFinal) {\n            if (!e.data.streaming) {\n              this._ended = true;\n              if (this.onend) this.onend();\n              this.isRecording = false;\n            } else if (this._pendingEnd) {\n              this._pendingEnd = false;\n              if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n              this._ended = true;\n              if (this.onend) this.onend();\n              this.isRecording = false;\n            }\n          }\n        }\n\n        if (e.data && e.data.type === 'WHISPER_AUDIO_START') {\n          if (this.onaudiostart) this.onaudiostart();\n          this.dispatchEvent(new Event('audiostart'));\n          if (this.onsoundstart) this.onsoundstart();\n          this.dispatchEvent(new Event('soundstart'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_AUDIO_END') {\n          if (this.onaudioend) this.onaudioend();\n          this.dispatchEvent(new Event('audioend'));\n          if (this.onsoundend) this.onsoundend();\n          this.dispatchEvent(new Event('soundend'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_SPEECH_START') {\n          if (this.onspeechstart) this.onspeechstart();\n          this.dispatchEvent(new Event('speechstart'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_SPEECH_END') {\n          if (this.onspeechend) this.onspeechend();\n          this.dispatchEvent(new Event('speechend'));\n        }\n\n        if (e.data && e.data.type === 'WHISPER_FORCE_END') {\n          if (this._streamingActive && !this._pendingEnd) {\n            this._pendingEnd = true;\n            this._endTimer = setTimeout(() => {\n              if (this._pendingEnd) {\n                this._pendingEnd = false;\n                this._ended = true;\n                if (this.onend) this.onend();\n                this.isRecording = false;\n              }\n            }, 5000);\n          } else if (!this._streamingActive) {\n            this._ended = true;\n            if (this.onend) this.onend();\n            this.isRecording = false;\n          }\n        }\n      });\n    }\n\n    start() {\n      if (this.isRecording || this._pendingEnd) {\n        if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n        this._pendingEnd = false;\n        this._ended = true;\n        if (this.onend) this.onend();\n        this.isRecording = false;\n\n        if (!this._streamingActive) return;\n      }\n      this.isRecording = true;\n      this._pendingEnd = false;\n      this._ended = false;\n      if (this.onstart) this.onstart();\n      this._results = [];\n      this._interimActive = false;\n\n      this.dispatchEvent(new Event('audiostart'));\n      this.dispatchEvent(new Event('soundstart'));\n\n      let requestedLang = this.lang || 'en';\n      if (requestedLang.includes('-')) requestedLang = requestedLang.split('-')[0];\n\n      window.postMessage({\n        type: 'WHISPER_START_RECORDING',\n        language: requestedLang\n      }, \"*\");\n    }\n\n    stop() {\n      if (!this.isRecording) return;\n      this.isRecording = false;\n      window.postMessage({ type: 'WHISPER_STOP_RECORDING' }, \"*\");\n      this.dispatchEvent(new Event('audioend'));\n      this.dispatchEvent(new Event('soundend'));\n\n      if (this._streamingActive) {\n        this._pendingEnd = true;\n        this._endTimer = setTimeout(() => {\n          if (this._pendingEnd) {\n            this._pendingEnd = false;\n            this._ended = true;\n            if (this.onend) this.onend();\n          }\n        }, 5000);\n      } else {\n        this._ended = true;\n        if (this.onend) this.onend();\n      }\n    }\n\n    abort() {\n      this.isRecording = false;\n      this._pendingEnd = false;\n      if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }\n      window.postMessage({ type: 'WHISPER_ABORT_RECORDING' }, \"*\");\n      this.dispatchEvent(new Event('audioend'));\n      this.dispatchEvent(new Event('soundend'));\n      this._ended = true;\n      if (this.onend) this.onend();\n    }\n\n    dispatchEvent(event) { if (this[\"on\" + event.type]) this[\"on\" + event.type](event); }\n    addEventListener(type, callback) { this[\"on\" + type] = callback; }\n  };\n\n  window.SpeechRecognition = window.webkitSpeechRecognition;\n  window.SpeechRecognitionEvent = window.webkitSpeechRecognitionEvent;\n\n})();\n";
+  (document.head || document.documentElement).prepend(script);
+  script.remove();
+  document.documentElement.setAttribute('data-whisper-polyfill-injected', '1');
+  dbg('polyfill_injected_truly_sync');
 }
 
 function injectGoogleProviderSync(configObj) {
@@ -1204,41 +1185,12 @@ function injectGoogleProviderSync(configObj) {
     // We use inline textContent because it executes synchronously. However, some sites
     // use strict CSPs that block inline scripts. We detect CSP blocks and fallback to async src.
     for (const src of scripts) {
-      try {
-        const url = browser.runtime.getURL(src);
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', url, false);
-        xhr.send(null);
-
-        if (xhr.status === 200 || xhr.status === 0) {
-          const script = document.createElement('script');
-          // We add a flag to detect if the script actually ran or was blocked by CSP
-          script.textContent = xhr.responseText + `\nwindow.__whisper_injected_${src.replace(/[^a-z0-9]/g, '')} = true;\n//# sourceURL=${url}`;
-
-          // Try to steal a nonce if one exists
-          const nonceScript = document.querySelector('script[nonce]');
-          if (nonceScript) script.setAttribute('nonce', nonceScript.nonce);
-
-          (document.head || document.documentElement).prepend(script);
-          script.remove();
-
-          // Detect CSP block using Firefox's wrappedJSObject
-          const flagName = `__whisper_injected_${src.replace(/[^a-z0-9]/g, '')}`;
-          const isBlocked = typeof window.wrappedJSObject !== 'undefined' && !window.wrappedJSObject[flagName];
-
-          if (isBlocked) {
-            console.warn(`[Whisper] Inline injection of ${src} was blocked by CSP. Falling back to async src.`);
-            const fallback = document.createElement('script');
-            fallback.src = url;
-            fallback.async = false;
-            (document.head || document.documentElement).appendChild(fallback);
-          }
-        } else {
-          console.error(`[Whisper] Failed to load ${src}: HTTP ${xhr.status}`);
-        }
-      } catch (e) {
-        console.error(`[Whisper] Exception loading ${src}:`, e);
-      }
+      const url = browser.runtime.getURL(src);
+      const s = document.createElement('script');
+      s.src = url;
+      s.async = false;
+      (document.head || document.documentElement).prepend(s);
+      s.onload = () => s.remove();
     }
 
     document.documentElement.setAttribute('data-whisper-google-injected', '1');
