@@ -593,10 +593,12 @@ let parakeetWorker = null;
 let parakeetSeq = 1;
 const parakeetInflight = new Map();
 let parakeetModelSwitches = 0;
-const PARAKEET_MODEL_SWITCH_TERMINATE_THRESHOLD = 8;
 let currentParakeetModel = 'parakeet-tdt-0.6b-v3';
+let currentParakeetRuntimeKey = '';
 let parakeetModelLoadPromise = null;
 let parakeetModelLoadKey = '';
+let parakeetPrewarmLoadKey = '';
+let parakeetWorkerGeneration = 0;
 const parakeetStreamChain = new Map();
 const parakeetLastMature = new Map();
 const parakeetLastImmature = new Map();
@@ -604,11 +606,13 @@ const parakeetStreamReady = new Set();
 const parakeetPendingChunks = new Map();
 const parakeetFirstInferenceReady = new Set();
 const parakeetStreamRuntimeKey = new Map();
+const parakeetStreamLoadKey = new Map();
 const PARAKEET_PENDING_CHUNKS_MAX = 120;
 const PARAKEET_STREAM_CHUNK_TIMEOUT_MS = 120000;
 const PARAKEET_STREAM_STOP_TIMEOUT_MS = 60000;
 const parakeetActiveStreamByOwner = new Map();
 const parakeetStreamOwnerByKey = new Map();
+const parakeetDesiredStreamByOwner = new Map();
 const parakeetProgressTargets = new Map();
 let parakeetWorkerCallChain = Promise.resolve();
 
@@ -662,14 +666,18 @@ function ensureParakeetWorker() {
     parakeetPendingChunks.clear();
     parakeetFirstInferenceReady.clear();
     parakeetStreamRuntimeKey.clear();
+    parakeetStreamLoadKey.clear();
     parakeetActiveStreamByOwner.clear();
     parakeetStreamOwnerByKey.clear();
     clearParakeetProgressTargets();
     parakeetWorkerCallChain = Promise.resolve();
+    parakeetWorkerGeneration += 1;
     parakeetModelLoadPromise = null;
     parakeetModelLoadKey = '';
     parakeetPrewarmPromise = null;
     parakeetPrewarmKey = '';
+    parakeetPrewarmLoadKey = '';
+    currentParakeetRuntimeKey = '';
   };
 }
 
@@ -679,7 +687,11 @@ function callParakeetWorker(type, payload = {}, timeoutMs = PROCESSING_TIMEOUT_M
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       parakeetInflight.delete(id);
-      reject(new Error('Parakeet worker call timed out'));
+      dbg('parakeet_worker_call_timeout', { type, timeoutMs });
+      reject(new Error(`Parakeet worker call timed out: ${type}`));
+      setTimeout(() => {
+        terminateParakeetWorker('worker_call_timeout').catch(() => { });
+      }, 0);
     }, timeoutMs);
 
     parakeetInflight.set(id, { resolve, reject, timeout });
@@ -701,9 +713,17 @@ function clearParakeetStreamState(key) {
   parakeetPendingChunks.delete(key);
   parakeetFirstInferenceReady.delete(key);
   parakeetStreamRuntimeKey.delete(key);
+  parakeetStreamLoadKey.delete(key);
   const ownerKey = parakeetStreamOwnerByKey.get(key);
   if (ownerKey && parakeetActiveStreamByOwner.get(ownerKey) === key) {
     parakeetActiveStreamByOwner.delete(ownerKey);
+  }
+  if (ownerKey && parakeetDesiredStreamByOwner.get(ownerKey) === key) {
+    parakeetDesiredStreamByOwner.delete(ownerKey);
+  } else {
+    for (const [candidateOwnerKey, desiredKey] of Array.from(parakeetDesiredStreamByOwner.entries())) {
+      if (desiredKey === key) parakeetDesiredStreamByOwner.delete(candidateOwnerKey);
+    }
   }
   parakeetStreamOwnerByKey.delete(key);
 }
@@ -735,6 +755,12 @@ function clearParakeetStreamsForTab(tabId) {
     }
   }
 
+  for (const [ownerKey, key] of Array.from(parakeetDesiredStreamByOwner.entries())) {
+    if (String(ownerKey).startsWith(prefix) || String(key).startsWith(prefix)) {
+      parakeetDesiredStreamByOwner.delete(ownerKey);
+    }
+  }
+
   for (const key of Array.from(parakeetProgressTargets.keys())) {
     if (String(key).startsWith(prefix)) untrackParakeetProgress(key);
   }
@@ -743,6 +769,7 @@ function clearParakeetStreamsForTab(tabId) {
 function rememberParakeetStreamOwner(ownerKey, key) {
   parakeetActiveStreamByOwner.set(ownerKey, key);
   parakeetStreamOwnerByKey.set(key, ownerKey);
+  parakeetDesiredStreamByOwner.set(ownerKey, key);
 }
 
 function parseSessionIdFromStreamKey(key) {
@@ -757,7 +784,13 @@ function hasActiveParakeetStream() {
 }
 
 function queueParakeetWorkerCall(run) {
-  const queued = parakeetWorkerCallChain.catch(() => { }).then(run);
+  const generation = parakeetWorkerGeneration;
+  const queued = parakeetWorkerCallChain.catch(() => { }).then(() => {
+    if (generation !== parakeetWorkerGeneration) {
+      throw new Error('Parakeet worker call canceled');
+    }
+    return run();
+  });
   parakeetWorkerCallChain = queued.catch(() => { });
   return queued;
 }
@@ -919,6 +952,7 @@ async function processParakeetStreamChunk(tabId, frameId, sessionId, key, audioD
   if (res.firstInferenceReady && !parakeetFirstInferenceReady.has(key)) {
     parakeetFirstInferenceReady.add(key);
     parakeetPrewarmKey = parakeetStreamRuntimeKey.get(key) || parakeetPrewarmKey;
+    parakeetPrewarmLoadKey = parakeetStreamLoadKey.get(key) || currentParakeetRuntimeKey || parakeetPrewarmLoadKey;
     await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'recording', null);
     sendTerminal(tabId, frameId, {
       type: 'WHISPER_TOAST',
@@ -958,12 +992,12 @@ async function processParakeetStreamChunk(tabId, frameId, sessionId, key, audioD
   }
 }
 
-async function terminateParakeetWorker() {
-  if (!parakeetWorker) return;
-
-  dbg('parakeet_worker_terminate', {});
-  try { parakeetWorker.terminate(); } catch (_) { }
-  parakeetWorker = null;
+async function terminateParakeetWorker(reason = 'manual') {
+  dbg('parakeet_worker_terminate', { reason, hadWorker: !!parakeetWorker });
+  if (parakeetWorker) {
+    try { parakeetWorker.terminate(); } catch (_) { }
+    parakeetWorker = null;
+  }
 
   for (const [id, h] of parakeetInflight.entries()) {
     parakeetInflight.delete(id);
@@ -978,14 +1012,18 @@ async function terminateParakeetWorker() {
   parakeetPendingChunks.clear();
   parakeetFirstInferenceReady.clear();
   parakeetStreamRuntimeKey.clear();
+  parakeetStreamLoadKey.clear();
   parakeetActiveStreamByOwner.clear();
   parakeetStreamOwnerByKey.clear();
   clearParakeetProgressTargets();
   parakeetWorkerCallChain = Promise.resolve();
+  parakeetWorkerGeneration += 1;
+  currentParakeetRuntimeKey = '';
   parakeetModelLoadPromise = null;
   parakeetModelLoadKey = '';
   parakeetPrewarmPromise = null;
   parakeetPrewarmKey = '';
+  parakeetPrewarmLoadKey = '';
 }
 
 function parakeetLoadRuntimeKey(modelID, config = {}) {
@@ -999,10 +1037,50 @@ function parakeetLoadRuntimeKey(modelID, config = {}) {
   });
 }
 
+function getParakeetModelLimitConflict(requestedKey) {
+  if (!requestedKey) return null;
+  if (currentParakeetRuntimeKey && currentParakeetRuntimeKey !== requestedKey) {
+    return { kind: 'resident', key: currentParakeetRuntimeKey };
+  }
+  if (parakeetModelLoadPromise && parakeetModelLoadKey && parakeetModelLoadKey !== requestedKey) {
+    return { kind: 'loading', key: parakeetModelLoadKey };
+  }
+  if (parakeetPrewarmPromise && parakeetPrewarmLoadKey && parakeetPrewarmLoadKey !== requestedKey) {
+    return { kind: 'prewarming', key: parakeetPrewarmLoadKey };
+  }
+  for (const [streamKey, loadKey] of parakeetStreamLoadKey.entries()) {
+    if (loadKey && loadKey !== requestedKey) {
+      return { kind: 'stream', key: loadKey, streamKey };
+    }
+  }
+  return null;
+}
+
+async function resetParakeetForModelLimit(requestedModel, requestedKey, reason, conflict) {
+  dbg('parakeet_one_model_limit_reset', {
+    reason,
+    requestedModel,
+    requestedKey,
+    conflict,
+    currentModel: currentParakeetModel,
+    currentRuntimeKey: currentParakeetRuntimeKey,
+    loadingKey: parakeetModelLoadKey || null,
+    prewarmLoadKey: parakeetPrewarmLoadKey || null,
+    activeStreams: parakeetStreamReady.size,
+    pendingStreams: parakeetPendingChunks.size
+  });
+  await terminateParakeetWorker('parakeet_one_model_limit');
+}
+
 async function ensureParakeetModelLoaded(modelID, config = null, timeoutMs = 300000) {
   const safeModel = fallbackParakeetModel(modelID);
   const configForLoad = config && typeof config === 'object' ? config : {};
   const key = parakeetLoadRuntimeKey(safeModel, configForLoad);
+
+  const conflict = getParakeetModelLimitConflict(key);
+  if (conflict) {
+    await resetParakeetForModelLimit(safeModel, key, 'ensure_model', conflict);
+  }
 
   if (parakeetModelLoadPromise && parakeetModelLoadKey === key) {
     return parakeetModelLoadPromise;
@@ -1010,27 +1088,21 @@ async function ensureParakeetModelLoaded(modelID, config = null, timeoutMs = 300
 
   const previousModel = currentParakeetModel;
   const loadPromise = queueParakeetWorkerCall(async () => {
-    let res = await callParakeetWorker('ENSURE_MODEL', {
+    const res = await callParakeetWorker('ENSURE_MODEL', {
       modelID: safeModel,
       config: configForLoad
     }, timeoutMs);
 
     currentParakeetModel = res.model || safeModel;
+    currentParakeetRuntimeKey = key;
+    if (parakeetPrewarmLoadKey && parakeetPrewarmLoadKey !== key) {
+      parakeetPrewarmKey = '';
+      parakeetPrewarmLoadKey = '';
+    }
 
     if (previousModel && previousModel !== currentParakeetModel) {
       parakeetModelSwitches += 1;
       dbg('parakeet_model_switched', { previousModel, currentModel: currentParakeetModel, switches: parakeetModelSwitches });
-    }
-
-    if (parakeetModelSwitches >= PARAKEET_MODEL_SWITCH_TERMINATE_THRESHOLD) {
-      dbg('parakeet_recycling_worker', { switches: parakeetModelSwitches });
-      parakeetModelSwitches = 0;
-      await terminateParakeetWorker();
-      ensureParakeetWorker();
-      res = await callParakeetWorker('ENSURE_MODEL', {
-        modelID: currentParakeetModel,
-        config: configForLoad
-      }, timeoutMs);
     }
 
     return res;
@@ -1774,7 +1846,11 @@ function parakeetModelRuntimeKey(modelID, config = {}) {
 }
 
 function isParakeetModelPrewarmed(modelID, config = {}) {
-  return parakeetPrewarmKey === parakeetModelRuntimeKey(modelID, config);
+  const runtimeKey = parakeetModelRuntimeKey(modelID, config);
+  const loadKey = parakeetLoadRuntimeKey(modelID, config);
+  return parakeetPrewarmKey === runtimeKey
+    && currentParakeetRuntimeKey === loadKey
+    && (!parakeetPrewarmLoadKey || parakeetPrewarmLoadKey === loadKey);
 }
 
 async function prewarmParakeetModelIfIdle(modelID, config = {}, tabId = null, frameId = null) {
@@ -1783,6 +1859,11 @@ async function prewarmParakeetModelIfIdle(modelID, config = {}, tabId = null, fr
 
   const safeModel = fallbackParakeetModel(modelID);
   const key = parakeetModelRuntimeKey(safeModel, config);
+  const loadKey = parakeetLoadRuntimeKey(safeModel, config);
+  const conflict = getParakeetModelLimitConflict(loadKey);
+  if (conflict) {
+    await resetParakeetForModelLimit(safeModel, loadKey, 'prewarm_model', conflict);
+  }
   if (parakeetPrewarmKey === key) return { ok: true, skipped: true, reason: 'already_warmed' };
   if (parakeetPrewarmPromise) return parakeetPrewarmPromise;
   const progressKey = trackParakeetProgress(tabId, frameId, `prewarm:${safeModel}`);
@@ -1793,14 +1874,17 @@ async function prewarmParakeetModelIfIdle(modelID, config = {}, tabId = null, fr
   };
 
   notify('Prewarming Parakeet model...');
-  parakeetPrewarmPromise = queueParakeetWorkerCall(async () => {
+  const prewarmPromise = queueParakeetWorkerCall(async () => {
     if (hasActiveParakeetStream()) return { ok: true, skipped: true, reason: 'active_stream' };
     const res = await callParakeetWorker('PREWARM_MODEL', {
       modelID: safeModel,
       config
     }, 120000);
     if (res.ok && !res.skipped) {
+      currentParakeetModel = res.model || safeModel;
+      currentParakeetRuntimeKey = loadKey;
       parakeetPrewarmKey = key;
+      parakeetPrewarmLoadKey = loadKey;
       notify('Parakeet prewarm ready.', 'recording');
     }
     return res;
@@ -1808,10 +1892,15 @@ async function prewarmParakeetModelIfIdle(modelID, config = {}, tabId = null, fr
     notify('Parakeet prewarm failed; continuing without prewarm.', 'info');
     throw e;
   }).finally(() => {
-    parakeetPrewarmPromise = null;
+    if (parakeetPrewarmPromise === prewarmPromise) {
+      parakeetPrewarmPromise = null;
+      parakeetPrewarmLoadKey = parakeetPrewarmKey === key ? loadKey : '';
+    }
     untrackParakeetProgress(progressKey);
   });
 
+  parakeetPrewarmLoadKey = loadKey;
+  parakeetPrewarmPromise = prewarmPromise;
   return parakeetPrewarmPromise;
 }
 
@@ -2210,8 +2299,10 @@ async function cancelAllSessions(reason = 'config_changed') {
   parakeetPendingChunks.clear();
   parakeetFirstInferenceReady.clear();
   parakeetStreamRuntimeKey.clear();
+  parakeetStreamLoadKey.clear();
   parakeetActiveStreamByOwner.clear();
   parakeetStreamOwnerByKey.clear();
+  parakeetDesiredStreamByOwner.clear();
   clearParakeetProgressTargets();
   streamUiByTab.clear();
 
@@ -2819,6 +2910,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
   if (message?.type === 'CONFIG_CHANGED') {
     (async () => {
       let nextFp = null;
+      let shouldCancel = false;
       try {
         const { settings } = await browser.storage.local.get('settings');
         const d = settings?.defaults || {};
@@ -2830,12 +2922,15 @@ browser.runtime.onMessage.addListener((message, sender) => {
         });
 
         if (lastDefaultsFingerprint && nextFp && nextFp !== lastDefaultsFingerprint) {
-          await cancelAllSessions('defaults_changed');
+          shouldCancel = true;
         }
         lastDefaultsFingerprint = nextFp;
       } catch (_) { }
 
       await refreshRuntimeFlagsFromStorage();
+      if (shouldCancel) {
+        await cancelAllSessions('defaults_changed');
+      }
       await prefetchDefaultModelIfEnabled();
       await updateDisabledBadgesForAllTabs();
     })();
@@ -3040,13 +3135,32 @@ browser.runtime.onMessage.addListener((message, sender) => {
         }
 
         const modelId = fallbackParakeetModel(settings.model);
-        parakeetStreamRuntimeKey.set(key, parakeetModelRuntimeKey(modelId, settings.parakeet));
+        const runtimeKey = parakeetModelRuntimeKey(modelId, settings.parakeet);
+        const loadKey = parakeetLoadRuntimeKey(modelId, settings.parakeet);
+        parakeetStreamRuntimeKey.set(key, runtimeKey);
+        parakeetStreamLoadKey.set(key, loadKey);
 
         const colors = ICON_COLORS();
         await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'loading', { type: 'download', color: colors.downloading });
         sendTerminal(tabId, frameId, { type: 'WHISPER_TOAST', message: 'Loading Parakeet model…', level: 'processing' });
 
         progressKey = trackParakeetProgress(tabId, frameId, `stream:${sessionId}`);
+
+        await ensureParakeetModelLoaded(modelId, settings.parakeet, 300000);
+
+        if (parakeetDesiredStreamByOwner.get(ownerKey) !== key) {
+          clearParakeetStreamState(key);
+          return;
+        }
+
+        if (parakeetStreamOwnerByKey.get(key) !== ownerKey) {
+          rememberParakeetStreamOwner(ownerKey, key);
+        }
+        if (!parakeetPendingChunks.has(key)) {
+          parakeetPendingChunks.set(key, []);
+        }
+        parakeetStreamRuntimeKey.set(key, runtimeKey);
+        parakeetStreamLoadKey.set(key, loadKey);
 
         const res = await queueParakeetWorkerCall(() => callParakeetWorker('TRANSCRIBE_STREAM_START', {
           sessionId,
@@ -3067,6 +3181,9 @@ browser.runtime.onMessage.addListener((message, sender) => {
           clearParakeetStreamState(key);
           return;
         }
+
+        currentParakeetModel = res.model || modelId;
+        currentParakeetRuntimeKey = loadKey;
 
         if (isParakeetModelPrewarmed(modelId, settings.parakeet)) {
           await setStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId, 'recording', null);
@@ -3097,14 +3214,27 @@ browser.runtime.onMessage.addListener((message, sender) => {
         parakeetPendingChunks.delete(key);
       } catch (err) {
         console.error('[BG] Parakeet stream init error:', err);
-        const msg = (err && err.message) ? `Failed to load Parakeet model: ${err.message}` : 'Failed to load Parakeet model';
-        await clearStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId);
-        showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
-        sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: msg });
-        sendTerminal(tabId, frameId, { type: 'WHISPER_CANCEL_ALL', reason: 'parakeet_model_failed' });
+        const stillDesired = parakeetDesiredStreamByOwner.get(ownerKey) === key
+          || parakeetStreamOwnerByKey.get(key) === ownerKey
+          || parakeetPendingChunks.has(key)
+          || parakeetStreamReady.has(key);
+        if (stillDesired) {
+          const msg = (err && err.message) ? `Failed to load Parakeet model: ${err.message}` : 'Failed to load Parakeet model';
+          await clearStreamingUi(tabId, PROVIDERS.NVIDIA_PARAKEET, sessionId);
+          showBadgeForTab(tabId, { type: 'download', color: ICON_COLORS().download_error }, BADGE_MS.download_error);
+          sendTerminal(tabId, frameId, { type: 'WHISPER_ERROR', error: msg });
+          sendTerminal(tabId, frameId, { type: 'WHISPER_CANCEL_ALL', reason: 'parakeet_model_failed' });
+        } else {
+          dbg('parakeet_stream_init_stale_error_suppressed', {
+            tabId,
+            frameId,
+            sessionId,
+            error: err?.message || String(err)
+          });
+        }
         // Clean up stale state so retries don't chain onto this rejected promise
         clearParakeetStreamState(key);
-        throw err; // Reject the promise so chain stops
+        if (stillDesired) throw err; // Reject the promise so chain stops
       } finally {
         untrackParakeetProgress(progressKey);
       }
@@ -3484,16 +3614,18 @@ browser.runtime.onMessage.addListener((message, sender) => {
           });
         }
 
-        const res = await callParakeetWorker(
+        const parakeetLoadKey = parakeetLoadRuntimeKey(model, settings.parakeet);
+        const res = await queueParakeetWorkerCall(() => callParakeetWorker(
           'TRANSCRIBE_FLOAT32',
           { modelID: model, input, config: settings.parakeet },
           PROCESSING_TIMEOUT_MS,
           [input.buffer]
-        );
+        ));
 
         text = (res.text || '').trim();
         if (res.firstInferenceReady) {
           parakeetPrewarmKey = parakeetModelRuntimeKey(model, settings.parakeet);
+          parakeetPrewarmLoadKey = parakeetLoadKey;
         }
         dbgToTab(tabId, frameId, 'parakeet_transcribed', { chars: text.length, model: res.model, cached: !!res.cached, backend: res.backend });
       } else {

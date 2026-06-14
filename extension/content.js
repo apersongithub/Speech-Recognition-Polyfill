@@ -1859,37 +1859,8 @@ installDuolingoForeignObjectRemovalStopper();
 async function startRecording(pageLanguage, sessionId) {
   // 🔎 force-read settings at the moment recording starts
   try {
-    // Wrap getUserMedia in a specific try/catch for permission errors
-    try {
-      globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Permission granted — immediately release this stream's tracks.
-      // We only needed this call to check permission; the actual recording
-      // stream is acquired below. Without this, the orphaned tracks keep
-      // Firefox's "using microphone" indicator active indefinitely.
-      globalStream.getTracks().forEach(track => track.stop());
-      globalStream = null;
-    } catch (permError) {
-      if (permError.name === 'NotAllowedError' || permError.name === 'PermissionDeniedError') {
-        showNotification("Microphone access denied. Please allow it in browser settings.", "error");
-      } else {
-        showNotification("Could not access microphone: " + permError.message, "error");
-      }
-      // Clean up UI state since we can't record
-      captureActive = false;
-      await browser.runtime.sendMessage({
-        type: 'RECORDING_STOP',
-        sessionId,
-        hostname: location.hostname,
-        canceled: true,
-        pageInstanceId: PAGE_INSTANCE_ID
-      });
-      return;
-    }
-
-    dbg('gum_ok', { sessionId });
     const hostname = normalizeHost(location.hostname);
     const { settings } = await browser.storage.local.get('settings');
-
     const provider = getProviderFromSettings(settings, hostname);
     const assemblyEnabled = settings?.assemblyaiStreamingEnabled !== false;
     const parakeetEnabled = settings?.parakeetStreamingEnabled !== false;
@@ -1952,6 +1923,7 @@ async function startRecording(pageLanguage, sessionId) {
     clearPendingStreamingFinal(); // NEW
 
     currentInterimLength = 0;
+    currentInterimText = "";
 
     globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     dbg('gum_ok', { sessionId });
@@ -2305,7 +2277,13 @@ async function startRecording(pageLanguage, sessionId) {
       });
     } catch (_) { }
 
-    showNotification("Error: " + (err?.message || err), "error");
+    const isPermissionError = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+    showNotification(
+      isPermissionError
+        ? "Microphone access denied. Please allow it in browser settings."
+        : "Error: " + (err?.message || err),
+      "error"
+    );
     try { stopRecording(true); } catch (_) { }
   }
 }
@@ -2545,7 +2523,6 @@ browser.runtime.onMessage.addListener((message) => {
       showNotification(finalText, "success");
 
       const interimTarget = currentInterimLength > 0 ? resolveInsertTarget() : null;
-      const hadInterimFallback = currentInterimLength > 0;
 
       // Post the result to the page polyfill with a unique ackId.
       // Batch results should not be labeled as streaming; otherwise the page can
@@ -2567,10 +2544,11 @@ browser.runtime.onMessage.addListener((message) => {
       setTimeout(() => {
         window.removeEventListener('message', onAck);
         const target = interimTarget || resolveInsertTarget();
+        const hasLiveInterimFallback = currentInterimLength > 0;
 
         if (!pageHandled) {
           const normalizedText = normalizeInsertText(target, finalText);
-          if (hadInterimFallback && currentInterimLength > 0) {
+          if (hasLiveInterimFallback) {
             replaceInterimText(target, normalizedText);
             currentInterimLength = 0;
             currentInterimText = "";
@@ -2579,7 +2557,7 @@ browser.runtime.onMessage.addListener((message) => {
           }
 
           maybeSendEnterAfterResult(target);
-        } else if (hadInterimFallback && currentInterimLength > 0) {
+        } else if (hasLiveInterimFallback) {
           clearInterimTextIfStillPresent(target);
           currentInterimLength = 0;
           currentInterimText = "";
