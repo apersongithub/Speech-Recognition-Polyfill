@@ -727,5 +727,8 @@
   },
   "parakeet_prewarm_note": {
     "message": "Pré-carrega o modelo Parakeet e executa uma inferência de aquecimento inativa. Usa mais memória/GPU e é executado apenas quando nenhum fluxo Parakeet está ativo."
+  },
+  "clear_model_storage": {
+    "message": "Limpar armazenamento de modelos"
   }
 }

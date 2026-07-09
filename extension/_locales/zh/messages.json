@@ -727,5 +727,8 @@
   },
   "parakeet_prewarm_note": {
     "message": "预加载选定的 Parakeet 模型并运行一次空闲的预热推理。这会占用更多内存/GPU 时间，且仅在没有活跃的 Parakeet 流时运行。"
+  },
+  "clear_model_storage": {
+    "message": "清除模型存储"
   }
 }

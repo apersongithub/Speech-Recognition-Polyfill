@@ -727,5 +727,8 @@
   },
   "parakeet_prewarm_note": {
     "message": "Précharge le modèle sélectionné et exécute une inférence à vide. Utilise plus de mémoire/temps GPU, s'exécute uniquement lorsqu'aucun flux n'est actif."
+  },
+  "clear_model_storage": {
+    "message": "Effacer le stockage des modèles"
   }
 }

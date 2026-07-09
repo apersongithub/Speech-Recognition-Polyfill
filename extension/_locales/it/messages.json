@@ -727,5 +727,8 @@
   },
   "parakeet_prewarm_note": {
     "message": "Precarica il modello Parakeet selezionato ed esegue un'inferenza inattiva di riscaldamento. Utilizza più memoria/tempo della GPU e viene eseguito solo quando non c'è alcuno stream attivo."
+  },
+  "clear_model_storage": {
+    "message": "Cancella memoria modelli"
   }
 }

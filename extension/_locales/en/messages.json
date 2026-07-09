@@ -727,5 +727,8 @@
   },
   "parakeet_prewarm_note": {
     "message": "Preloads the selected Parakeet model and runs one idle warmup inference. Uses more memory/GPU time, and only runs when no Parakeet stream is active."
+  },
+  "clear_model_storage": {
+    "message": "Clear Model Storage"
   }
 }

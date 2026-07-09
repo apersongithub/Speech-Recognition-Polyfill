@@ -727,5 +727,8 @@
   },
   "parakeet_prewarm_note": {
     "message": "Pre-carga el modelo y realiza una inferencia en inactividad. Usa más memoria y GPU, se ejecuta solo cuando no hay transmisiones activas."
+  },
+  "clear_model_storage": {
+    "message": "Borrar almacenamiento de modelos"
   }
 }

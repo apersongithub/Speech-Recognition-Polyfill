@@ -727,5 +727,8 @@
   },
   "parakeet_prewarm_note": {
     "message": "Lädt das Modell vorab und führt eine Leerlauf-Aufwärm-Inferenz durch. Benötigt mehr Speicher/GPU-Zeit und läuft nur, wenn kein Parakeet-Stream aktiv ist."
+  },
+  "clear_model_storage": {
+    "message": "Modellspeicher löschen"
   }
 }
