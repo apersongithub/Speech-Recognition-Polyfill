@@ -1,7 +1,7 @@
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1';
 
 env.allowLocalModels = false;
-env.useBrowserCache = true;
+env.useBrowserCache = true; // Default; overridden by ENSURE_MODEL messages
 
 const ALLOWED_MODELS = new Set([
   'Xenova/whisper-tiny.en',
@@ -181,6 +181,9 @@ self.onmessage = async (ev) => {
     }
 
     if (type === 'ENSURE_MODEL') {
+      if (typeof msg.useBrowserCache === 'boolean') {
+        env.useBrowserCache = msg.useBrowserCache;
+      }
       const r = await ensureModel(msg.modelID);
       reply({ ok: true, model: r.model, cached: r.cached, backend: r.backend });
       return;

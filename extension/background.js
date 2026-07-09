@@ -992,8 +992,30 @@ async function processParakeetStreamChunk(tabId, frameId, sessionId, key, audioD
   }
 }
 
-async function terminateParakeetWorker(reason = 'manual') {
-  dbg('parakeet_worker_terminate', { reason, hadWorker: !!parakeetWorker });
+// ---------- Persistent Model Cache Cleanup Helpers ----------
+// Parakeet stores ~600MB–2GB across Cache API + IndexedDB + Service Worker cache.
+// These must be explicitly deleted when switching providers or closing the browser,
+// otherwise they persist indefinitely and degrade browser performance.
+async function clearParakeetPersistentCaches() {
+  try { await caches.delete('keet-model-cache-v1'); } catch (_) { }
+  try { await caches.delete('keet-models-v1'); } catch (_) { }
+  try {
+    await new Promise(resolve => {
+      const req = indexedDB.deleteDatabase('parakeet-cache-db');
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    });
+  } catch (_) { }
+  dbg('parakeet_persistent_caches_cleared');
+}
+
+// Whisper (@xenova/transformers) stores models in Cache API (~75MB–700MB).
+async function clearWhisperPersistentCaches() {
+  try { await caches.delete('transformers-cache'); } catch (_) { }
+  dbg('whisper_persistent_caches_cleared');
+}
+
+async function terminateParakeetWorker(reason = 'manual', { clearPersistent = false } = {}) {
+  dbg('parakeet_worker_terminate', { reason, hadWorker: !!parakeetWorker, clearPersistent });
   if (parakeetWorker) {
     try { parakeetWorker.terminate(); } catch (_) { }
     parakeetWorker = null;
@@ -1024,6 +1046,11 @@ async function terminateParakeetWorker(reason = 'manual') {
   parakeetPrewarmPromise = null;
   parakeetPrewarmKey = '';
   parakeetPrewarmLoadKey = '';
+
+  // Clear persistent storage when switching models/providers (not on idle GC)
+  if (clearPersistent && !keepParakeetResident) {
+    await clearParakeetPersistentCaches();
+  }
 }
 
 function parakeetLoadRuntimeKey(modelID, config = {}) {
@@ -1069,7 +1096,7 @@ async function resetParakeetForModelLimit(requestedModel, requestedKey, reason, 
     activeStreams: parakeetStreamReady.size,
     pendingStreams: parakeetPendingChunks.size
   });
-  await terminateParakeetWorker('parakeet_one_model_limit');
+  await terminateParakeetWorker('parakeet_one_model_limit', { clearPersistent: true });
 }
 
 async function ensureParakeetModelLoaded(modelID, config = null, timeoutMs = 300000) {
@@ -1631,6 +1658,8 @@ function scheduleModelGc() {
     if (!(keepModelResident && residentModelId)) {
       await disposeCurrentModel();
       await terminateAsrWorker();
+      // Whisper models are small enough to re-download; clear on idle
+      await clearWhisperPersistentCaches();
     } else {
       dbg('gc_skip_resident_default', { residentModelId });
     }
@@ -1638,6 +1667,8 @@ function scheduleModelGc() {
     if (parakeetStreamReady.size > 0 || parakeetStreamChain.size > 0) {
       dbg('gc_skip_parakeet_active', { ready: parakeetStreamReady.size, chains: parakeetStreamChain.size });
     } else if (!(keepParakeetResident && residentParakeetModelId)) {
+      // NOTE: No clearPersistent here — Parakeet is ~2GB, too expensive to re-download on idle.
+      // Persistent caches are only cleared on explicit model/provider switch or browser close.
       await terminateParakeetWorker();
     } else {
       dbg('gc_skip_resident_parakeet', { residentParakeetModelId });
@@ -1743,7 +1774,7 @@ async function clearStreamingUi(tabId, provider, sessionId, { finalBadge = null,
 
 async function ensureModelSilently(modelID) {
   const safeModel = ALLOWED_MODELS.has(modelID) ? modelID : 'Xenova/whisper-base';
-  await callAsrWorker('ENSURE_MODEL', { modelID: safeModel }, PROCESSING_TIMEOUT_MS);
+  await callAsrWorker('ENSURE_MODEL', { modelID: safeModel, useBrowserCache: keepModelResident }, PROCESSING_TIMEOUT_MS);
   currentModel = safeModel;
 }
 async function ensureModelForTab(tabId, modelID) {
@@ -1755,7 +1786,7 @@ async function ensureModelForTab(tabId, modelID) {
   const previousModel = currentModel;
 
   modelLoadPromise = (async () => {
-    return await callAsrWorker('ENSURE_MODEL', { modelID: safeModel }, PROCESSING_TIMEOUT_MS);
+    return await callAsrWorker('ENSURE_MODEL', { modelID: safeModel, useBrowserCache: keepModelResident }, PROCESSING_TIMEOUT_MS);
   })();
 
   try {
@@ -2318,8 +2349,11 @@ async function cancelAllSessions(reason = 'config_changed') {
   // 7. Terminate Workers & GC
   await disposeCurrentModel();
   await terminateAsrWorker();
+  if (!(keepModelResident && residentModelId)) {
+    await clearWhisperPersistentCaches();
+  }
   if (!(keepParakeetResident && residentParakeetModelId)) {
-    await terminateParakeetWorker();
+    await terminateParakeetWorker('cancel_all_sessions', { clearPersistent: true });
   }
 
 
@@ -2904,6 +2938,16 @@ browser.runtime.onMessage.addListener((message, sender) => {
       } catch (_) {
         return { ok: false, backend: 'unknown', preferredBackend: 'unknown', hasModelLoaded: false, webgpu: null };
       }
+    })();
+  }
+
+  if (message?.type === 'CLEAR_ALL_MODEL_CACHES') {
+    return (async () => {
+      dbg('clear_all_model_caches_requested');
+      await terminateParakeetWorker('clear_all_caches', { clearPersistent: true });
+      await clearParakeetPersistentCaches();
+      await clearWhisperPersistentCaches();
+      return { ok: true };
     })();
   }
 
@@ -3818,3 +3862,30 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     }
   } catch (_) { }
 })();
+
+// ---------- Browser Close Cleanup ----------
+// Clear persistent model caches when browser shuts down (Firefox MV2 persistent background page).
+// Only clears if cacheDefaultModel is OFF for the respective engine.
+window.addEventListener('unload', () => {
+  if (!keepParakeetResident) {
+    clearParakeetPersistentCaches();
+  }
+  if (!keepModelResident) {
+    clearWhisperPersistentCaches();
+  }
+});
+
+// ---------- Startup Cleanup ----------
+// Catch orphaned caches from browser crashes or force-quits.
+// Runs after settings have been loaded so residency flags are set correctly.
+setTimeout(async () => {
+  try {
+    await refreshRuntimeFlagsFromStorage();
+  } catch (_) { }
+  if (!keepParakeetResident) {
+    await clearParakeetPersistentCaches();
+  }
+  if (!keepModelResident) {
+    await clearWhisperPersistentCaches();
+  }
+}, 5000);

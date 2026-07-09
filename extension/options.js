@@ -85,6 +85,14 @@ document.getElementById('disable-processing-timeouts')?.addEventListener('change
 });
 document.getElementById('grace-ms')?.addEventListener('change', () => saveGraceSetting(['speech-logic']));
 document.getElementById('factory-reset')?.addEventListener('click', factoryReset);
+document.getElementById('clear-model-storage')?.addEventListener('click', async () => {
+    try {
+        await browser.runtime.sendMessage({ type: 'CLEAR_ALL_MODEL_CACHES' });
+        showSaved('save');
+    } catch (e) {
+        console.error('Failed to clear model caches:', e);
+    }
+});
 document.getElementById('disable-favicons')?.addEventListener('change', () => toggleFavicons(['dev']));
 
 document.getElementById('show-model-sections-toggle')?.addEventListener('change', () => {
@@ -1287,6 +1295,11 @@ async function factoryReset() {
         // Clear settings
         await browser.storage.local.set({ settings: {} });
         await browser.storage.local.remove('settings');
+
+        // Clear all persistent model caches (Parakeet ~2GB, Whisper ~700MB)
+        try {
+            await browser.runtime.sendMessage({ type: 'CLEAR_ALL_MODEL_CACHES' });
+        } catch (_) { }
 
         // Visual 'saved' feedback and notify other parts of the extension
         showSaved('save');
