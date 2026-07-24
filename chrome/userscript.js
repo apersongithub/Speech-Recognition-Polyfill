@@ -329,7 +329,7 @@
                     const fullUrl = url.startsWith('/') ? location.origin + url : url;
                     const isSameOrigin = fullUrl.startsWith(location.origin);
 
-                    if (!isSameOrigin) return _origFetch.call(W, input, init);
+                    if (!isSameOrigin || typeof GM_xmlhttpRequest === 'undefined') return _origFetch.call(W, input, init);
 
                     // Override Sec-CH-UA headers with Chrome values
                     headers['Sec-CH-UA'] = _spoofedSecCHUA;
@@ -343,14 +343,14 @@
                             headers: headers,
                             data: body,
                             anonymous: false,
-                            responseType: 'text',
+                            responseType: 'arraybuffer',
                             onload(resp) {
                                 const rh = new W.Headers();
                                 (resp.responseHeaders || '').split(/\r?\n/).forEach(line => {
                                     const i = line.indexOf(':');
                                     if (i > 0) rh.append(line.substring(0, i).trim(), line.substring(i + 1).trim());
                                 });
-                                resolve(new W.Response(resp.responseText, {
+                                resolve(new W.Response(resp.response, {
                                     status: resp.status,
                                     statusText: resp.statusText,
                                     headers: rh,
