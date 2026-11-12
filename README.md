@@ -1,5 +1,5 @@
 # <img src="https://addons.mozilla.org/user-media/addon_icons/2970/2970008-64.png" width="35px"> Speech Recognition Polyfill
-### ⬇️❗THIS IS USELESS AS OF 11/11/26, SPEECH RECOGNITION IS NOW IN FIREFOX v160❗⬇️
+### ❗THIS IS USELESS AS OF 11/11/26, SPEECH RECOGNITION IS NOW IN FIREFOX v160❗
 <img width="1512" height="102" alt="image" src="https://github.com/user-attachments/assets/e2988b1b-37d9-4817-ae36-44485c4fb3c4" /> </br>
 
 ![Firefox Extension Rating](https://img.shields.io/amo/rating/speech-recognition-polyfill?style=for-the-badge&label=Firefox%20Rating&logo=firefox&logoColor=white)
